@@ -1,0 +1,5 @@
+# Unsplash API Integration Dependencies
+# Install with: pip install -r requirements_unsplash.txt
+
+pyunsplash>=1.0.0
+requests>=2.27.0

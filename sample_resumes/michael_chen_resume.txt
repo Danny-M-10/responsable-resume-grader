@@ -1,0 +1,68 @@
+MICHAEL CHEN
+San Francisco, CA 94102
+michael.chen@cloudmail.com
+(555) 456-7890
+
+CERTIFICATIONS
+- AWS Certified Solutions Architect - Professional (2023)
+- Terraform Associate (2023)
+
+PROFESSIONAL SUMMARY
+Senior ML Engineer with 6 years of experience building scalable machine learning infrastructure and production systems. Expert in MLOps, cloud architecture, and distributed systems.
+
+PROFESSIONAL EXPERIENCE
+
+Senior Machine Learning Engineer | CloudScale Inc. | San Francisco, CA
+April 2021 - Present
+- Architect and implement MLOps platform serving 50+ data scientists
+- Built distributed training pipeline reducing model training time by 70%
+- Designed real-time inference system handling 1M+ predictions per second
+- Lead team of 3 ML engineers
+- Technologies: Python, TensorFlow, PyTorch, AWS (SageMaker, EKS, Lambda), Kubernetes, Terraform
+
+Machine Learning Engineer | AI Solutions Corp | San Francisco, CA
+July 2018 - March 2021
+- Developed recommendation systems using collaborative filtering and deep learning
+- Built feature store and model registry for ML model management
+- Implemented automated model retraining and deployment pipelines
+- Technologies: Python, scikit-learn, Spark, AWS, Docker, Airflow
+
+Software Engineer | Tech Startup Inc. | Palo Alto, CA
+June 2017 - June 2018
+- Built backend APIs and microservices
+- Worked with data pipelines and ETL processes
+- Technologies: Python, Java, PostgreSQL, Redis, Kubernetes
+
+EDUCATION
+
+Master of Science in Computer Science | Stanford University | 2017
+- Specialization: Artificial Intelligence
+- Thesis: Efficient Neural Architecture Search
+
+Bachelor of Science in Electrical Engineering | UC Berkeley | 2015
+- Minor: Computer Science
+- GPA: 3.7/4.0
+
+TECHNICAL SKILLS
+
+Languages: Python, Java, Scala, SQL, Bash
+ML/AI: TensorFlow, PyTorch, scikit-learn, XGBoost, MLflow
+Cloud: AWS (SageMaker, EKS, Lambda, S3, EC2, RDS), some GCP and Azure
+Infrastructure: Kubernetes, Docker, Terraform, Ansible
+Big Data: Spark, Kafka, Airflow, Flink
+Databases: PostgreSQL, MySQL, Redis, Cassandra, DynamoDB
+Monitoring: Prometheus, Grafana, CloudWatch, DataDog
+
+STRENGTHS
+- System design and architecture
+- Performance optimization
+- Team leadership and mentoring
+- Cross-functional collaboration
+
+SPEAKING ENGAGEMENTS
+- "Building Production ML Systems at Scale" - MLOps Summit 2023
+- "Kubernetes for ML Workloads" - KubeCon 2022
+
+OPEN SOURCE
+- Contributor to Kubeflow and MLflow projects
+- Maintainer of popular Python ML utilities library (3K+ GitHub stars)

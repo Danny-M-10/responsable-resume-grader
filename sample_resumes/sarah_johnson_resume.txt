@@ -1,0 +1,64 @@
+SARAH JOHNSON
+New York, NY 10003
+sarah.johnson@techmail.com
+(555) 345-6789
+
+CERTIFICATIONS
+- AWS Certified Machine Learning - Specialty (2024)
+- Certified Analytics Professional (CAP) (2023)
+
+PROFESSIONAL EXPERIENCE
+
+Data Scientist | Healthcare Analytics Group | New York, NY
+February 2019 - Present
+- Develop predictive models for patient readmission risk using machine learning
+- Built computer vision models for medical image analysis with 95% accuracy
+- Deploy models using AWS SageMaker and maintain production systems
+- Collaborate with clinical teams to translate business needs into ML solutions
+- Technologies: Python, TensorFlow, scikit-learn, AWS (SageMaker, S3, Lambda), SQL
+
+Machine Learning Intern | AI Research Lab | New York, NY
+Summer 2018
+- Researched deep learning techniques for medical diagnosis
+- Implemented research papers in PyTorch
+- Technologies: Python, PyTorch, NumPy
+
+Data Analyst | City Hospital | Brooklyn, NY
+January 2017 - January 2019
+- Analyzed patient data to identify trends and improve outcomes
+- Created automated reporting systems using Python and SQL
+- Technologies: Python, SQL, R, Tableau
+
+EDUCATION
+
+Master of Science in Applied Statistics | NYU | 2019
+- Concentration: Machine Learning and Data Science
+- Thesis: Deep Learning for Medical Image Segmentation
+
+Bachelor of Science in Biology | Cornell University | 2016
+- Minor in Computer Science
+- Dean's List all semesters
+
+TECHNICAL SKILLS
+
+Languages: Python, R, SQL, JavaScript (basic)
+ML Frameworks: TensorFlow, scikit-learn, XGBoost, Keras
+Cloud: AWS (SageMaker, EC2, S3, Lambda), some GCP experience
+Data Tools: Pandas, NumPy, Spark (basic)
+Databases: PostgreSQL, MySQL, MongoDB
+Visualization: Matplotlib, Seaborn, Tableau, D3.js (basic)
+Other: Git, Docker, Jupyter, Linux
+
+DOMAIN KNOWLEDGE
+- Healthcare analytics and clinical workflows
+- Medical terminology and HIPAA compliance
+- Statistical analysis and experimental design
+- A/B testing and causal inference
+
+PUBLICATIONS
+- "Deep Learning for Patient Risk Stratification" - Healthcare AI Journal, 2023
+- Co-author on 2 peer-reviewed papers in medical AI
+
+PROFESSIONAL ACTIVITIES
+- Member, Association for Computing Machinery (ACM)
+- Volunteer, Data Science for Social Good

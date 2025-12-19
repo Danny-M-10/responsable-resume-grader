@@ -1,0 +1,131 @@
+DATA SCIENTIST - FINANCE SECTOR
+
+Location: New York, NY
+
+Company: FinTech Global Inc.
+
+Job Type: Full-time
+
+Salary Range: $150,000 - $200,000 per year
+
+
+ABOUT THE ROLE
+
+We are seeking an experienced Data Scientist to join our analytics team in our New York office. The ideal candidate will have strong machine learning skills and experience deploying models in production environments within the financial services industry.
+
+
+REQUIRED QUALIFICATIONS
+
+- 5+ years of experience in data science or machine learning
+- Strong proficiency in Python and SQL
+- Experience with machine learning frameworks (TensorFlow, PyTorch, or scikit-learn)
+- Hands-on experience with AWS ML services (SageMaker, Lambda, etc.)
+- Bachelor's degree in Computer Science, Statistics, Mathematics, or related field
+- AWS Certified Machine Learning - Specialty certification (required)
+- Experience in financial services or banking sector
+- Proven track record of deploying ML models to production
+
+
+PREFERRED QUALIFICATIONS
+
+- Master's degree or PhD in relevant field
+- Experience with big data technologies (Spark, Hadoop)
+- Knowledge of deep learning and neural networks
+- Google Cloud Professional Data Engineer or Microsoft Azure Data Scientist certifications
+- Experience with MLOps and model governance
+- Strong communication and presentation skills
+- Leadership and team management experience
+
+
+TECHNICAL SKILLS REQUIRED
+
+Programming Languages:
+- Python (required)
+- R
+- SQL (required)
+
+ML/AI Frameworks:
+- TensorFlow
+- PyTorch
+- scikit-learn
+- XGBoost
+
+Cloud Platforms:
+- AWS (SageMaker, EC2, S3, Lambda) - required
+- Google Cloud Platform (preferred)
+- Azure (nice to have)
+
+Data Tools:
+- Pandas
+- NumPy
+- Apache Spark
+- SQL databases (PostgreSQL, MySQL)
+- NoSQL databases (MongoDB, Redis)
+
+MLOps & Tools:
+- Git (required)
+- Docker
+- Kubernetes (preferred)
+- MLflow
+- Jupyter
+- Airflow
+
+Visualization:
+- Matplotlib
+- Seaborn
+- Tableau or Power BI
+
+
+KEY RESPONSIBILITIES
+
+- Design and implement machine learning models for financial risk assessment and fraud detection
+- Deploy and maintain models in production environments using AWS infrastructure
+- Collaborate with engineering teams on ML infrastructure and data pipelines
+- Present findings and model results to stakeholders and executive leadership
+- Mentor junior data scientists and contribute to team knowledge sharing
+- Ensure models comply with financial regulations and governance requirements
+- Conduct A/B testing and model validation
+- Optimize model performance and scalability
+
+
+REQUIRED SOFT SKILLS
+
+- Excellent communication and presentation abilities
+- Strong analytical and problem-solving skills
+- Ability to work collaboratively in cross-functional teams
+- Self-motivated and detail-oriented
+- Experience managing stakeholder expectations
+- Ability to explain complex technical concepts to non-technical audiences
+
+
+NICE TO HAVE
+
+- Publications in peer-reviewed journals or conferences
+- Contributions to open-source ML projects
+- Experience with time series forecasting
+- Knowledge of financial regulations (Basel, IFRS9)
+- Experience with model risk management
+
+
+WHAT WE OFFER
+
+- Competitive salary ($150K-$200K) based on experience
+- Comprehensive health benefits
+- 401(k) matching
+- Flexible work arrangements (hybrid remote)
+- Professional development budget
+- Conference attendance opportunities
+- Collaborative and innovative team environment
+
+
+ABOUT US
+
+FinTech Global Inc. is a leading financial technology company serving millions of customers worldwide. Our data science team is at the forefront of innovation, applying cutting-edge ML techniques to solve complex financial challenges.
+
+
+TO APPLY
+
+Please submit your resume along with a cover letter explaining your interest in the role. Include links to your GitHub, publications, or portfolio if available.
+
+
+FinTech Global Inc. is an equal opportunity employer. We celebrate diversity and are committed to creating an inclusive environment for all employees.

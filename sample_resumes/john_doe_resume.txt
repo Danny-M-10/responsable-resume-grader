@@ -1,0 +1,57 @@
+JOHN DOE
+Boston, MA 02101
+john.doe@email.com
+(555) 234-5678
+
+CERTIFICATIONS
+- Google Cloud Professional Machine Learning Engineer (Expected: March 2024)
+- Microsoft Certified: Azure Fundamentals (2023)
+
+PROFESSIONAL SUMMARY
+Machine Learning Engineer with 4 years of experience building and deploying ML models. Strong background in NLP and computer vision. Experience with cloud platforms and containerization.
+
+WORK EXPERIENCE
+
+Machine Learning Engineer | TechStart AI | Boston, MA
+March 2021 - Present
+- Develop and deploy natural language processing models for customer service automation
+- Built sentiment analysis system with 92% accuracy using BERT and transformers
+- Implemented MLOps pipeline using Kubernetes and Docker
+- Technologies: Python, TensorFlow, Transformers, Kubernetes, Docker, GCP
+
+Data Scientist | E-Commerce Solutions Inc. | Cambridge, MA
+August 2019 - February 2021
+- Created product recommendation system increasing sales by 18%
+- Developed image classification models for product categorization
+- Built data pipelines using Apache Airflow
+- Technologies: Python, scikit-learn, PyTorch, SQL, Airflow
+
+Junior Data Analyst | Retail Analytics LLC | Boston, MA
+June 2018 - July 2019
+- Performed statistical analysis on sales and customer data
+- Created dashboards using Tableau and Power BI
+- Technologies: Python, SQL, Tableau, Excel
+
+EDUCATION
+
+Bachelor of Science in Computer Science | MIT | 2018
+- Focus: Artificial Intelligence and Machine Learning
+- Relevant Coursework: Deep Learning, NLP, Computer Vision, Statistics
+
+TECHNICAL SKILLS
+
+Programming: Python, Java, SQL
+ML/AI: TensorFlow, PyTorch, scikit-learn, Keras, Hugging Face Transformers
+Cloud: Google Cloud Platform (Vertex AI, Cloud Storage), Azure (basics)
+Tools: Docker, Kubernetes, Git, Jupyter, VS Code
+Data: Pandas, NumPy, SQL databases, NoSQL (MongoDB)
+Visualization: Matplotlib, Seaborn, Tableau
+
+PROJECTS
+- Personal Blog Sentiment Analyzer (GitHub: 500+ stars)
+- Open source contributions to TensorFlow and scikit-learn
+- Built chatbot using GPT-3 API and deployed on GCP
+
+LANGUAGES
+- English (Native)
+- Spanish (Conversational)

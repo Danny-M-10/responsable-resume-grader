@@ -1,0 +1,69 @@
+JANE SMITH
+New York, NY 10001
+jane.smith@email.com
+(555) 123-4567
+
+PROFESSIONAL CERTIFICATIONS
+- AWS Certified Machine Learning - Specialty (2023)
+- Google Cloud Professional Data Engineer (2022)
+- AWS Certified Solutions Architect - Associate (2021)
+
+PROFESSIONAL SUMMARY
+Senior Data Scientist with 7+ years of experience in machine learning, statistical modeling, and production ML systems. Expertise in Python, TensorFlow, and cloud-based ML platforms. Proven track record of deploying scalable ML solutions in financial services.
+
+PROFESSIONAL EXPERIENCE
+
+Senior Data Scientist | FinTech Global Inc. | New York, NY
+January 2020 - Present
+- Lead a team of 4 data scientists developing credit risk assessment models using XGBoost and neural networks
+- Deployed 15+ machine learning models to production using AWS SageMaker and MLflow
+- Built real-time fraud detection system processing 100K+ transactions daily with 98% accuracy
+- Technologies: Python, TensorFlow, PyTorch, AWS (SageMaker, EC2, S3, Lambda), SQL, Spark
+
+Data Scientist | Analytics Corp | New York, NY
+June 2017 - December 2019
+- Developed predictive models for customer churn reduction, improving retention by 23%
+- Created recommendation engine using collaborative filtering and deep learning
+- Implemented A/B testing framework for model evaluation
+- Technologies: Python, scikit-learn, Keras, PostgreSQL, Docker, Git
+
+Junior Data Analyst | Market Research Inc. | Boston, MA
+July 2015 - May 2017
+- Performed statistical analysis on customer behavior data
+- Built dashboards and reports using Tableau and Power BI
+- Technologies: Python, R, SQL, Excel, Tableau
+
+EDUCATION
+
+Master of Science in Data Science | Columbia University | 2017
+- Thesis: Deep Learning for Time Series Forecasting
+- GPA: 3.9/4.0
+
+Bachelor of Science in Mathematics | New York University | 2015
+- Graduated Summa Cum Laude
+- GPA: 3.8/4.0
+
+TECHNICAL SKILLS
+
+Programming Languages: Python, R, SQL, Java
+Machine Learning: TensorFlow, PyTorch, scikit-learn, XGBoost, LightGBM, Keras
+Cloud Platforms: AWS (SageMaker, EC2, S3, Lambda, Glue), Google Cloud Platform (BigQuery, Vertex AI)
+Big Data: Apache Spark, Hadoop, Hive, Kafka
+Databases: PostgreSQL, MySQL, MongoDB, Redis, DynamoDB
+MLOps: MLflow, Docker, Kubernetes, Jenkins, Git, CI/CD
+Data Visualization: Tableau, Power BI, Matplotlib, Seaborn, Plotly
+Statistical Analysis: Hypothesis testing, A/B testing, regression, time series analysis
+
+SOFT SKILLS
+- Strong leadership and team management
+- Excellent communication and presentation skills
+- Cross-functional collaboration with engineering and product teams
+- Stakeholder management and technical consulting
+
+PUBLICATIONS & PRESENTATIONS
+- "Scalable ML Systems for Financial Services" - Data Science Conference 2023
+- "Deep Learning for Risk Assessment" - Journal of Financial Analytics, 2022
+
+AWARDS
+- Employee of the Year, FinTech Global Inc. (2022)
+- Best Data Science Project, Analytics Corp (2019)

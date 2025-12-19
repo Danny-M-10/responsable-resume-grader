@@ -1,0 +1,77 @@
+EMILY RODRIGUEZ
+Remote (based in Austin, TX)
+emily.rodriguez@datamail.com
+(555) 567-8901
+
+CERTIFICATIONS
+- AWS Certified Machine Learning - Specialty (2023)
+- Google Cloud Professional Data Engineer (2024)
+- Databricks Certified Data Engineer (2023)
+
+PROFESSIONAL SUMMARY
+Experienced Data Scientist specializing in financial analytics and risk modeling. 5 years of experience developing ML solutions for banking and fintech. Strong track record in production deployment and model governance.
+
+PROFESSIONAL EXPERIENCE
+
+Senior Data Scientist | Digital Bank Corp | Remote
+October 2021 - Present
+- Develop credit scoring models using gradient boosting and neural networks
+- Built fraud detection system reducing false positives by 40%
+- Lead model validation and governance initiatives ensuring regulatory compliance
+- Deploy models to production using AWS SageMaker and maintain monitoring dashboards
+- Technologies: Python, XGBoost, LightGBM, TensorFlow, AWS, SQL, Git
+
+Data Scientist | FinServ Analytics | Austin, TX
+May 2019 - September 2021
+- Created customer segmentation models for targeted marketing campaigns
+- Developed time series forecasting models for revenue prediction
+- Built automated ML pipelines using Airflow and MLflow
+- Technologies: Python, scikit-learn, Prophet, Spark, AWS, PostgreSQL
+
+Junior Data Analyst | Investment Firm LLC | Houston, TX
+July 2018 - April 2019
+- Analyzed financial data and created investment performance reports
+- Built Excel models and Python scripts for portfolio analysis
+- Technologies: Python, R, SQL, Excel, VBA
+
+EDUCATION
+
+Master of Science in Statistics | University of Texas at Austin | 2018
+- Concentration: Statistical Learning
+- Graduate Research Assistant in Applied ML Lab
+
+Bachelor of Science in Mathematics | Rice University | 2016
+- Double Major: Mathematics and Economics
+- Honors Program
+
+TECHNICAL SKILLS
+
+Programming: Python, R, SQL, SAS
+Machine Learning: scikit-learn, XGBoost, LightGBM, TensorFlow, PyTorch
+Cloud Platforms: AWS (SageMaker, Glue, Lambda, S3), Google Cloud (BigQuery, Vertex AI)
+Big Data: Apache Spark, Databricks, Hadoop
+Databases: PostgreSQL, MySQL, Snowflake, Redshift
+MLOps: MLflow, Airflow, Docker, Git, CI/CD
+Visualization: Tableau, Matplotlib, Seaborn, Looker
+
+DOMAIN EXPERTISE
+- Financial services and banking regulations
+- Risk modeling and credit analytics
+- Model governance and validation
+- Fair lending and bias detection in ML
+- Time series analysis and forecasting
+
+CERTIFICATIONS & TRAINING
+- Completed AWS Machine Learning Specialty course
+- Google Cloud Professional Data Engineer certified
+- Fair Lending and Model Risk Management training
+
+PROFESSIONAL MEMBERSHIPS
+- American Statistical Association (ASA)
+- Women in Machine Learning (WiML)
+
+ADDITIONAL SKILLS
+- Excellent communication and stakeholder management
+- Experience presenting to executive leadership
+- Mentoring junior data scientists
+- Remote work and distributed team collaboration

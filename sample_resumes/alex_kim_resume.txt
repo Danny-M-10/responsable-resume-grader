@@ -1,0 +1,70 @@
+ALEX KIM
+Chicago, IL 60601
+alex.kim@email.com
+(555) 678-9012
+
+PROFESSIONAL EXPERIENCE
+
+Junior Data Scientist | Analytics Startup LLC | Chicago, IL
+January 2023 - Present
+- Assist in building predictive models for customer behavior
+- Perform data cleaning and exploratory data analysis
+- Create visualizations and reports for stakeholders
+- Technologies: Python, pandas, scikit-learn, SQL, Tableau
+
+Data Science Intern | Consulting Firm Inc. | Chicago, IL
+Summer 2022
+- Analyzed marketing campaign data and provided insights
+- Built simple classification models for lead scoring
+- Technologies: Python, Excel, PowerPoint
+
+Research Assistant | University ML Lab | Evanston, IL
+September 2021 - December 2022
+- Assisted with research projects in machine learning
+- Ran experiments and collected data
+- Technologies: Python, Jupyter, scikit-learn
+
+EDUCATION
+
+Bachelor of Science in Statistics | Northwestern University | 2022
+- Minor: Computer Science
+- GPA: 3.6/4.0
+- Relevant Coursework: Machine Learning, Statistical Inference, Data Mining
+
+TECHNICAL SKILLS
+
+Programming: Python, R, SQL (basic)
+Tools: pandas, NumPy, scikit-learn, Matplotlib, Jupyter
+Databases: MySQL (basic), PostgreSQL (learning)
+Other: Git (basic), Excel, Tableau, PowerPoint
+
+COURSEWORK & CERTIFICATIONS
+- Currently pursuing Google Data Analytics Certificate
+- Completed online courses: Machine Learning (Coursera), Python for Data Science
+
+PROJECTS
+
+Customer Churn Prediction (Academic Project)
+- Built logistic regression model with 78% accuracy
+- Used Python and scikit-learn
+
+Movie Recommendation System (Personal Project)
+- Implemented collaborative filtering algorithm
+- Technologies: Python, pandas
+
+Sales Forecasting Dashboard (Internship Project)
+- Created interactive Tableau dashboard for sales team
+- Analyzed 2 years of historical data
+
+SKILLS & INTERESTS
+- Eager to learn and grow in data science field
+- Strong analytical and problem-solving abilities
+- Good communication skills
+- Team player with positive attitude
+- Interest in machine learning and AI applications
+
+ADDITIONAL INFORMATION
+- Available for relocation
+- Open to learning new technologies and tools
+- Strong foundation in statistics and programming
+- Seeking opportunities to apply ML in real-world business problems
