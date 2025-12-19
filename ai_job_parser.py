@@ -1,0 +1,330 @@
+"""
+AI-Enhanced Job Description Parser
+Uses OpenAI GPT-4 Turbo for intelligent extraction of job details
+"""
+
+import os
+import json
+import re
+from typing import Dict, List, Any
+from pathlib import Path
+from openai import OpenAI
+import PyPDF2
+import docx
+
+
+class AIJobParser:
+    """
+    AI-powered job description parser using OpenAI GPT-4 Turbo
+    AI is required - no fallbacks
+    """
+
+    def __init__(self, api_key: str = None):
+        """
+        Initialize AI job parser
+
+        Args:
+            api_key: OpenAI API key (optional, uses env var if not provided)
+        """
+        self.api_key = api_key or os.environ.get('OPENAI_API_KEY')
+        
+        if not self.api_key:
+            raise ValueError(
+                "OpenAI API key required. Set OPENAI_API_KEY environment variable "
+                "or pass api_key parameter."
+            )
+        
+        try:
+            self.client = OpenAI(api_key=self.api_key)
+            self.model = os.getenv('OPENAI_MODEL', 'gpt-4-turbo-preview')
+            print(f"AI job parsing enabled (using {self.model})")
+        except Exception as e:
+            raise ValueError(f"Failed to initialize OpenAI client: {e}")
+
+    def parse(self, file_path: str) -> Dict[str, Any]:
+        """
+        Parse job description file using AI
+
+        Args:
+            file_path: Path to job description file
+
+        Returns:
+            Dictionary with extracted job information
+        """
+        # Read file content
+        content = self._read_file(file_path)
+        
+        # Extract filename for context (sometimes filename contains job title)
+        filename = Path(file_path).stem  # Get filename without extension
+        
+        # Use AI to extract all information
+        return self._ai_extract(content, filename)
+
+    def _read_file(self, file_path: str) -> str:
+        """Read content from file based on extension"""
+        file_ext = Path(file_path).suffix.lower()
+
+        if file_ext == '.pdf':
+            return self._read_pdf(file_path)
+        elif file_ext in ['.docx', '.doc']:
+            return self._read_docx(file_path)
+        elif file_ext == '.txt':
+            return self._read_txt(file_path)
+        else:
+            raise ValueError(f"Unsupported file format: {file_ext}")
+
+    def _read_pdf(self, file_path: str) -> str:
+        """Extract text from PDF"""
+        text = ""
+        try:
+            with open(file_path, 'rb') as file:
+                pdf_reader = PyPDF2.PdfReader(file)
+                for page in pdf_reader.pages:
+                    page_text = page.extract_text()
+                    text += page_text + "\n"
+                # Debug: Check if we got meaningful content
+                if len(text.strip()) < 50:
+                    print(f"WARNING: PDF extraction resulted in very short text ({len(text)} chars)")
+                    print(f"First 200 chars: {text[:200]}")
+        except Exception as e:
+            raise Exception(f"Error reading PDF: {e}")
+        return text
+
+    def _read_docx(self, file_path: str) -> str:
+        """Extract text from DOCX"""
+        try:
+            doc = docx.Document(file_path)
+            text = "\n".join([paragraph.text for paragraph in doc.paragraphs])
+            return text
+        except Exception as e:
+            raise Exception(f"Error reading DOCX: {e}")
+
+    def _read_txt(self, file_path: str) -> str:
+        """Read text file"""
+        try:
+            with open(file_path, 'r', encoding='utf-8') as file:
+                return file.read()
+        except Exception as e:
+            raise Exception(f"Error reading TXT: {e}")
+
+    def _ai_extract(self, content: str, filename: str = "") -> Dict[str, Any]:
+        """Use OpenAI GPT-4 Turbo to extract job information"""
+        
+        # Debug: Print first 500 chars to see what we're working with
+        print(f"DEBUG: Content length: {len(content)}")
+        print(f"DEBUG: First 500 chars: {content[:500]}")
+        if filename:
+            print(f"DEBUG: Filename: {filename}")
+        
+        # Use full content - GPT-4 Turbo can handle longer documents
+        # For very long documents, prioritize beginning (where title usually is) but include more context
+        content_length = len(content)
+        if content_length > 12000:
+            # Take first 8000 chars (likely to contain title and key requirements) + last 4000 chars
+            prioritized_content = content[:8000] + "\n\n[... middle content omitted ...]\n\n" + content[-4000:]
+        else:
+            prioritized_content = content
+
+        # Include filename in prompt if available (often contains job title)
+        filename_context = f"\n\nFILENAME CONTEXT: The document filename is '{filename}'. This may contain clues about the job title (e.g., 'Solar-Safety-Manager.pdf' suggests the title is 'Solar Safety Manager')." if filename else ""
+
+        prompt = f"""You are an expert recruitment AI analyzing a job description. Your PRIMARY task is to extract the EXACT job title that is being hired for. Read the entire document carefully and identify the main position being advertised.
+
+JOB DESCRIPTION:
+{prioritized_content}{filename_context}
+
+Extract and return ONLY a JSON object with these fields:
+
+{{
+    "job_title": "the EXACT main job position title being hired for",
+    "location": "city, state or Remote",
+    "certifications": [
+        {{"name": "cert name", "category": "must-have or bonus"}}
+    ],
+    "required_skills": ["skill1", "skill2"],
+    "preferred_skills": ["skill1", "skill2"],
+    "experience_level": "Junior/Mid/Senior"
+}}
+
+CRITICAL RULES FOR JOB TITLE EXTRACTION - READ CAREFULLY:
+
+1. **Job Title is MANDATORY and CRITICAL** - You MUST extract the EXACT job title. This is the most important field.
+
+2. **How to Find the Job Title** (check in this exact order):
+   
+   STEP 1: Look for explicit labels in the FIRST 20 lines:
+   - "Job Title:", "Position:", "Role:", "Title:", "Job:", "Opening for:"
+   - "We are hiring a", "Seeking a", "Looking for a", "Position Available:"
+   - "Join our team as a", "Become our"
+   
+   STEP 2: Look for standalone capitalized lines in the FIRST 10 lines:
+   - Lines that are ALL CAPS or Title Case
+   - Examples: "SOLAR SAFETY MANAGER", "Safety Manager", "Solar Safety Manager"
+   - These are often the job title displayed prominently
+   
+   STEP 3: Look for contextual phrases throughout the document:
+   - "looking for [Job Title]" → extract "[Job Title]"
+   - "seeking [Job Title]" → extract "[Job Title]"
+   - "hiring [Job Title]" → extract "[Job Title]"
+   - "[Job Title] position" → extract "[Job Title]"
+   - "Position: [Job Title]" → extract "[Job Title]"
+   - "[Job Title] with X years experience" → extract "[Job Title]"
+   - "experience as a [Job Title]" → extract "[Job Title]"
+   
+   STEP 4: Look for compound titles and extract the PRIMARY one:
+   - "Solar Safety Manager" → "Solar Safety Manager" (extract the FULL title)
+   - "Safety Manager or Solar Safety Manager" → "Safety Manager" (first/main one)
+   - If you see multiple titles, pick the one that appears FIRST and MOST FREQUENTLY
+   
+   STEP 5: Check document filename - sometimes the filename contains the job title
+   - If filename is "Solar-Safety-Manager.pdf" → job title is likely "Solar Safety Manager"
+
+3. **What Job Titles Look Like**:
+   - Usually 2-5 words
+   - Contains job function words: Manager, Specialist, Engineer, Coordinator, Supervisor, Director, Technician, etc.
+   - May include industry/domain: Solar, Safety, Electrical, Medical, etc.
+   - Examples: "Solar Safety Manager", "Safety Specialist", "Power Distribution Safety Manager", "Electrical Lineman"
+   
+4. **What NOT to Extract**:
+   - Single words like "medical", "solar", "safety" - these are NOT job titles
+   - Company names (e.g., "Telyon")
+   - Department names
+   - Generic phrases like "team member", "professional", "candidate"
+   - Industry names alone (e.g., "medical" is an industry, not a job title)
+   - If you see "medical" but the actual title is "Solar Safety Manager", extract "Solar Safety Manager"
+
+5. **Validation Rules**:
+   - Job title MUST be 2+ words (single words are almost never job titles)
+   - Job title MUST contain a job function word (Manager, Specialist, Engineer, etc.)
+   - If you extract a single word, you've made an error - look harder
+   - The job title should make sense as a position someone would be hired for
+
+6. **Examples of CORRECT extractions**:
+   - Document says "Solar Safety Manager" → Extract: "Solar Safety Manager"
+   - Document says "We are seeking a Solar Safety Manager" → Extract: "Solar Safety Manager"
+   - Document filename is "Solar-Safety-Manager.pdf" and mentions "Solar Safety Manager" → Extract: "Solar Safety Manager"
+   - Document mentions "medical field" and "Solar Safety Manager" → Extract: "Solar Safety Manager" (NOT "medical")
+   
+7. **Examples of INCORRECT extractions**:
+   - Extracting "medical" when the title is "Solar Safety Manager" → WRONG
+   - Extracting "solar" when the title is "Solar Safety Manager" → WRONG
+   - Extracting a single word → WRONG
+
+8. **Location**: Look for city, state, or "Remote"
+
+9. **Certifications**: Extract certification names only (e.g., "OSHA 30", "CDL")
+
+10. **Skills** - CRITICAL EXTRACTION RULES:
+   - Extract ONLY professional/technical skills explicitly mentioned as requirements
+   - Skills are typically found in "Requirements", "Qualifications", "Skills Required" sections
+   - DO NOT extract:
+     * Single letters or very short words (e.g., "ai", "go", "aws" are NOT skills unless clearly stated as requirements)
+     * Generic words from the job description
+     * Industry names (e.g., "medical", "solar", "safety" alone are NOT skills)
+     * Random words from sentences
+   - Valid skills examples:
+     * Technical: "Python programming", "Project Management", "Data Analysis", "Welding"
+     * Professional: "Safety Management", "Risk Assessment", "Team Leadership"
+     * Certifications as skills: "OSHA Compliance", "First Aid", "Forklift Operation"
+   - If NO specific skills are mentioned in requirements, return empty array []
+   - Separate into required vs preferred based on section headings
+
+11. **Experience**: Look for years or level (Junior/Mid/Senior)
+
+MOST IMPORTANT RULE:
+- The job_title field MUST be a proper job title (2+ words, contains job function)
+- If you're unsure between multiple options, choose the one that:
+  a) Appears first in the document
+  b) Is most specific and complete
+  c) Contains both industry/domain AND job function
+  d) Makes sense as a position someone would be hired for
+
+Return ONLY valid JSON, no explanation or markdown formatting.
+JSON:
+"""
+
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                max_tokens=3000,
+                temperature=0.1,  # Low temperature for consistent extraction
+                messages=[
+                    {"role": "user", "content": prompt}
+                ]
+            )
+
+            # Extract JSON from response
+            if not response.choices or len(response.choices) == 0:
+                raise ValueError("OpenAI response was empty")
+            response_text = response.choices[0].message.content.strip()
+
+            # Try to parse JSON
+            import json
+            import re
+
+            # Debug: Print AI response
+            print(f"DEBUG: AI response (first 500 chars): {response_text[:500]}")
+            
+            # Find JSON in response (sometimes Claude adds markdown)
+            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+            if json_match:
+                json_str = json_match.group(0)
+                try:
+                    job_data = json.loads(json_str)
+                    
+                    print(f"DEBUG: Parsed job_data keys: {job_data.keys()}")
+                    print(f"DEBUG: Extracted job_title: '{job_data.get('job_title', 'MISSING')}'")
+                except json.JSONDecodeError as e:
+                    print(f"DEBUG: JSON parse error: {e}")
+                    print(f"DEBUG: JSON string: {json_str[:500]}")
+                    raise ValueError(f"Failed to parse AI response as JSON: {e}")
+
+                # Validate and fix job title - ensure it's a proper job title
+                extracted_title = job_data.get('job_title', '').strip() if job_data.get('job_title') else ''
+                
+                # Check if title is invalid (single word, generic, etc.)
+                title_words = extracted_title.split() if extracted_title else []
+                title_lower = extracted_title.lower().strip()
+                is_invalid = (
+                    not extracted_title or 
+                    title_lower in ['not found', 'none', 'n/a', ''] or
+                    len(title_words) < 2 or  # Single word is not a valid job title
+                    title_lower in ['medical', 'solar', 'safety', 'manager', 'engineer', 'specialist']  # Common single-word mistakes
+                )
+                
+                if is_invalid:
+                    print(f"WARNING: AI extracted invalid job title: '{extracted_title}' - setting to 'Not Specified'")
+                    job_data['job_title'] = 'Job Title Not Specified'
+                else:
+                    print(f"DEBUG: Using AI-extracted title: '{extracted_title}'")
+
+                # Ensure location is not empty
+                extracted_location = job_data.get('location', '').strip() if job_data.get('location') else ''
+                if not extracted_location or extracted_location.lower() in ['not found', 'none', 'n/a', '']:
+                    job_data['location'] = 'Location Not Specified'
+
+                # Ensure skills are not empty or invalid - filter out single-word garbage
+                # Keep: multi-word skills OR single words > 3 chars that aren't blacklisted abbreviations
+                invalid_abbreviations = ['ai', 'go', 'aws', 'it', 'hr', 'pr']
+                if 'required_skills' in job_data:
+                    job_data['required_skills'] = [
+                        skill for skill in job_data['required_skills']
+                        if (' ' in skill) or (len(skill) > 3 and skill.lower() not in invalid_abbreviations)
+                    ]
+                if 'preferred_skills' in job_data:
+                    job_data['preferred_skills'] = [
+                        skill for skill in job_data['preferred_skills']
+                        if (' ' in skill) or (len(skill) > 3 and skill.lower() not in invalid_abbreviations)
+                    ]
+
+                # Add full description
+                job_data['full_description'] = content
+
+                return job_data
+            else:
+                raise ValueError("AI response didn't contain valid JSON")
+
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Failed to parse AI response as JSON: {e}. Response: {response_text[:500]}")
+        except Exception as e:
+            raise ValueError(f"AI extraction failed: {e}")
