@@ -1,0 +1,49 @@
+{
+  "family": "recruiting-candidate-ranker",
+  "networkMode": "awsvpc",
+  "executionRoleArn": "arn:aws:iam::<account-id>:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::<account-id>:role/recruiting-candidate-ranker-task",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "containerDefinitions": [
+    {
+      "name": "app",
+      "image": "<account-id>.dkr.ecr.us-east-2.amazonaws.com/recruiting-candidate-ranker:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8501,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        { "name": "PORT", "value": "8501" },
+        { "name": "STORAGE_REGION", "value": "us-east-2" },
+        { "name": "STORAGE_BUCKET", "value": "<s3-bucket-name>" }
+      ],
+      "secrets": [
+        { "name": "DATABASE_URL", "valueFrom": "arn:aws:ssm:us-east-2:<account-id>:parameter/recruiting/DATABASE_URL" },
+        { "name": "SESSION_SECRET", "valueFrom": "arn:aws:ssm:us-east-2:<account-id>:parameter/recruiting/SESSION_SECRET" },
+        { "name": "OPENAI_API_KEY", "valueFrom": "arn:aws:ssm:us-east-2:<account-id>:parameter/recruiting/OPENAI_API_KEY" },
+        { "name": "ANTHROPIC_API_KEY", "valueFrom": "arn:aws:ssm:us-east-2:<account-id>:parameter/recruiting/ANTHROPIC_API_KEY" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/recruiting-candidate-ranker",
+          "awslogs-region": "us-east-2",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "healthCheck": {
+        "command": ["CMD-SHELL", "curl -f http://localhost:8501/ || exit 1"],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 30
+      }
+    }
+  ]
+}
+

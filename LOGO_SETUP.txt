@@ -1,19 +1,19 @@
 LOGO SETUP INSTRUCTIONS
 ========================
 
-The PDF reports now use a fixed company logo for consistency.
+The application now uses a fixed company logo for consistency across the UI and PDF reports.
 
-To add your logo:
-1. Place your logo file as "logo.png" in the project root directory:
-   /Users/danny/Documents/Cursor/Projects/crossroads_Candidate_Ranking_Application/logo.png
+To set up the logo:
+1. Ensure the file `responsableLOGO-color-2048px.jpg` is present in the project root:
+   /Users/danny/Documents/Cursor/Projects/crossroads_Candidate_Ranking_Application/responsableLOGO-color-2048px.jpg
 
-2. The logo will automatically appear in all PDF report headers (left-justified)
+2. The logo will automatically appear in the UI header and all PDF report headers (left-justified)
 
 3. Logo specifications:
-   - Format: PNG (recommended) or JPG
+   - Format: JPG (provided) or PNG/JPG if replaced with same filename
    - Size: Will be automatically resized to 2.5" width × 1" height
    - Position: Left-justified in header
    - Aspect ratio: Preserved automatically
 
-If logo.png is not found, the header will display "ResponsAble Safety Staffing" as text.
+If the logo file is not found, the header will display "ResponsAble Safety Staffing" as text.
 

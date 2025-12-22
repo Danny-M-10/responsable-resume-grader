@@ -27,30 +27,15 @@ setup.bat
 **Option B - Manual**
 ```bash
 pip install -r requirements.txt
-pip install -r requirements_ai.txt
 ```
-
-### Step 1b: Configure OpenAI API Key (Required)
-
-The application uses OpenAI GPT-4 Turbo for AI-powered analysis. You must set up an API key:
-
-```bash
-# Add to .env file (recommended)
-echo "OPENAI_API_KEY=your-api-key-here" >> .env
-
-# Or export as environment variable
-export OPENAI_API_KEY='your-api-key-here'
-```
-
-See `OPENAI_API_SETUP.md` for detailed setup instructions.
 
 ### Step 2: Run
 
 **Web Interface (Easiest)**
 ```bash
-streamlit run app_enhanced.py
+streamlit run app.py
 ```
-Then use your browser to upload a job description file (PDF, DOCX, or TXT) and candidate resumes. The system will automatically extract all requirements!
+Then use your browser to input job details and upload resumes.
 
 **Python Code**
 ```bash
@@ -238,9 +223,8 @@ All documentation is included:
 ## Ready to Start?
 
 1. Run setup: `./setup.sh` (or `setup.bat` on Windows)
-2. Configure OpenAI API key: See `OPENAI_API_SETUP.md`
-3. Launch app: `streamlit run app_enhanced.py`
-4. Start screening candidates!
+2. Launch app: `streamlit run app.py`
+3. Start screening candidates!
 
 ---
 

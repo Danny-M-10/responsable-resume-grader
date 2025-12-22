@@ -4,7 +4,6 @@ A comprehensive AI-powered recruitment tool that analyzes job requirements and c
 
 ## Features
 
-- **AI-Powered Analysis**: Uses OpenAI GPT-4 Turbo for intelligent extraction and evaluation
 - Automated resume parsing from PDF, DOCX, and TXT formats
 - Intelligent job requirement extraction from descriptions
 - Chain-of-thought scoring with transparent reasoning
@@ -12,7 +11,6 @@ A comprehensive AI-powered recruitment tool that analyzes job requirements and c
 - Professional PDF reports with visualizations
 - Skills and job title synonym matching
 - Certification requirement validation
-- Equivalent certification research
 
 ## Installation
 
@@ -22,24 +20,7 @@ A comprehensive AI-powered recruitment tool that analyzes job requirements and c
 
 ```bash
 pip install -r requirements.txt
-pip install -r requirements_ai.txt
 ```
-
-3. **Configure OpenAI API Key** (Required):
-
-The application uses OpenAI GPT-4 Turbo for AI-powered analysis. You must set up an API key:
-
-```bash
-# Option 1: Add to .env file
-echo "OPENAI_API_KEY=your-api-key-here" >> .env
-
-# Option 2: Export environment variable
-export OPENAI_API_KEY='your-api-key-here'
-```
-
-See `OPENAI_API_SETUP.md` for detailed setup instructions.
-
-**Note:** The application requires OpenAI API access. Without a valid API key, the application will not function.
 
 ## Usage
 
@@ -87,16 +68,14 @@ See `example_usage.py` for a complete working example.
 
 ## How It Works
 
-### 1. Job Analysis (AI-Powered)
+### 1. Job Analysis
 
-The system uses OpenAI GPT-4 Turbo to intelligently analyze the job description and extract:
-- Job title (with context understanding)
+The system analyzes the job description to extract:
 - Required and preferred skills
 - Experience level expectations
 - Technical stack requirements
 - Soft skills
 - Industry context
-- Certifications (including "or equivalent" handling)
 
 ### 2. Research Phase
 
@@ -105,22 +84,19 @@ Automatically researches:
 - Skill synonyms and alternatives
 - Current terminology
 
-### 3. Resume Parsing (AI-Powered)
+### 3. Resume Parsing
 
-Uses OpenAI GPT-4 Turbo to intelligently extract structured data from resumes:
+Extracts structured data from resumes:
 - Contact information
-- Skills and technologies (only explicitly stated)
-- Certifications (only explicitly listed)
+- Skills and technologies
+- Certifications
 - Work experience
 - Education
 - Job titles
-- Years of experience
 
-**Guardrails**: The AI only extracts information explicitly stated in the resume - no fabrication or inference.
+### 4. Scoring Algorithm
 
-### 4. Scoring Algorithm (AI-Powered)
-
-Uses OpenAI GPT-4 Turbo to evaluate candidates holistically. Each candidate receives a score from 1-10 based on weighted criteria:
+Each candidate receives a score from 1-10 based on weighted criteria:
 
 - Must-have certifications: 30%
 - Bonus certifications: 10%
@@ -130,15 +106,13 @@ Uses OpenAI GPT-4 Turbo to evaluate candidates holistically. Each candidate rece
 - Job title match: 10%
 - Location: 5%
 
-### 5. Chain-of-Thought Reasoning (AI-Generated)
+### 5. Chain-of-Thought Reasoning
 
-For each candidate, OpenAI GPT-4 Turbo provides:
+For each candidate, the system provides:
 - Step-by-step evaluation process
 - Match analysis for each criterion
 - Identification of strengths and gaps
 - Transparent scoring calculation
-- Industry context understanding
-- Transferable skills recognition
 
 ### 6. PDF Report
 
@@ -242,12 +216,6 @@ Candidate_Ranking_Report_20231217_143022.pdf
 
 ## Troubleshooting
 
-### OpenAI API Key Issues
-- Ensure `OPENAI_API_KEY` is set in your environment or `.env` file
-- Verify the API key is valid and has credits
-- Check `OPENAI_API_SETUP.md` for detailed setup instructions
-- Test configuration: `python -c "from config import OpenAIConfig; print('Configured:', OpenAIConfig.is_configured())"`
-
 ### PDF Generation Errors
 - Ensure all dependencies are installed
 - Check write permissions in output directory
@@ -260,12 +228,7 @@ Candidate_Ranking_Report_20231217_143022.pdf
 ### Low Match Scores
 - Review job description clarity
 - Check for overly specific requirements
-- The AI evaluates holistically - scores reflect overall fit, not just checklist matching
-
-### AI Extraction Issues
-- Ensure OpenAI API key is valid and has sufficient credits
-- Check API rate limits if processing many candidates
-- Review extracted information in the PDF report for accuracy
+- Consider broadening skill synonyms
 
 ## License
 

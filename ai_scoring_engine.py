@@ -116,19 +116,22 @@ class AIScoringEngine:
         validated_score = self._validate_score_consistency(
             score, reasoning, component_scores, candidate, job_details
         )
-        
+
         # Create CandidateScore matching the expected model structure
         # IMPORTANT: Only include certifications explicitly listed in the resume
         explicit_certifications = candidate.get('certifications', [])
+
+        # Generate a concise (2-3 sentences) rationale from the AI output
+        concise_rationale = self._extract_concise_rationale(reasoning or evaluation_text)
         
         return CandidateScore(
             name=candidate.get('name', 'Unknown'),
             phone=candidate.get('phone', ''),
             email=candidate.get('email', ''),
             certifications=explicit_certifications,  # Only explicit certifications from resume
-            fit_score=validated_score,
+            fit_score=round(validated_score, 2),
             chain_of_thought=evaluation_text,
-            rationale=reasoning if reasoning else evaluation_text,  # Full reasoning (no truncation)
+            rationale=concise_rationale,
             experience_match={
                 'level_match': (component_scores.get('experience_level', 8.0) / 10.0) if component_scores else 0.8,
                 'titles': candidate.get('job_titles', []),
@@ -346,9 +349,9 @@ Provide final weighted score in this exact format:
 FINAL_SCORE: X.X/10
 
 12. **RECOMMENDATIONS**:
-- Should this candidate be interviewed?
-- What questions to focus on?
-- Any red flags or concerns?
+   - Should this candidate be interviewed?
+   - What questions to focus on?
+   - Any red flags or concerns?
 
 CRITICAL CONSTRAINTS:
 - ONLY reference information that is EXPLICITLY stated in the candidate's resume
@@ -489,7 +492,7 @@ Format your response with clear headers. Be specific and cite evidence from the 
         # Extract only the evaluation content, removing any prompt text that might have been repeated
         # Look for the start of actual evaluation (after any prompt-like headers)
         reasoning = response_text
-        
+
         # Remove common prompt-like patterns that might appear in the response
         # Remove lines that look like prompt instructions
         lines = reasoning.split('\n')
@@ -563,6 +566,29 @@ Format your response with clear headers. Be specific and cite evidence from the 
         reasoning = '\n'.join(cleaned_reasoning_lines).strip()
         
         return final_score, reasoning, component_scores
+
+    def _extract_concise_rationale(self, text: str) -> str:
+        """
+        Produce a concise, 2-3 sentence rationale from the AI output.
+        Falls back to a trimmed snippet if not enough structure is available.
+        """
+        if not text:
+            return ""
+
+        import re
+        sentences = re.split(r'(?<=[.!?])\s+', text.strip())
+        concise = []
+        for s in sentences:
+            if s:
+                concise.append(s.strip())
+            if len(concise) >= 3:
+                break
+
+        if concise:
+            candidate_summary = " ".join(concise)
+            return candidate_summary[:600]
+
+        return text[:600]
 
     def _validate_score_consistency(self, score: float, reasoning: str, 
                                    component_scores: Dict[str, float],
@@ -677,11 +703,11 @@ class HybridScoringEngine:
         """
         if not use_ai:
             raise ValueError("AI is now required for scoring. 'use_ai' must be True.")
-        
-        try:
-            self.ai_engine = AIScoringEngine(api_key=api_key)
+
+            try:
+                self.ai_engine = AIScoringEngine(api_key=api_key)
             print(f"AI-powered scoring enabled (using OpenAI {self.ai_engine.model})")
-        except Exception as e:
+            except Exception as e:
             raise RuntimeError(f"AI scoring is required but unavailable: {e}. Please configure OpenAI API key.")
 
     def score_candidate(self, candidate: Dict[str, Any],
@@ -689,4 +715,4 @@ class HybridScoringEngine:
         """Score candidate using AI"""
         if not self.ai_engine:
             raise RuntimeError("AI scoring engine is not initialized.")
-        return self.ai_engine.score_candidate(candidate, job_details)
+                return self.ai_engine.score_candidate(candidate, job_details)

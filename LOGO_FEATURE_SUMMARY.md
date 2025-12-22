@@ -96,7 +96,7 @@ app = CandidateRankerApp()  # No logo_path
 
 1. **[LOGO_SETUP_GUIDE.md](LOGO_SETUP_GUIDE.md)** - Complete guide to using the logo feature
 2. **[LOGO_FEATURE_SUMMARY.md](LOGO_FEATURE_SUMMARY.md)** - This file (quick overview)
-3. **[OPENAI_API_SETUP.md](OPENAI_API_SETUP.md)** - How to get OpenAI API key
+3. **[ANTHROPIC_API_SETUP.md](ANTHROPIC_API_SETUP.md)** - How to get Claude API key
 
 ## Testing the Feature
 
@@ -181,9 +181,9 @@ logo.hAlign = 'RIGHT'   # Right-aligned
 
 ### Recommended Next Steps:
 
-1. ✅ **Get your OpenAI API key** to enable AI features
-   - See [OPENAI_API_SETUP.md](OPENAI_API_SETUP.md)
-   - Cost: $5 minimum, ~$0.01-0.03 per candidate evaluation
+1. ✅ **Get your Anthropic API key** to enable AI features
+   - See [ANTHROPIC_API_SETUP.md](ANTHROPIC_API_SETUP.md)
+   - Cost: $5 minimum, ~$0.01-0.05 per candidate
 
 2. 📸 **Prepare your company logo**
    - PNG format with transparent background
@@ -220,8 +220,8 @@ logo.hAlign = 'RIGHT'   # Right-aligned
 - Adjust size, position, or styling
 
 **Want AI features?**
-- Get API key: [OPENAI_API_SETUP.md](OPENAI_API_SETUP.md)
-- Add to `.env` file: `OPENAI_API_KEY=your-key-here`
+- Get API key: [ANTHROPIC_API_SETUP.md](ANTHROPIC_API_SETUP.MD)
+- Add to `.env` file
 - Restart application
 
 ---

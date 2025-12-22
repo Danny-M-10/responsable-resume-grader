@@ -216,7 +216,7 @@ class ScoringEngine:
                     else:
                         cot_steps.append(f"  MATCH: {req_cert}")
                 else:
-                    cot_steps.append(f"  MATCH: {req_cert}")
+                cot_steps.append(f"  MATCH: {req_cert}")
             else:
                 cot_steps.append(f"  MISSING: {req_cert}")
 

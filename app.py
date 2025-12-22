@@ -9,12 +9,398 @@ import os
 import tempfile
 import csv
 import io
+import base64
+import json
+import logging
 from datetime import datetime
 from pathlib import Path
+from typing import List, Dict, Optional
+
+# Configure logging
+logging.basicConfig(
+    level=logging.WARNING,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 from candidate_ranker import CandidateRankerApp
 from config import OpenAIConfig
 from ai_job_parser import AIJobParser
 from loading_components import get_cycling_message
+from db import init_db, get_db
+from auth import (
+    create_user, authenticate, get_user_by_session, destroy_session, update_session_activity,
+    request_password_reset, reset_password_with_code, reset_password_with_token
+)
+from storage import save_bytes
+from models import CandidateScore
+from utils import prepare_query, is_safe_path, MAX_PDF_SIZE
+
+
+@st.cache_resource
+def _bootstrap_db():
+    init_db()
+    return True
+
+
+def _auth_gate():
+    """
+    Simple login/register gate. Returns (user_id, email) when authenticated.
+    Renders forms and stops execution if not authenticated.
+    """
+    _bootstrap_db()
+
+    st.session_state.setdefault("session_token", None)
+    token = st.session_state.get("session_token")
+    user = get_user_by_session(token) if token else None
+
+    def logout():
+        if st.session_state.get("session_token"):
+            destroy_session(st.session_state["session_token"])
+        st.session_state["session_token"] = None
+        st.session_state.pop("user_id", None)
+        st.session_state.pop("user_email", None)
+        st.success("Logged out.")
+        st.rerun()
+
+    if user:
+        user_id, email = user
+        st.session_state["user_id"] = user_id
+        st.session_state["user_email"] = email
+        # Update session activity on each request
+        if token:
+            update_session_activity(token)
+        st.sidebar.success(f"Logged in as {email}")
+        st.sidebar.info("Session expires after 2 hours of inactivity")
+        
+        # Previous Analyses section in sidebar
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("### Previous Analyses")
+        analyses = load_user_analyses(user_id)
+        if analyses:
+            st.sidebar.info(f"You have {len(analyses)} previous analysis(es)")
+            # Show most recent 5 in sidebar
+            for analysis in analyses[:5]:
+                with st.sidebar.expander(f"{analysis['title'][:30]}...", expanded=False):
+                    st.caption(f"Date: {analysis['created_at'][:10]}")
+                    st.caption(f"Location: {analysis['location']}")
+                    st.caption(f"Candidates: {analysis['num_candidates']}")
+                    if st.button("View", key=f"sidebar_view_{analysis['report_id']}"):
+                        st.session_state["view_report_id"] = analysis['report_id']
+                        st.rerun()
+        else:
+            st.sidebar.info("No previous analyses yet")
+        
+        if st.sidebar.button("Logout"):
+            logout()
+        return user
+
+    st.sidebar.info("Login required to continue.")
+    
+    # Check if we should show login tab (after registration)
+    default_tab = st.session_state.get("active_tab", "Login")
+    tab_login, tab_register = st.tabs(["Login", "Register"])
+    
+    # Pre-fill email if coming from registration
+    registration_email = st.session_state.get("registration_email", "")
+
+    with tab_login:
+        login_email = st.text_input("Email", value=registration_email, key="login_email")
+        login_password = st.text_input("Password", type="password", key="login_password")
+        
+        # Forgot Password link
+        col1, col2 = st.columns([3, 1])
+        with col2:
+            if st.button("Forgot Password?", key="forgot_password_link"):
+                st.session_state["show_password_reset"] = True
+        
+        if st.session_state.get("show_password_reset", False):
+            st.markdown("---")
+            st.markdown("### Password Reset")
+            
+            reset_method = st.radio(
+                "Reset method:",
+                ["Send reset code (6-digit)", "Use reset token"],
+                key="reset_method"
+            )
+            
+            reset_email = st.text_input("Email", key="reset_email")
+            
+            if reset_method == "Send reset code (6-digit)":
+                if st.button("Send Reset Code", key="send_code"):
+                    try:
+                        code, user_id = request_password_reset(reset_email)
+                        st.session_state["reset_code"] = code
+                        st.session_state["reset_email"] = reset_email
+                        
+                        # Only show code in development mode
+                        if os.getenv('ENVIRONMENT', '').lower() == 'development':
+                            st.success(f"Reset code generated: **{code}** (Development mode)")
+                        else:
+                            st.success("Reset code has been sent to your email. Please check your inbox.")
+                        st.info("Code expires in 1 hour. Use it below to reset your password.")
+                    except Exception as e:
+                        st.error(str(e))
+                
+                if st.session_state.get("reset_code"):
+                    st.markdown("---")
+                    st.markdown("### Enter Reset Code")
+                    entered_code = st.text_input("6-digit code", key="entered_code", max_chars=6)
+                    new_password = st.text_input("New Password", type="password", key="new_password_reset")
+                    confirm_password = st.text_input("Confirm New Password", type="password", key="confirm_password_reset")
+                    
+                    if st.button("Reset Password", key="reset_with_code"):
+                        if new_password != confirm_password:
+                            st.error("Passwords do not match.")
+                        elif not entered_code or not entered_code.isdigit() or len(entered_code) != 6:
+                            st.error("Code must be exactly 6 digits.")
+                        else:
+                            if reset_password_with_code(st.session_state["reset_email"], entered_code, new_password):
+                                st.success("Password reset successfully! Please log in.")
+                                st.session_state.pop("show_password_reset", None)
+                                st.session_state.pop("reset_code", None)
+                                st.session_state.pop("reset_email", None)
+                                st.rerun()
+                            else:
+                                st.error("Invalid or expired code. Please request a new code.")
+            
+            else:  # Use reset token
+                reset_token = st.text_input("Reset Token", key="reset_token")
+                new_password = st.text_input("New Password", type="password", key="new_password_token")
+                confirm_password = st.text_input("Confirm New Password", type="password", key="confirm_password_token")
+                
+                if st.button("Reset Password", key="reset_with_token"):
+                    if new_password != confirm_password:
+                        st.error("Passwords do not match.")
+                    elif not reset_token:
+                        st.error("Please enter the reset token.")
+                    else:
+                        if reset_password_with_token(reset_token, new_password):
+                            st.success("Password reset successfully! Please log in.")
+                            st.session_state.pop("show_password_reset", None)
+                            st.rerun()
+                        else:
+                            st.error("Invalid or expired token.")
+            
+            if st.button("Cancel", key="cancel_reset"):
+                st.session_state.pop("show_password_reset", None)
+                st.session_state.pop("reset_code", None)
+                st.session_state.pop("reset_email", None)
+                st.rerun()
+        
+        if st.button("Login", key="login_button"):
+            try:
+                session_token, user_id = authenticate(login_email, login_password)
+                st.session_state["session_token"] = session_token
+                st.session_state["user_id"] = user_id
+                st.session_state["user_email"] = login_email.strip().lower()
+                # Clear registration email after successful login
+                st.session_state.pop("registration_email", None)
+                st.session_state.pop("active_tab", None)
+                st.success("Logged in successfully.")
+                st.rerun()
+            except Exception as e:
+                st.error(str(e))
+
+    with tab_register:
+        reg_email = st.text_input("Email", key="reg_email")
+        reg_password = st.text_input("Password", type="password", key="reg_password")
+        reg_confirm = st.text_input("Confirm Password", type="password", key="reg_confirm")
+        if st.button("Register", key="register_button"):
+            if reg_password != reg_confirm:
+                st.error("Passwords do not match.")
+            elif not reg_email or not reg_password:
+                st.error("Email and password are required.")
+            else:
+                try:
+                    user_id = create_user(reg_email, reg_password)
+                    # Store email for pre-filling login
+                    st.session_state["registration_email"] = reg_email.strip().lower()
+                    st.session_state["active_tab"] = "Login"
+                    st.success("Account created successfully! Please log in.")
+                    st.balloons()
+                    st.rerun()
+                except Exception as e:
+                    st.error(str(e))
+
+    st.stop()
+
+
+# Use shared utility function instead of local wrapper
+_prepare_query_wrapper = prepare_query
+
+
+def load_user_analyses(user_id: str) -> List[Dict]:
+    """
+    Load list of user's previous analyses from database.
+    Returns list of dicts with report info.
+    """
+    with get_db() as conn:
+        cur = conn.cursor()
+        query = _prepare_query_wrapper(conn, """
+            SELECT r.id, r.created_at, r.pdf_path, r.summary_json,
+                   j.title, j.location, j.certifications_json
+            FROM reports r
+            JOIN job_descriptions j ON r.job_description_id = j.id
+            WHERE r.user_id = ?
+            ORDER BY r.created_at DESC
+        """)
+        cur.execute(query, (user_id,))
+        rows = cur.fetchall()
+        
+        analyses = []
+        for row in rows:
+            report_id, created_at, pdf_path, summary_json, title, location, certs_json = row
+            try:
+                summary = json.loads(summary_json) if summary_json else {}
+            except (json.JSONDecodeError, TypeError):
+                summary = {}
+            analyses.append({
+                'report_id': report_id,
+                'created_at': created_at,
+                'pdf_path': pdf_path,
+                'title': title or 'Untitled',
+                'location': location or 'Not specified',
+                'num_candidates': summary.get('all_candidates', 0),
+                'top_candidates': summary.get('top_candidates', 0),
+            })
+        return analyses
+
+
+def load_analysis_data(report_id: str, user_id: str) -> Optional[Dict]:
+    """
+    Load full analysis data for a specific report.
+    Returns dict with job_details, candidate_scores, pdf_data, etc.
+    """
+    with get_db() as conn:
+        cur = conn.cursor()
+        
+        # Get report and job description
+        query = _prepare_query_wrapper(conn, """
+            SELECT r.id, r.created_at, r.pdf_path, r.summary_json,
+                   j.id as job_id, j.title, j.location, j.certifications_json,
+                   j.required_skills_json, j.preferred_skills_json, j.full_description
+            FROM reports r
+            JOIN job_descriptions j ON r.job_description_id = j.id
+            WHERE r.id = ? AND r.user_id = ?
+        """)
+        cur.execute(query, (report_id, user_id))
+        row = cur.fetchone()
+        
+        if not row:
+            return None
+        
+        (report_id_db, created_at, pdf_path, summary_json, job_id, title, location,
+         certs_json, req_skills_json, pref_skills_json, full_desc) = row
+        
+        # Get candidate scores
+        query = _prepare_query_wrapper(conn, """
+            SELECT candidate_name, email, phone, fit_score, rationale, raw_json
+            FROM candidate_scores
+            WHERE report_id = ?
+            ORDER BY fit_score DESC
+        """)
+        cur.execute(query, (report_id,))
+        score_rows = cur.fetchall()
+        
+        # Reconstruct CandidateScore objects
+        candidate_scores = []
+        for score_row in score_rows:
+            name, email, phone, fit_score, rationale, raw_json = score_row
+            if raw_json:
+                try:
+                    cand_data = json.loads(raw_json)
+                    # Reconstruct CandidateScore from stored data
+                    candidate_scores.append(CandidateScore(
+                        name=cand_data.get('name', name),
+                        phone=cand_data.get('phone', phone or ''),
+                        email=cand_data.get('email', email or ''),
+                        certifications=cand_data.get('certifications', []),
+                        fit_score=float(fit_score),
+                        chain_of_thought=cand_data.get('chain_of_thought', ''),
+                        rationale=rationale or cand_data.get('rationale', ''),
+                        experience_match=cand_data.get('experience_match', {}),
+                        certification_match=cand_data.get('certification_match', {}),
+                        skills_match=cand_data.get('skills_match', {}),
+                        location_match=cand_data.get('location_match', False),
+                        component_scores=cand_data.get('component_scores', {}),
+                        calibration_applied=cand_data.get('calibration_applied', False),
+                        calibration_factor=cand_data.get('calibration_factor', 1.0),
+                    ))
+                except (json.JSONDecodeError, KeyError, ValueError):
+                    # Fallback to basic data if JSON parsing fails
+                    candidate_scores.append(CandidateScore(
+                        name=name or 'Unknown',
+                        phone=phone or '',
+                        email=email or '',
+                        certifications=[],
+                        fit_score=float(fit_score),
+                        chain_of_thought='',
+                        rationale=rationale or '',
+                        experience_match={},
+                        certification_match={},
+                        skills_match={},
+                        location_match=False,
+                    ))
+        
+        # Load PDF data if file exists (with size and path validation)
+        pdf_data = None
+        if pdf_path and os.path.exists(pdf_path):
+            try:
+                # Validate path safety
+                if not is_safe_path(pdf_path):
+                    logger.warning(f"Unsafe PDF path detected: {pdf_path}")
+                    return None
+                
+                # Check file size
+                file_size = os.path.getsize(pdf_path)
+                if file_size > MAX_PDF_SIZE:
+                    logger.warning(f"PDF file too large: {file_size} bytes (max: {MAX_PDF_SIZE})")
+                    return None
+                
+                with open(pdf_path, 'rb') as f:
+                    pdf_data = f.read()
+            except Exception as e:
+                logger.warning(f"Failed to load PDF from {pdf_path}: {e}", exc_info=True)
+                pass
+        
+        # Parse job details
+        certifications = []
+        if certs_json:
+            try:
+                certs_data = json.loads(certs_json)
+                certifications = [c for c in certs_data if isinstance(c, dict)]
+            except json.JSONDecodeError:
+                pass
+        
+        required_skills = []
+        if req_skills_json:
+            try:
+                required_skills = json.loads(req_skills_json)
+            except json.JSONDecodeError:
+                pass
+        
+        preferred_skills = []
+        if pref_skills_json:
+            try:
+                preferred_skills = json.loads(pref_skills_json)
+            except json.JSONDecodeError:
+                pass
+        
+        return {
+            'report_id': report_id_db,
+            'created_at': created_at,
+            'pdf_path': pdf_path,
+            'pdf_data': pdf_data,
+            'candidate_scores': candidate_scores,
+            'job_details': {
+                'title': title or 'Untitled',
+                'location': location or 'Not specified',
+                'certifications': certifications,
+                'full_description': full_desc or '',
+            },
+            'processing_time': 0,  # Not stored, use 0 as default
+            'timestamp': created_at,
+        }
 
 
 def init_session_state():
@@ -65,6 +451,14 @@ def generate_csv_export(candidate_scores, job_title, location):
     return output.getvalue()
 
 
+def _make_download_link(data_bytes: bytes, filename: str, mime: str) -> str:
+    """Return an HTML download link using base64 to avoid transient media cache misses."""
+    if not data_bytes:
+        return ""
+    b64 = base64.b64encode(data_bytes).decode()
+    return f'<a class="download-link" href="data:{mime};base64,{b64}" download="{filename}">⬇️ Download {filename}</a>'
+
+
 def get_score_color(score):
     """Return color class based on score"""
     if score >= 7.5:
@@ -75,11 +469,137 @@ def get_score_color(score):
         return "#e74c3c"  # Red - Needs improvement
 
 
+def display_analysis_history(user_id: str):
+    """
+    Display list of user's previous analyses with view/download options.
+    """
+    st.markdown('<div class="section-header">Previous Analyses</div>', unsafe_allow_html=True)
+    
+    analyses = load_user_analyses(user_id)
+    
+    if not analyses:
+        st.info("You haven't run any analyses yet. Start a new analysis to see results here.")
+        return
+    
+    st.info(f"Found {len(analyses)} previous analysis(es)")
+    
+    # Display analyses in a table format
+    for idx, analysis in enumerate(analyses):
+        with st.container():
+            col1, col2, col3, col4 = st.columns([3, 2, 1, 2])
+            
+            with col1:
+                st.markdown(f"**{analysis['title']}**")
+                st.caption(f"Location: {analysis['location']}")
+            
+            with col2:
+                # Improved date formatting with proper parsing
+                try:
+                    from datetime import datetime
+                    created_at_str = analysis['created_at']
+                    if created_at_str.endswith('Z'):
+                        dt = datetime.fromisoformat(created_at_str.replace('Z', '+00:00'))
+                    else:
+                        dt = datetime.fromisoformat(created_at_str)
+                    date_str = dt.strftime('%Y-%m-%d')
+                    time_str = dt.strftime('%H:%M:%S')
+                    st.caption(f"Date: {date_str}")
+                    st.caption(f"Time: {time_str}")
+                except (ValueError, AttributeError, TypeError):
+                    # Fallback to simple string slicing
+                    date_str = analysis['created_at'][:10] if len(analysis['created_at']) >= 10 else 'Unknown'
+                    time_str = analysis['created_at'][11:19] if len(analysis['created_at']) > 19 else ''
+                    st.caption(f"Date: {date_str}")
+                    if time_str:
+                        st.caption(f"Time: {time_str}")
+            
+            with col3:
+                st.metric("Candidates", analysis['num_candidates'])
+            
+            with col4:
+                col_view, col_pdf, col_csv = st.columns(3)
+                
+                with col_view:
+                    if st.button("View", key=f"view_{analysis['report_id']}"):
+                        st.session_state["view_report_id"] = analysis['report_id']
+                        st.rerun()
+                
+                with col_pdf:
+                    # Load PDF data for download (with validation)
+                    pdf_data = None
+                    if analysis['pdf_path'] and os.path.exists(analysis['pdf_path']):
+                        try:
+                            # Validate path safety
+                            if not is_safe_path(analysis['pdf_path']):
+                                st.caption("PDF unavailable (invalid path)")
+                            else:
+                                # Check file size
+                                file_size = os.path.getsize(analysis['pdf_path'])
+                                if file_size > MAX_PDF_SIZE:
+                                    st.caption(f"PDF unavailable (file too large: {file_size / (1024*1024):.1f}MB)")
+                                else:
+                                    with open(analysis['pdf_path'], 'rb') as f:
+                                        pdf_data = f.read()
+                                    pdf_link = _make_download_link(
+                                        pdf_data,
+                                        os.path.basename(analysis['pdf_path']),
+                                        "application/pdf"
+                                    )
+                                    if pdf_link:
+                                        st.markdown(pdf_link, unsafe_allow_html=True)
+                        except Exception as e:
+                            logger.warning(f"Failed to load PDF from {analysis['pdf_path']}: {e}", exc_info=True)
+                            st.caption("PDF unavailable")
+                    else:
+                        st.caption("PDF unavailable")
+                
+                with col_csv:
+                    # Generate CSV from stored data
+                    analysis_data = load_analysis_data(analysis['report_id'], user_id)
+                    if analysis_data and analysis_data.get('candidate_scores'):
+                        csv_data = generate_csv_export(
+                            analysis_data['candidate_scores'],
+                            analysis['title'],
+                            analysis['location']
+                        )
+                        csv_link = _make_download_link(
+                            csv_data.encode("utf-8"),
+                            f"candidates_{analysis['created_at'][:10].replace('-', '')}.csv",
+                            "text/csv"
+                        )
+                        if csv_link:
+                            st.markdown(csv_link, unsafe_allow_html=True)
+                    else:
+                        st.caption("CSV unavailable")
+            
+            if idx < len(analyses) - 1:
+                st.markdown("---")
+
+
 def display_results(results):
     """Display stored results with sorting and filtering options"""
     st.markdown('<div class="section-header">Results</div>', unsafe_allow_html=True)
 
+    # Lightweight styling for download anchors
+    st.markdown("""
+        <style>
+        a.download-link {
+            display: inline-block;
+            padding: 0.75rem 1rem;
+            border-radius: 0.5rem;
+            background: #0066CC;
+            color: #fff !important;
+            text-decoration: none;
+            font-weight: 600;
+            width: 100%;
+            text-align: center;
+        }
+        a.download-link:hover { background: #0052a6; }
+        </style>
+    """, unsafe_allow_html=True)
+
     candidate_scores = results['candidate_scores']
+    viable_candidates = [c for c in candidate_scores if c.fit_score >= 5.0]
     pdf_path = results['pdf_path']
     pdf_data = results['pdf_data']
     job_details = results['job_details']
@@ -102,13 +622,15 @@ def display_results(results):
         st.metric("Total Candidates", len(candidate_scores))
 
     with col2:
-        viable_count = len([c for c in candidate_scores if c.fit_score >= 5.0])
-        st.metric("Viable Candidates", viable_count)
+        viable_count = len(viable_candidates)
+        st.metric("Viable Candidates (>=5.0)", viable_count)
 
     with col3:
-        if candidate_scores:
-            avg_score = sum(c.fit_score for c in candidate_scores) / len(candidate_scores)
-            st.metric("Average Score", f"{avg_score:.2f}/10")
+        if viable_candidates:
+            avg_score = sum(c.fit_score for c in viable_candidates) / len(viable_candidates)
+            st.metric("Average Score (Viable)", f"{avg_score:.2f}/10")
+        else:
+            st.metric("Average Score (Viable)", "N/A")
 
     with col4:
         if processing_time > 0:
@@ -129,9 +651,9 @@ def display_results(results):
     with col2:
         min_score = st.slider(
             "Minimum Score Filter",
-            min_value=0.0,
+            min_value=5.0,
             max_value=10.0,
-            value=0.0,
+            value=5.0,
             step=0.5,
             key="min_score_filter"
         )
@@ -139,8 +661,8 @@ def display_results(results):
     with col3:
         show_details = st.checkbox("Expand All", value=False, key="expand_all")
 
-    # Apply sorting
-    sorted_candidates = list(candidate_scores)
+    # Apply sorting (only viable candidates)
+    sorted_candidates = list(viable_candidates)
     if sort_option == "Score (High to Low)":
         sorted_candidates.sort(key=lambda x: x.fit_score, reverse=True)
     elif sort_option == "Score (Low to High)":
@@ -153,8 +675,12 @@ def display_results(results):
     # Apply filtering
     filtered_candidates = [c for c in sorted_candidates if c.fit_score >= min_score]
 
+    if not sorted_candidates:
+        st.info("No viable candidates (score >= 5.0).")
+        return
+
     if len(filtered_candidates) < len(sorted_candidates):
-        st.info(f"Showing {len(filtered_candidates)} of {len(sorted_candidates)} candidates (filtered by score >= {min_score})")
+        st.info(f"Showing {len(filtered_candidates)} of {len(sorted_candidates)} viable candidates (filtered by score >= {min_score})")
 
     # Display candidates with enhanced cards
     for i, candidate in enumerate(filtered_candidates, 1):
@@ -169,10 +695,12 @@ def display_results(results):
             border-radius: 1rem;
             font-weight: bold;
             font-size: 1rem;
-        ">{candidate.fit_score:.1f}/10</span>
+        ">{candidate.fit_score:.2f}/10</span>
         """
 
-        with st.expander(f"{i}. {candidate.name}", expanded=show_details):
+        # Display score in expander header
+        score_display = f"{candidate.fit_score:.2f}/10"
+        with st.expander(f"{i}. {candidate.name} - {score_display}", expanded=show_details):
             # Score and basic info row
             col1, col2, col3 = st.columns([1, 2, 2])
 
@@ -209,29 +737,26 @@ def display_results(results):
 
     col1, col2 = st.columns(2)
 
+    # Build in-memory downloads using base64 to avoid Streamlit media cache misses
+    csv_data = generate_csv_export(
+        candidate_scores,
+        job_details['title'],
+        job_details['location']
+    )
+    pdf_link = _make_download_link(pdf_data, os.path.basename(pdf_path), "application/pdf")
+    csv_link = _make_download_link(csv_data.encode("utf-8"), f"candidates_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv", "text/csv")
+
     with col1:
-        st.download_button(
-            label="Download PDF Report",
-            data=pdf_data,
-            file_name=os.path.basename(pdf_path),
-            mime="application/pdf",
-            use_container_width=True
-        )
+        if pdf_link:
+            st.markdown(pdf_link, unsafe_allow_html=True)
+        else:
+            st.error("PDF data unavailable for download.")
 
     with col2:
-        # CSV Export
-        csv_data = generate_csv_export(
-            candidate_scores,
-            job_details['title'],
-            job_details['location']
-        )
-        st.download_button(
-            label="Download CSV Data",
-            data=csv_data,
-            file_name=f"candidates_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-            mime="text/csv",
-            use_container_width=True
-        )
+        if csv_link:
+            st.markdown(csv_link, unsafe_allow_html=True)
+        else:
+            st.error("CSV data unavailable for download.")
 
     st.info(f"PDF report saved locally at: {pdf_path}")
 
@@ -260,6 +785,9 @@ def main():
         page_icon=None,
         layout="wide"
     )
+
+    # Require authentication
+    _auth_gate()
 
     # Custom CSS with logo branding colors and enhanced styling
     st.markdown("""
@@ -494,6 +1022,20 @@ def main():
                 </div>
             """, unsafe_allow_html=True)
 
+    # Check if user wants to view a previous analysis
+    if st.session_state.get("view_report_id"):
+        user_id = st.session_state.get("user_id")
+        if user_id:
+            analysis_data = load_analysis_data(st.session_state["view_report_id"], user_id)
+            if analysis_data:
+                # Store in results format for display_results
+                st.session_state.results = analysis_data
+                st.session_state.pop("view_report_id", None)
+                st.rerun()
+            else:
+                st.error("Analysis not found or access denied.")
+                st.session_state.pop("view_report_id", None)
+
     # If we have stored results, show them instead of the input form
     if st.session_state.results is not None:
         display_results(st.session_state.results)
@@ -506,6 +1048,18 @@ def main():
         )
         return
 
+    # Main page tabs: New Analysis and Previous Analyses
+    user_id = st.session_state.get("user_id")
+    if user_id:
+        tab_new, tab_history = st.tabs(["New Analysis", "Previous Analyses"])
+        
+        with tab_history:
+            display_analysis_history(user_id)
+            # Don't show new analysis form in history tab
+            st.stop()
+        
+        # Continue with new analysis form in tab_new (default)
+    
     # Introduction
     with st.expander("How It Works", expanded=False):
         st.markdown("""
@@ -572,8 +1126,9 @@ def main():
                         import shutil
                         try:
                             shutil.rmtree(temp_dir)
-                        except Exception:
-                            pass  # Ignore cleanup errors
+                        except Exception as e:
+                            logger.warning(f"Failed to cleanup temp directory {temp_dir}: {e}", exc_info=True)
+                            # Continue - cleanup errors are non-critical
 
                     job_description = job_data['full_description']
                     job_title = job_data.get('job_title', '')
@@ -606,6 +1161,7 @@ def main():
                         st.text_area("Content", job_description, height=300, disabled=True, key="jd_preview")
 
                 except Exception as e:
+                    logger.error(f"Error processing job description file: {e}", exc_info=True)
                     st.error(f"Error processing file: {e}")
                     job_description = ""
 
@@ -757,16 +1313,25 @@ The AI will analyze this to extract skills and requirements.""",
                 status_text.markdown(f"*{message}*")
 
             try:
-                # Save uploaded files temporarily
+                # Save uploaded files temporarily and persist copies
                 temp_dir = tempfile.mkdtemp()
                 resume_paths = []
+                resume_assets = []
 
                 try:
                     for uploaded_file in uploaded_files:
+                        file_bytes = uploaded_file.getvalue()
                         file_path = os.path.join(temp_dir, uploaded_file.name)
                         with open(file_path, "wb") as f:
-                            f.write(uploaded_file.getbuffer())
+                            f.write(file_bytes)
                         resume_paths.append(file_path)
+
+                        stored_path, file_hash = save_bytes(file_bytes, uploaded_file.name)
+                        resume_assets.append({
+                            "original_name": uploaded_file.name,
+                            "stored_path": stored_path,
+                            "file_hash": file_hash
+                        })
 
                     # Initialize app (logo is now fixed, no need to pass it)
                     app = CandidateRankerApp()
@@ -778,7 +1343,9 @@ The AI will analyze this to extract skills and requirements.""",
                         location=location,
                         job_description=job_description,
                         resume_files=resume_paths,
-                        progress_callback=update_progress
+                        progress_callback=update_progress,
+                        user_id=st.session_state.get("user_id"),
+                        resume_assets=resume_assets
                     )
 
                     # Read PDF data before cleanup
@@ -790,8 +1357,9 @@ The AI will analyze this to extract skills and requirements.""",
                     import shutil
                     try:
                         shutil.rmtree(temp_dir)
-                    except Exception:
-                        pass  # Ignore cleanup errors
+                    except Exception as e:
+                        logger.warning(f"Failed to cleanup temp directory {temp_dir}: {e}", exc_info=True)
+                        # Continue - cleanup errors are non-critical
 
                 # Calculate processing time
                 end_time = datetime.now()
@@ -819,6 +1387,7 @@ The AI will analyze this to extract skills and requirements.""",
                 st.rerun()
 
             except Exception as e:
+                logger.error(f"Error processing candidates: {e}", exc_info=True)
                 st.error(f"An error occurred: {str(e)}")
                 st.exception(e)
 

@@ -8,30 +8,13 @@ Get started with the Recruitment Candidate Ranker in 3 easy steps.
 
 ```bash
 pip install -r requirements.txt
-pip install -r requirements_ai.txt
 ```
 
-### Step 2: Configure OpenAI API Key
-
-The application requires an OpenAI API key. Set it up:
+### Step 2: Launch the Web App
 
 ```bash
-# Add to .env file (recommended)
-echo "OPENAI_API_KEY=your-api-key-here" >> .env
-
-# Or export as environment variable
-export OPENAI_API_KEY='your-api-key-here'
+streamlit run app.py
 ```
-
-See `OPENAI_API_SETUP.md` for detailed instructions.
-
-### Step 3: Launch the Web App
-
-```bash
-streamlit run app_enhanced.py
-```
-
-**Note:** Use `app_enhanced.py` for automatic job description extraction from uploaded files.
 
 This will open a web browser with the application interface.
 
@@ -49,17 +32,7 @@ This will open a web browser with the application interface.
 
 ```bash
 pip install -r requirements.txt
-pip install -r requirements_ai.txt
 ```
-
-### Step 2: Configure OpenAI API Key
-
-```bash
-# Add to .env file
-echo "OPENAI_API_KEY=your-api-key-here" >> .env
-```
-
-See `OPENAI_API_SETUP.md` for detailed instructions.
 
 ### Step 2: Create Sample Resumes (Optional)
 

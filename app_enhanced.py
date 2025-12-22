@@ -10,7 +10,12 @@ import os
 import tempfile
 from datetime import datetime
 from pathlib import Path
+import hashlib
 from config import OpenAIConfig
+from db import init_db
+from auth import create_user, authenticate, get_user_by_session, destroy_session
+from storage import save_bytes
+from vault import save_asset, list_assets, load_asset_content
 
 # Import AIJobParser - handle import errors gracefully
 try:
@@ -27,6 +32,82 @@ from loading_components import (
     show_scoring_loading,
     show_report_generation_loading
 )
+
+
+@st.cache_resource
+def _bootstrap_db():
+    init_db()
+    return True
+
+
+def _auth_gate():
+    """
+    Simple login/register gate. Returns (user_id, email) when authenticated.
+    Renders forms and stops execution if not authenticated.
+    """
+    _bootstrap_db()
+
+    st.session_state.setdefault("session_token", None)
+    token = st.session_state.get("session_token")
+    user = get_user_by_session(token) if token else None
+
+    def logout():
+        if st.session_state.get("session_token"):
+            destroy_session(st.session_state["session_token"])
+        st.session_state["session_token"] = None
+        st.session_state.pop("user_id", None)
+        st.session_state.pop("user_email", None)
+        st.success("Logged out.")
+        st.rerun()
+
+    if user:
+        user_id, email = user
+        st.session_state["user_id"] = user_id
+        st.session_state["user_email"] = email
+        st.sidebar.success(f"Logged in as {email}")
+        if st.sidebar.button("Logout"):
+            logout()
+        return user
+
+    st.sidebar.info("Login required to continue.")
+    tab_login, tab_register = st.tabs(["Login", "Register"])
+
+    with tab_login:
+        login_email = st.text_input("Email", key="login_email")
+        login_password = st.text_input("Password", type="password", key="login_password")
+        if st.button("Login", key="login_button"):
+            try:
+                session_token, user_id = authenticate(login_email, login_password)
+                st.session_state["session_token"] = session_token
+                st.session_state["user_id"] = user_id
+                st.session_state["user_email"] = login_email.strip().lower()
+                st.success("Logged in successfully.")
+                st.rerun()
+            except Exception as e:
+                st.error(str(e))
+
+    with tab_register:
+        reg_email = st.text_input("Email", key="reg_email")
+        reg_password = st.text_input("Password", type="password", key="reg_password")
+        reg_confirm = st.text_input("Confirm Password", type="password", key="reg_confirm")
+        if st.button("Register", key="register_button"):
+            if reg_password != reg_confirm:
+                st.error("Passwords do not match.")
+            elif not reg_email or not reg_password:
+                st.error("Email and password are required.")
+            else:
+                try:
+                    user_id = create_user(reg_email, reg_password)
+                    session_token, _ = authenticate(reg_email, reg_password)
+                    st.session_state["session_token"] = session_token
+                    st.session_state["user_id"] = user_id
+                    st.session_state["user_email"] = reg_email.strip().lower()
+                    st.success("Account created and logged in.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(str(e))
+
+    st.stop()
 
 
 def main():
@@ -50,6 +131,9 @@ def main():
         page_icon=None,
         layout="wide"
     )
+
+    # Require authentication
+    _auth_gate()
 
     # Custom CSS with logo branding colors
     st.markdown("""
@@ -340,6 +424,62 @@ def main():
         - Location: 5%
         """)
 
+    # Vault (saved files)
+    user_id = st.session_state.get("user_id")
+    vault_job_path = None
+    vault_job_id = None
+    vault_resume_assets = []
+
+    with st.expander("My Saved Files (Vault)", expanded=False):
+        col_v1, col_v2 = st.columns(2)
+
+        with col_v1:
+            st.markdown("**Job Descriptions**")
+            vault_jds = list_assets(user_id, "job_description") if user_id else []
+            jd_labels = [f"{jd['original_name']} ({jd['created_at'][:10]})" for jd in vault_jds]
+            jd_choice = st.selectbox(
+                "Use saved job description",
+                ["None"] + jd_labels,
+                key="vault_jd_select"
+            )
+            if jd_choice != "None":
+                idx = jd_labels.index(jd_choice)
+                selected_jd = vault_jds[idx]
+                vault_job_path = selected_jd["stored_path"]
+                vault_job_id = selected_jd["id"]
+                st.info(f"Selected saved job description: {selected_jd['original_name']}")
+
+            jd_upload = st.file_uploader(
+                "Add job description to vault",
+                type=["pdf", "docx", "txt"],
+                key="vault_jd_upload"
+            )
+            if jd_upload and user_id:
+                save_asset(user_id, "job_description", jd_upload.name, jd_upload.getvalue(), {"source": "vault"})
+                st.success("Saved job description to vault. Rerun to see it in the list.")
+
+        with col_v2:
+            st.markdown("**Resumes**")
+            vault_resumes = list_assets(user_id, "resume") if user_id else []
+            resume_labels = [f"{r['original_name']} ({r['created_at'][:10]})" for r in vault_resumes]
+            selected_resumes = st.multiselect(
+                "Select saved resumes",
+                resume_labels,
+                key="vault_resume_select"
+            )
+            for label in selected_resumes:
+                idx = resume_labels.index(label)
+                vault_resume_assets.append(vault_resumes[idx])
+
+            resume_upload = st.file_uploader(
+                "Add resume to vault",
+                type=["pdf", "docx", "txt"],
+                key="vault_resume_upload"
+            )
+            if resume_upload and user_id:
+                save_asset(user_id, "resume", resume_upload.name, resume_upload.getvalue(), {"source": "vault"})
+                st.success("Saved resume to vault. Rerun to see it in the list.")
+
     # Input Method Selection
     st.markdown('<div class="section-header">Job Information</div>', unsafe_allow_html=True)
 
@@ -365,36 +505,134 @@ def main():
         )
 
         if job_file:
-            # Save uploaded file temporarily
-            with tempfile.NamedTemporaryFile(delete=False, suffix=Path(job_file.name).suffix) as tmp_file:
-                tmp_file.write(job_file.getvalue())
-                temp_job_path = tmp_file.name
+            # Read file once and hash to avoid re-processing the same JD on reruns
+            job_bytes = job_file.getvalue()
+            job_hash = hashlib.sha256(job_bytes).hexdigest()
 
+            # If we've already parsed this exact file during this session, reuse cached data
+            cached_hash = st.session_state.get("job_file_hash")
+            cached_data = st.session_state.get("job_data_extracted")
+            if cached_hash == job_hash and cached_data:
+                job_data_extracted = cached_data
+                job_title = job_data_extracted.get('job_title', '')
+                location = job_data_extracted.get('location', '')
+                certifications = job_data_extracted.get('certifications', [])
+                job_description = job_data_extracted.get('full_description', '')
+                st.info("Reusing previously analyzed job description (cached).")
+            else:
+                # Save uploaded file temporarily
+                with tempfile.NamedTemporaryFile(delete=False, suffix=Path(job_file.name).suffix) as tmp_file:
+                    tmp_file.write(job_bytes)
+                    temp_job_path = tmp_file.name
+
+                try:
+                    # Show custom loading screen
+                    loading_placeholder = st.empty()
+                    with loading_placeholder.container():
+                        show_job_analysis_loading(progress=0.3)
+                    
+                    # Parse job description using AI
+                    parser = AIJobParser()
+                    job_data_extracted = parser.parse(temp_job_path)
+                    
+                    # Store in session state for later use
+                    st.session_state.job_data_extracted = job_data_extracted
+                    st.session_state.job_file_hash = job_hash
+                    
+                    # Clear loading screen
+                    loading_placeholder.empty()
+
+                    # Extract job details
+                    job_title = job_data_extracted.get('job_title', '')
+                    location = job_data_extracted.get('location', '')
+                    certifications = job_data_extracted.get('certifications', [])
+                    job_description = job_data_extracted.get('full_description', '')
+
+                    # Cleanup temp file
+                    os.unlink(temp_job_path)
+
+                    st.success("Job description analyzed successfully.")
+                except Exception as e:
+                    st.error(f"Error parsing job description: {e}")
+                    st.info("Please try manual entry or check your file format.")
+                    # Attempt cleanup if temp file exists
+                    try:
+                        os.unlink(temp_job_path)
+                    except Exception:
+                        pass
+                    job_data_extracted = {}
+                    job_title = None
+                    location = None
+                    certifications = []
+                    job_description = None
+
+        elif vault_job_path:
             try:
-                # Show custom loading screen
                 loading_placeholder = st.empty()
                 with loading_placeholder.container():
                     show_job_analysis_loading(progress=0.3)
-                
-                # Parse job description using AI
+
                 parser = AIJobParser()
-                job_data_extracted = parser.parse(temp_job_path)
-                
-                # Store in session state for later use
+                job_data_extracted = parser.parse(vault_job_path)
+
                 st.session_state.job_data_extracted = job_data_extracted
-                
-                # Clear loading screen
+
                 loading_placeholder.empty()
 
-                # Extract job details
                 job_title = job_data_extracted.get('job_title', '')
                 location = job_data_extracted.get('location', '')
                 certifications = job_data_extracted.get('certifications', [])
                 job_description = job_data_extracted.get('full_description', '')
 
-                # Display extracted information
-                st.success("Job description analyzed successfully.")
+                st.success("Job description loaded from vault.")
 
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    st.markdown("**Extracted Information:**")
+                    st.write(f"**Job Title:** {job_title}")
+                    st.write(f"**Location:** {location}")
+                    st.write(f"**Experience:** {job_data_extracted.get('experience_requirements', 'Not specified')}")
+
+                with col2:
+                    st.markdown("**Certifications Found:**")
+                    if certifications:
+                        for cert in certifications:
+                            badge = "[Required] Must-Have" if cert['category'] == 'must-have' else "[Preferred] Bonus"
+                            st.write(f"{badge} {cert['name']}")
+                    else:
+                        st.write("No certifications found")
+
+                with st.expander("Edit Extracted Information (Optional)", expanded=False):
+                    col1, col2 = st.columns(2)
+
+                    with col1:
+                        job_title = st.text_input("Job Title", value=job_title, key="edit_title_vault")
+                        location = st.text_input("Location", value=location, key="edit_location_vault")
+
+                    with col2:
+                        st.markdown("**Modify Certifications:**")
+                        num_certs = st.number_input("Number of certifications",
+                                                   min_value=0,
+                                                   max_value=15,
+                                                   value=len(certifications),
+                                                   key="vault_num_certs")
+
+                        if num_certs != len(certifications):
+                            certifications = []
+                            for i in range(num_certs):
+                                cert_name = st.text_input(f"Certification {i+1} Name", key=f"vault_cert_edit_{i}")
+                                cert_cat = st.selectbox(f"Certification {i+1} Category",
+                                                       ["must-have", "bonus"],
+                                                       key=f"vault_cat_edit_{i}")
+                                if cert_name:
+                                    certifications.append({"name": cert_name, "category": cert_cat})
+            except Exception as e:
+                st.error(f"Error loading job description from vault: {e}")
+                st.info("Please try manual entry or upload a file.")
+
+            # Display extracted information (cached or newly parsed)
+            if job_data_extracted:
                 col1, col2 = st.columns(2)
 
                 with col1:
@@ -438,13 +676,6 @@ def main():
                                                        key=f"cat_edit_{i}")
                                 if cert_name:
                                     certifications.append({"name": cert_name, "category": cert_cat})
-
-                # Cleanup temp file
-                os.unlink(temp_job_path)
-
-            except Exception as e:
-                st.error(f"Error parsing job description: {e}")
-                st.info("Please try manual entry or check your file format.")
 
     else:  # Manual entry
         col1, col2 = st.columns(2)
@@ -550,8 +781,8 @@ The system will automatically extract requirements from this description.""",
             errors.append("Location is required")
         if not job_description:
             errors.append("Job description is required")
-        if not uploaded_files:
-            errors.append("At least one resume file is required")
+        if not uploaded_files and not vault_resume_assets:
+            errors.append("At least one resume file is required (upload or select from vault)")
 
         if errors:
             for error in errors:
@@ -561,16 +792,35 @@ The system will automatically extract requirements from this description.""",
             loading_placeholder = st.empty()
             
             try:
-                # Save uploaded files temporarily
+                # Save uploaded files temporarily and persist copies
                 temp_dir = tempfile.mkdtemp()
                 resume_paths = []
+                resume_assets = []
 
                 try:
                     for uploaded_file in uploaded_files:
+                        file_bytes = uploaded_file.getvalue()
                         file_path = os.path.join(temp_dir, uploaded_file.name)
                         with open(file_path, "wb") as f:
-                            f.write(uploaded_file.getbuffer())
+                            f.write(file_bytes)
                         resume_paths.append(file_path)
+
+                        stored_path, file_hash = save_bytes(file_bytes, uploaded_file.name)
+                        resume_assets.append({
+                            "original_name": uploaded_file.name,
+                            "stored_path": stored_path,
+                            "file_hash": file_hash
+                        })
+
+                    # Add vault resumes (already stored paths)
+                    for asset in vault_resume_assets:
+                        if Path(asset["stored_path"]).exists():
+                            resume_paths.append(asset["stored_path"])
+                            resume_assets.append({
+                                "original_name": asset["original_name"],
+                                "stored_path": asset["stored_path"],
+                                "file_hash": asset.get("metadata", {}).get("file_hash")
+                            })
 
                     # Initialize app
                     app = CandidateRankerApp()
@@ -585,6 +835,9 @@ The system will automatically extract requirements from this description.""",
                         with loading_placeholder.container():
                             show_full_workflow_loading(step, progress, current, total)
                     
+                    # Resume cache to avoid re-parsing unchanged files across reruns
+                    resume_cache = st.session_state.get("resume_cache", {})
+
                     # Run processing with progress callback
                     pdf_path = app.run(
                         job_title=job_title,
@@ -594,8 +847,14 @@ The system will automatically extract requirements from this description.""",
                         resume_files=resume_paths,
                         required_skills=required_skills,
                         preferred_skills=preferred_skills,
-                        progress_callback=update_progress
+                        progress_callback=update_progress,
+                        resume_cache=resume_cache,
+                        user_id=st.session_state.get("user_id"),
+                        resume_assets=resume_assets,
+                        job_source_asset_id=vault_job_id
                     )
+                    # Persist updated resume cache for future reruns
+                    st.session_state["resume_cache"] = app.resume_cache
                     
                     # Clear loading screen
                     loading_placeholder.empty()
@@ -617,51 +876,55 @@ The system will automatically extract requirements from this description.""",
                 # Summary metrics
                 col1, col2, col3 = st.columns(3)
 
+                viable_candidates = [c for c in app.candidate_scores if c.fit_score >= 5.0]
+
                 with col1:
                     st.metric("Total Candidates", len(uploaded_files))
 
                 with col2:
-                    st.metric("Top Candidates", min(len(app.candidate_scores), 10))
+                    st.metric("Top Candidates (>=5.0)", min(len(viable_candidates), 10))
 
                 with col3:
-                    if app.candidate_scores:
-                        avg_score = sum(c.fit_score for c in app.candidate_scores) / len(app.candidate_scores)
-                        st.metric("Average Score", f"{avg_score:.2f}")
+                    if viable_candidates:
+                        avg_score = sum(c.fit_score for c in viable_candidates) / len(viable_candidates)
+                        st.metric("Average Score (Viable)", f"{avg_score:.2f}")
+                    else:
+                        st.metric("Average Score (Viable)", "N/A")
 
-                # Top candidates preview - use sorted top candidates
-                st.markdown("**Top Candidates:**")
+                # Top candidates preview - use sorted viable candidates
+                st.markdown("**Top Candidates (Viable Only):**")
                 
-                # Get sorted top candidates (already sorted in _rank_candidates)
                 top_candidates_sorted = sorted(
-                    app.candidate_scores,
+                    viable_candidates,
                     key=lambda x: x.fit_score,
                     reverse=True
                 )[:10]
 
-                for i, candidate in enumerate(top_candidates_sorted, 1):
-                    # Status indicator based on score
-                    if candidate.fit_score >= 8.0:
-                        score_status = "[Excellent]"
-                    elif candidate.fit_score >= 6.5:
-                        score_status = "[Good]"
-                    elif candidate.fit_score >= 5.0:
-                        score_status = "[Fair]"
-                    else:
-                        score_status = "[Needs Review]"
+                if not top_candidates_sorted:
+                    st.info("No viable candidates (score >= 5.0) to display.")
+                else:
+                    for i, candidate in enumerate(top_candidates_sorted, 1):
+                        # Status indicator based on score
+                        if candidate.fit_score >= 8.0:
+                            score_status = "[Excellent]"
+                        elif candidate.fit_score >= 6.5:
+                            score_status = "[Good]"
+                        else:
+                            score_status = "[Fair]"
 
-                    with st.expander(f"{i}. {score_status} {candidate.name} - Score: {candidate.fit_score}/10"):
-                        col1, col2 = st.columns(2)
+                        with st.expander(f"{i}. {score_status} {candidate.name} - Score: {candidate.fit_score:.2f}/10"):
+                            col1, col2 = st.columns(2)
 
-                        with col1:
-                            st.write(f"**Email:** {candidate.email}")
-                            st.write(f"**Phone:** {candidate.phone}")
+                            with col1:
+                                st.write(f"**Email:** {candidate.email}")
+                                st.write(f"**Phone:** {candidate.phone}")
 
-                        with col2:
-                            st.write(f"**Fit Score:** {candidate.fit_score}/10")
-                            cert_display = ', '.join(candidate.certifications) if candidate.certifications else 'None'
-                            st.write(f"**Certifications:** {cert_display}")
+                            with col2:
+                                st.write(f"**Fit Score:** {candidate.fit_score}/10")
+                                cert_display = ', '.join(candidate.certifications) if candidate.certifications else 'None'
+                                st.write(f"**Certifications:** {cert_display}")
 
-                        st.write(f"**Rationale:** {candidate.rationale}")
+                            st.write(f"**Rationale:** {candidate.rationale}")
 
                 # Download button
                 st.markdown('<div class="section-header">Download Report</div>', unsafe_allow_html=True)

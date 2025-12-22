@@ -53,7 +53,7 @@ class AIJobParser:
         """
         # Read file content
         content = self._read_file(file_path)
-        
+
         # Extract filename for context (sometimes filename contains job title)
         filename = Path(file_path).stem  # Get filename without extension
         
@@ -264,7 +264,7 @@ JSON:
 
             # Debug: Print AI response
             print(f"DEBUG: AI response (first 500 chars): {response_text[:500]}")
-            
+
             # Find JSON in response (sometimes Claude adds markdown)
             json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
             if json_match:
@@ -304,17 +304,52 @@ JSON:
                     job_data['location'] = 'Location Not Specified'
 
                 # Ensure skills are not empty or invalid - filter out single-word garbage
-                # Keep: multi-word skills OR single words > 3 chars that aren't blacklisted abbreviations
-                invalid_abbreviations = ['ai', 'go', 'aws', 'it', 'hr', 'pr']
+                # Strict filtering: reject abbreviations, single letters, and invalid short words
+                invalid_abbreviations = ['ai', 'go', 'aws', 'it', 'hr', 'pr', 'ml', 'nlp', 'api', 'ui', 'ux', 'qa', 'pm']
+                
+                def is_valid_skill(skill: str) -> bool:
+                    """Validate that a skill is meaningful and not an invalid abbreviation"""
+                    if not skill or not isinstance(skill, str):
+                        return False
+                    
+                    skill = skill.strip()
+                    if not skill:
+                        return False
+                    
+                    skill_lower = skill.lower()
+                    
+                    # Reject if it's in the blacklist of invalid abbreviations
+                    if skill_lower in invalid_abbreviations:
+                        return False
+                    
+                    # Reject single words <= 3 characters (too short to be meaningful)
+                    if len(skill) <= 3 and ' ' not in skill:
+                        return False
+                    
+                    # Reject single letters
+                    if len(skill) == 1:
+                        return False
+                    
+                    # Accept multi-word skills (they're usually meaningful)
+                    if ' ' in skill:
+                        return True
+                    
+                    # Accept single words > 3 characters that aren't blacklisted
+                    if len(skill) > 3:
+                        return True
+                    
+                    # Reject everything else
+                    return False
+                
                 if 'required_skills' in job_data:
                     job_data['required_skills'] = [
-                        skill for skill in job_data['required_skills']
-                        if (' ' in skill) or (len(skill) > 3 and skill.lower() not in invalid_abbreviations)
+                        skill.strip() for skill in job_data['required_skills']
+                        if is_valid_skill(skill)
                     ]
                 if 'preferred_skills' in job_data:
                     job_data['preferred_skills'] = [
-                        skill for skill in job_data['preferred_skills']
-                        if (' ' in skill) or (len(skill) > 3 and skill.lower() not in invalid_abbreviations)
+                        skill.strip() for skill in job_data['preferred_skills']
+                        if is_valid_skill(skill)
                     ]
 
                 # Add full description

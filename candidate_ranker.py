@@ -6,6 +6,9 @@ High-level recruitment advisor with advanced candidate screening capabilities
 import json
 import os
 import re
+import hashlib
+import uuid
+from dataclasses import asdict
 from datetime import datetime
 from typing import List, Dict, Any, Tuple
 from pathlib import Path
@@ -17,12 +20,13 @@ from pdf_generator import PDFGenerator
 from skills_researcher import SkillsResearcher
 from ai_certification_researcher import AICertificationResearcher
 from config import OpenAIConfig
+from db import get_db, utcnow_str
 
 
 class CandidateRankerApp:
     """Main application for candidate screening and ranking"""
 
-    def __init__(self, logo_path: str = None, use_ai: bool = True):
+    def __init__(self, logo_path: str = None, use_ai: bool = True, resume_cache: Dict[str, Dict[str, Any]] = None):
         """
         Initialize Candidate Ranker Application
 
@@ -53,11 +57,15 @@ class CandidateRankerApp:
         self.job_details: JobDetails = None
         self.candidate_scores: List[CandidateScore] = []
         self.use_ai = use_ai
+        # In-memory cache for parsed resumes (hash -> candidate dict)
+        self.resume_cache: Dict[str, Dict[str, Any]] = resume_cache if resume_cache is not None else {}
 
     def run(self, job_title: str, certifications: List[Dict[str, str]],
             location: str, job_description: str, resume_files: List[str],
             required_skills: List[str] = None, preferred_skills: List[str] = None,
-            progress_callback=None) -> str:
+            progress_callback=None, resume_cache: Dict[str, Dict[str, Any]] = None,
+            user_id: str = None, resume_assets: List[Dict[str, Any]] = None,
+            job_source_asset_id: str = None) -> str:
         """
         Main workflow execution
 
@@ -104,6 +112,11 @@ class CandidateRankerApp:
 
         # Step 3: Parse all resumes (20-40%)
         print(f"STEP 3: Parsing {len(resume_files)} resume(s)...")
+        # Merge external cache if provided (e.g., Streamlit session)
+        if resume_cache is not None:
+            # Use provided cache as backing store
+            self.resume_cache = resume_cache
+
         candidates = self._parse_resumes(resume_files, progress_callback)
 
         # Step 4: Score each candidate (40-70%)
@@ -131,6 +144,19 @@ class CandidateRankerApp:
         print(f"REPORT GENERATED: {pdf_path}")
         print("=" * 80)
 
+        # Persist run metadata if user_id provided
+        if user_id:
+            try:
+                self._persist_run(
+                    user_id=user_id,
+                    pdf_path=pdf_path,
+                    job_source_asset_id=job_source_asset_id,
+                    resume_assets=resume_assets,
+                    top_candidates=top_candidates
+                )
+            except Exception as e:
+                print(f"WARNING: Failed to persist run metadata: {e}")
+
         return pdf_path
 
     def _parse_job_details(self, job_title: str, certifications: List[Dict[str, str]],
@@ -153,15 +179,59 @@ class CandidateRankerApp:
         )
         
         # Use AI-extracted skills if provided, otherwise extract from description
+        # Apply post-processing validation to ensure skills are clean
         if required_skills:
-            job.required_skills = required_skills
+            job.required_skills = self._validate_and_filter_skills(required_skills)
         if preferred_skills:
-            job.preferred_skills = preferred_skills
+            job.preferred_skills = self._validate_and_filter_skills(preferred_skills)
 
         # Extract structured information from description (for other fields)
         self._extract_job_requirements(job)
 
         return job
+
+    def _validate_and_filter_skills(self, skills: List[str]) -> List[str]:
+        """Validate and filter skills to remove invalid abbreviations and short words"""
+        if not skills:
+            return []
+        
+        invalid_abbreviations = ['ai', 'go', 'aws', 'it', 'hr', 'pr', 'ml', 'nlp', 'api', 'ui', 'ux', 'qa', 'pm']
+        
+        def is_valid_skill(skill: str) -> bool:
+            """Validate that a skill is meaningful and not an invalid abbreviation"""
+            if not skill or not isinstance(skill, str):
+                return False
+            
+            skill = skill.strip()
+            if not skill:
+                return False
+            
+            skill_lower = skill.lower()
+            
+            # Reject if it's in the blacklist of invalid abbreviations
+            if skill_lower in invalid_abbreviations:
+                return False
+            
+            # Reject single words <= 3 characters (too short to be meaningful)
+            if len(skill) <= 3 and ' ' not in skill:
+                return False
+            
+            # Reject single letters
+            if len(skill) == 1:
+                return False
+            
+            # Accept multi-word skills (they're usually meaningful)
+            if ' ' in skill:
+                return True
+            
+            # Accept single words > 3 characters that aren't blacklisted
+            if len(skill) > 3:
+                return True
+            
+            # Reject everything else
+            return False
+        
+        return [skill.strip() for skill in skills if is_valid_skill(skill)]
 
     def _extract_job_requirements(self, job: JobDetails):
         """Extract requirements from job description"""
@@ -292,7 +362,7 @@ class CandidateRankerApp:
                     print(f"  No equivalents found for {cert_name}")
 
     def _parse_resumes(self, resume_files: List[str], progress_callback=None) -> List[Dict[str, Any]]:
-        """Parse all resume files"""
+        """Parse all resume files with simple cache by file hash"""
         candidates = []
         total = len(resume_files)
 
@@ -302,12 +372,33 @@ class CandidateRankerApp:
                 # Progress from 20% to 40% (20% range for parsing)
                 progress = 0.20 + ((i - 1) / total * 0.20)
                 progress_callback("parsing", progress, i, total)
+
+            # Compute hash of file contents to reuse parsed output
             try:
-                candidate_data = self.resume_parser.parse(resume_file)
-                candidates.append(candidate_data)
+                with open(resume_file, "rb") as f:
+                    file_bytes = f.read()
+                file_hash = hashlib.sha256(file_bytes).hexdigest()
             except Exception as e:
-                print(f"    WARNING: Failed to parse {resume_file}: {e}")
-                continue
+                print(f"    WARNING: Failed to read {resume_file}: {e}")
+                file_hash = None
+
+            cached_candidate = self.resume_cache.get(file_hash) if file_hash else None
+
+            if cached_candidate:
+                print("    Using cached parse for this resume")
+                candidate_data = cached_candidate
+            else:
+                try:
+                    candidate_data = self.resume_parser.parse(resume_file)
+                    # Store in cache if hash available
+                    if file_hash:
+                        self.resume_cache[file_hash] = candidate_data
+                except Exception as e:
+                    print(f"    WARNING: Failed to parse {resume_file}: {e}")
+                    continue
+
+            candidates.append(candidate_data)
+
             if progress_callback:
                 # Update progress after each resume
                 progress = 0.20 + (i / total * 0.20)
@@ -566,6 +657,115 @@ class CandidateRankerApp:
         )
 
         return output_path
+
+    def _persist_run(self, user_id: str, pdf_path: str, job_source_asset_id: str,
+                     resume_assets: List[Dict[str, Any]], top_candidates: List[CandidateScore]) -> None:
+        """
+        Persist run metadata: job description, resumes, report, and top candidates.
+        """
+
+        def _exec(conn, query, params):
+            # Swap parameter style for psycopg2 if needed
+            if conn.__class__.__module__.startswith("psycopg2"):
+                query = query.replace("?", "%s")
+            cur = conn.cursor()
+            cur.execute(query, params)
+            return cur
+
+        now = utcnow_str()
+        job_id = str(uuid.uuid4())
+        report_id = str(uuid.uuid4())
+
+        certifications_json = json.dumps([asdict(c) for c in self.job_details.certifications])
+        required_skills_json = json.dumps(self.job_details.required_skills)
+        preferred_skills_json = json.dumps(self.job_details.preferred_skills)
+
+        with get_db() as conn:
+            # Job description
+            _exec(
+                conn,
+                """
+                INSERT INTO job_descriptions (
+                    id, user_id, title, location, certifications_json,
+                    required_skills_json, preferred_skills_json, full_description,
+                    source_asset_id, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    job_id,
+                    user_id,
+                    self.job_details.job_title,
+                    self.job_details.location,
+                    certifications_json,
+                    required_skills_json,
+                    preferred_skills_json,
+                    self.job_details.full_description,
+                    job_source_asset_id,
+                    now,
+                ),
+            )
+
+            # Report
+            _exec(
+                conn,
+                """
+                INSERT INTO reports (id, user_id, job_description_id, pdf_path, summary_json, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    report_id,
+                    user_id,
+                    job_id,
+                    pdf_path,
+                    json.dumps({"all_candidates": len(self.candidate_scores), "top_candidates": len(top_candidates)}),
+                    now,
+                ),
+            )
+
+            # Resumes (optional, if provided)
+            if resume_assets:
+                for asset in resume_assets:
+                    resume_id = str(uuid.uuid4())
+                    _exec(
+                        conn,
+                        """
+                        INSERT INTO resumes (id, user_id, original_name, stored_path, parsed_metadata_json, source_asset_id, uploaded_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            resume_id,
+                            user_id,
+                            asset.get("original_name"),
+                            asset.get("stored_path"),
+                            None,
+                            asset.get("file_hash"),  # storing hash in source_asset_id for traceability
+                            now,
+                        ),
+                    )
+
+            # Candidate scores (top candidates snapshot)
+            for cand in top_candidates:
+                score_id = str(uuid.uuid4())
+                _exec(
+                    conn,
+                    """
+                    INSERT INTO candidate_scores (
+                        id, report_id, candidate_name, email, phone, fit_score, rationale, raw_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        score_id,
+                        report_id,
+                        cand.name,
+                        cand.email,
+                        cand.phone,
+                        cand.fit_score,
+                        cand.rationale,
+                        json.dumps(asdict(cand)),
+                    ),
+                )
+
+            conn.commit()
 
 
 def main():

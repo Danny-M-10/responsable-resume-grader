@@ -1,0 +1,35 @@
+{
+  "family": "recruiting-candidate-ranker",
+  "networkMode": "awsvpc",
+  "executionRoleArn": "arn:aws:iam::774305585062:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::774305585062:role/recruiting-candidate-ranker-task",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "containerDefinitions": [
+    {
+      "name": "app",
+      "image": "774305585062.dkr.ecr.us-east-2.amazonaws.com/recruiting-candidate-ranker@sha256:f44a3df129533626a4df51ab64bccf932430d85720fbd0ca1e2fd69398d74fa6",
+      "essential": true,
+      "portMappings": [ { "containerPort": 8501, "protocol": "tcp" } ],
+      "environment": [
+        { "name": "PORT", "value": "8501" },
+        { "name": "STORAGE_REGION", "value": "us-east-2" },
+        { "name": "STORAGE_BUCKET", "value": "recruiting-candidate-ranker-uploads-us-east-2-774305585062" }
+      ],
+      "secrets": [
+        { "name": "DATABASE_URL", "valueFrom": "arn:aws:ssm:us-east-2:774305585062:parameter/recruiting-candidate-ranker/DATABASE_URL" },
+        { "name": "SESSION_SECRET", "valueFrom": "arn:aws:ssm:us-east-2:774305585062:parameter/recruiting-candidate-ranker/SESSION_SECRET" },
+        { "name": "OPENAI_API_KEY", "valueFrom": "arn:aws:ssm:us-east-2:774305585062:parameter/recruiting-candidate-ranker/OPENAI_API_KEY" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/recruiting-candidate-ranker",
+          "awslogs-region": "us-east-2",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}

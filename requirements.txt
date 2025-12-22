@@ -3,6 +3,9 @@ python-docx>=0.8.11
 reportlab>=4.0.0
 matplotlib>=3.7.0
 streamlit>=1.28.0
+psycopg2-binary>=2.9.9
+bcrypt>=4.0.1
+openai>=1.12.0
 
 # Note: For AI features, also install requirements_ai.txt:
 # pip install -r requirements_ai.txt

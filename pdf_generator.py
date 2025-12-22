@@ -189,12 +189,33 @@ class PDFGenerator:
         # Always try to use the fixed logo file
         if os.path.exists(self.logo_path):
             try:
-                # Create logo image with fixed sizing for consistency
-                logo = Image(self.logo_path, width=self.LOGO_WIDTH, height=self.LOGO_HEIGHT)
-                logo.hAlign = 'LEFT'
+                # Get actual image dimensions to calculate aspect ratio
+                try:
+                    from PIL import Image as PILImage
+                    pil_img = PILImage.open(self.logo_path)
+                    img_width, img_height = pil_img.size
+                    img_aspect = img_width / img_height if img_height > 0 else 1.0
+                except ImportError:
+                    # PIL not available, use default aspect ratio
+                    img_aspect = 2.5  # Default aspect ratio (width/height)
                 
-                # Maintain aspect ratio but constrain to fixed size
-                logo._restrictSize(self.LOGO_WIDTH, self.LOGO_HEIGHT)
+                # Calculate dimensions maintaining aspect ratio
+                max_width = self.LOGO_WIDTH
+                max_height = self.LOGO_HEIGHT
+                
+                # Calculate scaled dimensions that fit within max bounds while maintaining aspect ratio
+                if img_aspect > (max_width / max_height):
+                    # Image is wider - constrain by width
+                    scaled_width = max_width
+                    scaled_height = max_width / img_aspect
+                else:
+                    # Image is taller - constrain by height
+                    scaled_height = max_height
+                    scaled_width = max_height * img_aspect
+                
+                # Create logo image with calculated dimensions
+                logo = Image(self.logo_path, width=scaled_width, height=scaled_height)
+                logo.hAlign = 'LEFT'
                 
                 return logo
             except Exception as e:
@@ -331,7 +352,7 @@ class PDFGenerator:
         elements = []
 
         # Rank and name
-        name_text = f"{rank}. {candidate.name} — Score: {candidate.fit_score}/10"
+        name_text = f"{rank}. {candidate.name} — Score: {candidate.fit_score:.2f}/10"
         elements.append(Paragraph(name_text, self.styles['CandidateName']))
 
         # Contact info
