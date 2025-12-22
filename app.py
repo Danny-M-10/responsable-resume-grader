@@ -60,7 +60,8 @@ def set_session_token_cookie(token):
         document.cookie = "session_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC;";
         </script>
         """
-    components.html(cookie_js, height=0, width=0, key=f"set_cookie_{token or 'clear'}")
+    # Note: components.html doesn't support key parameter in Streamlit
+    components.html(cookie_js, height=0, width=0)
 
 
 def _auth_gate():
