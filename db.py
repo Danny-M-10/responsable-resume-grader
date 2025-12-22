@@ -165,6 +165,32 @@ def _create_tables_sql() -> list:
             used BOOLEAN DEFAULT FALSE,
             created_at TEXT NOT NULL
         );
+        """,
+        # Candidate profiles (resume database)
+        """
+        CREATE TABLE IF NOT EXISTS candidate_profiles (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            name TEXT,
+            email TEXT,
+            phone TEXT,
+            location TEXT,
+            resume_file_id TEXT REFERENCES file_assets(id) ON DELETE SET NULL,
+            parsed_data_json TEXT,
+            tags_json TEXT,
+            notes TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        """,
+        # Resume analyses junction table (many-to-many)
+        """
+        CREATE TABLE IF NOT EXISTS resume_analyses (
+            candidate_profile_id TEXT NOT NULL REFERENCES candidate_profiles(id) ON DELETE CASCADE,
+            report_id TEXT NOT NULL REFERENCES reports(id) ON DELETE CASCADE,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (candidate_profile_id, report_id)
+        );
         """
     ]
 
@@ -219,6 +245,12 @@ def init_db() -> None:
             "CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_expires_at ON password_reset_tokens(expires_at);",
             "CREATE INDEX IF NOT EXISTS idx_job_descriptions_user_id ON job_descriptions(user_id);",
             "CREATE INDEX IF NOT EXISTS idx_file_assets_user_id ON file_assets(user_id);",
+            "CREATE INDEX IF NOT EXISTS idx_candidate_profiles_user_id ON candidate_profiles(user_id);",
+            "CREATE INDEX IF NOT EXISTS idx_candidate_profiles_user_id_name ON candidate_profiles(user_id, name);",
+            "CREATE INDEX IF NOT EXISTS idx_candidate_profiles_user_id_email ON candidate_profiles(user_id, email);",
+            "CREATE INDEX IF NOT EXISTS idx_candidate_profiles_user_id_created_at ON candidate_profiles(user_id, created_at);",
+            "CREATE INDEX IF NOT EXISTS idx_resume_analyses_candidate_profile_id ON resume_analyses(candidate_profile_id);",
+            "CREATE INDEX IF NOT EXISTS idx_resume_analyses_report_id ON resume_analyses(report_id);",
         ]
         
         for index_stmt in indexes:

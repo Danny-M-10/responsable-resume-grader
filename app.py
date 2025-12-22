@@ -35,6 +35,11 @@ from auth import (
 from storage import save_bytes
 from models import CandidateScore
 from utils import prepare_query, is_safe_path, MAX_PDF_SIZE
+from resume_database import (
+    save_candidate_profile, get_candidate_profile, search_candidates,
+    filter_candidates, update_candidate_profile, delete_candidate_profile,
+    get_candidates_for_analysis, link_candidate_to_analysis, get_candidate_analyses
+)
 
 
 @st.cache_resource
@@ -394,25 +399,28 @@ def load_analysis_data(report_id: str, user_id: str) -> Optional[Dict]:
                     ))
         
         # Load PDF data if file exists (with size and path validation)
+        # Note: PDF loading failures should not prevent the analysis from being displayed
         pdf_data = None
-        if pdf_path and os.path.exists(pdf_path):
-            try:
-                # Validate path safety
-                if not is_safe_path(pdf_path):
-                    logger.warning(f"Unsafe PDF path detected: {pdf_path}")
-                    return None
-                
-                # Check file size
-                file_size = os.path.getsize(pdf_path)
-                if file_size > MAX_PDF_SIZE:
-                    logger.warning(f"PDF file too large: {file_size} bytes (max: {MAX_PDF_SIZE})")
-                    return None
-                
-                with open(pdf_path, 'rb') as f:
-                    pdf_data = f.read()
-            except Exception as e:
-                logger.warning(f"Failed to load PDF from {pdf_path}: {e}", exc_info=True)
-                pass
+        if pdf_path:
+            if os.path.exists(pdf_path):
+                try:
+                    # Validate path safety
+                    if is_safe_path(pdf_path):
+                        # Check file size
+                        file_size = os.path.getsize(pdf_path)
+                        if file_size <= MAX_PDF_SIZE:
+                            with open(pdf_path, 'rb') as f:
+                                pdf_data = f.read()
+                        else:
+                            logger.warning(f"PDF file too large: {file_size} bytes (max: {MAX_PDF_SIZE})")
+                    else:
+                        logger.warning(f"Unsafe PDF path detected: {pdf_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to load PDF from {pdf_path}: {e}", exc_info=True)
+                    # Continue without PDF data - don't fail the entire load
+            else:
+                logger.warning(f"PDF file not found at path: {pdf_path}")
+                # Continue without PDF data - file might have been moved/deleted
         
         # Parse job details
         certifications = []
@@ -1332,6 +1340,338 @@ def display_analysis_analytics(user_id: str):
             st.line_chart(trend_df.set_index('Date'))
 
 
+def display_resume_database(user_id: str):
+    """Display resume database with search, filter, and management options"""
+    st.markdown('<div class="section-header">Resume Database</div>', unsafe_allow_html=True)
+    
+    # Search and Filter Section
+    with st.expander("Search & Filter", expanded=True):
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            search_query = st.text_input(
+                "Search by name, email, skills, or certifications",
+                key="resume_search",
+                placeholder="Enter search terms..."
+            )
+        
+        with col2:
+            experience_filter = st.selectbox(
+                "Experience Level",
+                ["All", "Junior", "Mid", "Senior"],
+                key="resume_exp_filter"
+            )
+        
+        col3, col4 = st.columns(2)
+        with col3:
+            location_filter = st.text_input(
+                "Location",
+                key="resume_location_filter",
+                placeholder="Filter by location..."
+            )
+        
+        with col4:
+            tag_filter = st.text_input(
+                "Tags (comma-separated)",
+                key="resume_tag_filter",
+                placeholder="e.g., safety, certified, experienced"
+            )
+    
+    # Build filters
+    filters = {}
+    if experience_filter != "All":
+        filters['experience_level'] = experience_filter
+    if location_filter:
+        filters['location'] = location_filter
+    if tag_filter:
+        filters['tags'] = [t.strip() for t in tag_filter.split(',') if t.strip()]
+    
+    # Search candidates
+    candidates = search_candidates(user_id, query=search_query or "", filters=filters)
+    
+    # Display candidate count
+    st.markdown(f"**Found {len(candidates)} candidate(s)**")
+    
+    if not candidates:
+        st.info("No candidates found. Upload resumes to build your database!")
+        
+        # Upload new resume section
+        st.markdown("---")
+        st.markdown("### Upload New Resume")
+        uploaded_file = st.file_uploader(
+            "Upload a resume to add to your database",
+            type=["pdf", "docx", "txt"],
+            key="resume_db_upload"
+        )
+        
+        if uploaded_file:
+            if st.button("Save to Database", type="primary"):
+                try:
+                    # Parse the resume
+                    from resume_parser import ResumeParser
+                    import tempfile
+                    import shutil
+                    
+                    temp_dir = tempfile.mkdtemp()
+                    temp_path = os.path.join(temp_dir, uploaded_file.name)
+                    
+                    try:
+                        with open(temp_path, 'wb') as f:
+                            f.write(uploaded_file.getbuffer())
+                        
+                        parser = ResumeParser()
+                        resume_data = parser.parse(temp_path)
+                        
+                        # Save file
+                        file_bytes = uploaded_file.getbuffer()
+                        stored_path, file_hash = save_bytes(file_bytes, uploaded_file.name)
+                        
+                        # Save to file_assets
+                        from db import get_db, utcnow_str
+                        import uuid
+                        asset_id = str(uuid.uuid4())
+                        
+                        with get_db() as conn:
+                            cur = conn.cursor()
+                            query = prepare_query(conn, """
+                                INSERT INTO file_assets 
+                                (id, user_id, kind, original_name, stored_path, created_at)
+                                VALUES (?, ?, ?, ?, ?, ?)
+                            """)
+                            cur.execute(query, (
+                                asset_id,
+                                user_id,
+                                'resume',
+                                uploaded_file.name,
+                                stored_path,
+                                utcnow_str()
+                            ))
+                            conn.commit()
+                        
+                        # Save to candidate profiles
+                        profile_id = save_candidate_profile(
+                            user_id=user_id,
+                            resume_data=resume_data,
+                            resume_file_id=asset_id,
+                            tags=[],
+                            notes=""
+                        )
+                        
+                        st.success(f"Resume saved to database! Profile ID: {profile_id}")
+                        st.rerun()
+                    finally:
+                        try:
+                            shutil.rmtree(temp_dir)
+                        except:
+                            pass
+                except Exception as e:
+                    logger.error(f"Error saving resume to database: {e}", exc_info=True)
+                    st.error(f"Error saving resume: {str(e)}")
+        return
+    
+    # Display candidates in a grid/list
+    for idx, candidate in enumerate(candidates):
+        with st.container():
+            col1, col2, col3, col4 = st.columns([3, 2, 2, 2])
+            
+            with col1:
+                st.markdown(f"**{candidate['name'] or 'Unknown'}**")
+                if candidate['email']:
+                    st.caption(f"📧 {candidate['email']}")
+                if candidate['phone']:
+                    st.caption(f"📞 {candidate['phone']}")
+                if candidate['location']:
+                    st.caption(f"📍 {candidate['location']}")
+            
+            with col2:
+                parsed_data = candidate.get('parsed_data', {})
+                skills = parsed_data.get('skills', [])[:5]
+                if skills:
+                    st.markdown("**Skills:**")
+                    st.caption(", ".join(skills))
+                else:
+                    st.caption("No skills listed")
+            
+            with col3:
+                certs = parsed_data.get('certifications', [])[:3]
+                if certs:
+                    st.markdown("**Certifications:**")
+                    st.caption(", ".join(certs))
+                else:
+                    st.caption("No certifications")
+                
+                # Tags
+                tags = candidate.get('tags', [])
+                if tags:
+                    tag_text = " ".join([f"`{tag}`" for tag in tags])
+                    st.caption(f"Tags: {tag_text}")
+            
+            with col4:
+                # Actions
+                action_key = f"action_{candidate['id']}_{idx}"
+                action = st.selectbox(
+                    "Actions",
+                    ["Select...", "View", "Edit", "Delete", "Use in Analysis"],
+                    key=action_key
+                )
+                
+                if action == "View":
+                    if st.session_state.get(f"view_profile_{candidate['id']}") != True:
+                        st.session_state[f"view_profile_{candidate['id']}"] = True
+                        st.rerun()
+                
+                if action == "Delete":
+                    if st.button("Confirm Delete", key=f"delete_{candidate['id']}"):
+                        if delete_candidate_profile(candidate['id'], user_id):
+                            st.success("Candidate deleted!")
+                            st.rerun()
+                        else:
+                            st.error("Failed to delete candidate")
+                
+                if action == "Use in Analysis":
+                    # Store selected candidates in session state
+                    if 'selected_candidates' not in st.session_state:
+                        st.session_state['selected_candidates'] = []
+                    if candidate['id'] not in st.session_state['selected_candidates']:
+                        st.session_state['selected_candidates'].append(candidate['id'])
+                        st.success("Added to selection!")
+            
+            # View profile details if requested
+            if st.session_state.get(f"view_profile_{candidate['id']}"):
+                with st.expander(f"View Profile: {candidate['name']}", expanded=True):
+                    st.markdown(f"**Name:** {candidate['name']}")
+                    st.markdown(f"**Email:** {candidate['email']}")
+                    st.markdown(f"**Phone:** {candidate['phone']}")
+                    st.markdown(f"**Location:** {candidate['location']}")
+                    
+                    parsed_data = candidate.get('parsed_data', {})
+                    if parsed_data.get('skills'):
+                        st.markdown(f"**Skills:** {', '.join(parsed_data['skills'])}")
+                    if parsed_data.get('certifications'):
+                        st.markdown(f"**Certifications:** {', '.join(parsed_data['certifications'])}")
+                    if parsed_data.get('job_titles'):
+                        st.markdown(f"**Job Titles:** {', '.join(parsed_data['job_titles'])}")
+                    if parsed_data.get('years_of_experience'):
+                        st.markdown(f"**Years of Experience:** {parsed_data['years_of_experience']}")
+                    
+                    if candidate.get('notes'):
+                        st.markdown(f"**Notes:** {candidate['notes']}")
+                    
+                    # Edit form
+                    with st.form(f"edit_form_{candidate['id']}"):
+                        new_tags = st.text_input(
+                            "Tags (comma-separated)",
+                            value=", ".join(candidate.get('tags', [])),
+                            key=f"tags_{candidate['id']}"
+                        )
+                        new_notes = st.text_area(
+                            "Notes",
+                            value=candidate.get('notes', ''),
+                            key=f"notes_{candidate['id']}"
+                        )
+                        
+                        if st.form_submit_button("Save Changes"):
+                            updates = {}
+                            if new_tags:
+                                updates['tags'] = [t.strip() for t in new_tags.split(',') if t.strip()]
+                            if new_notes is not None:
+                                updates['notes'] = new_notes
+                            
+                            if updates:
+                                if update_candidate_profile(candidate['id'], user_id, updates):
+                                    st.success("Profile updated!")
+                                    st.session_state.pop(f"view_profile_{candidate['id']}", None)
+                                    st.rerun()
+                                else:
+                                    st.error("Failed to update profile")
+                    
+                    if st.button("Close", key=f"close_{candidate['id']}"):
+                        st.session_state.pop(f"view_profile_{candidate['id']}", None)
+                        st.rerun()
+            
+            if idx < len(candidates) - 1:
+                st.markdown("---")
+    
+    # Upload new resume section at bottom
+    st.markdown("---")
+    st.markdown("### Upload New Resume")
+    uploaded_file = st.file_uploader(
+        "Upload a resume to add to your database",
+        type=["pdf", "docx", "txt"],
+        key="resume_db_upload_bottom"
+    )
+    
+    if uploaded_file:
+        tags_input = st.text_input("Tags (comma-separated)", key="new_resume_tags")
+        notes_input = st.text_area("Notes", key="new_resume_notes")
+        
+        if st.button("Save to Database", type="primary", key="save_new_resume"):
+            try:
+                # Parse the resume
+                from resume_parser import ResumeParser
+                import tempfile
+                import shutil
+                
+                temp_dir = tempfile.mkdtemp()
+                temp_path = os.path.join(temp_dir, uploaded_file.name)
+                
+                try:
+                    with open(temp_path, 'wb') as f:
+                        f.write(uploaded_file.getbuffer())
+                    
+                    parser = ResumeParser()
+                    resume_data = parser.parse(temp_path)
+                    
+                    # Save file
+                    file_bytes = uploaded_file.getbuffer()
+                    stored_path, file_hash = save_bytes(file_bytes, uploaded_file.name)
+                    
+                    # Save to file_assets
+                    from db import get_db, utcnow_str
+                    import uuid
+                    asset_id = str(uuid.uuid4())
+                    
+                    with get_db() as conn:
+                        cur = conn.cursor()
+                        query = prepare_query(conn, """
+                            INSERT INTO file_assets 
+                            (id, user_id, kind, original_name, stored_path, created_at)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                        """)
+                        cur.execute(query, (
+                            asset_id,
+                            user_id,
+                            'resume',
+                            uploaded_file.name,
+                            stored_path,
+                            utcnow_str()
+                        ))
+                        conn.commit()
+                    
+                    # Parse tags
+                    tags = [t.strip() for t in tags_input.split(',') if t.strip()] if tags_input else []
+                    
+                    # Save to candidate profiles
+                    profile_id = save_candidate_profile(
+                        user_id=user_id,
+                        resume_data=resume_data,
+                        resume_file_id=asset_id,
+                        tags=tags,
+                        notes=notes_input or ""
+                    )
+                    
+                    st.success(f"Resume saved to database!")
+                    st.rerun()
+                finally:
+                    try:
+                        shutil.rmtree(temp_dir)
+                    except:
+                        pass
+            except Exception as e:
+                logger.error(f"Error saving resume to database: {e}", exc_info=True)
+                st.error(f"Error saving resume: {str(e)}")
+
+
 def display_results(results):
     """Display stored results with sorting and filtering options"""
     st.markdown('<div class="section-header">Results</div>', unsafe_allow_html=True)
@@ -1361,12 +1701,16 @@ def display_results(results):
     job_details = results['job_details']
     processing_time = results.get('processing_time', 0)
 
-    # Results header with clear button
-    col1, col2 = st.columns([3, 1])
+    # Results header with navigation buttons
+    col1, col2, col3 = st.columns([3, 1, 1])
     with col1:
         st.markdown(f"**Job:** {job_details['title']} | **Location:** {job_details['location']}")
     with col2:
-        if st.button("Start New Analysis", type="secondary"):
+        if st.button("Back to Analyses", type="secondary", help="Return to Previous Analyses list"):
+            clear_results()
+            st.rerun()
+    with col3:
+        if st.button("New Analysis", type="secondary", help="Start a new analysis"):
             clear_results()
             st.rerun()
 
@@ -1488,6 +1832,91 @@ def display_results(results):
             st.markdown("**AI Assessment:**")
             st.markdown(f"<div style='background-color: #f8f9fa; padding: 1rem; border-radius: 0.5rem; font-size: 0.9rem;'>{candidate.rationale}</div>", unsafe_allow_html=True)
 
+    # Offer to save new resumes to database
+    if st.session_state.get('new_resumes_to_save'):
+        save_data = st.session_state['new_resumes_to_save']
+        st.markdown('<div class="section-header">Save Resumes to Database</div>', unsafe_allow_html=True)
+        st.info(f"You have {len(save_data['resumes'])} new resume(s) that can be saved to your database.")
+        
+        for idx, resume_info in enumerate(save_data['resumes']):
+            with st.expander(f"Save: {resume_info['original_name']}", expanded=False):
+                parsed = resume_info['parsed_data']
+                st.markdown(f"**Name:** {parsed.get('name', 'Unknown')}")
+                st.markdown(f"**Email:** {parsed.get('email', 'N/A')}")
+                
+                tags_input = st.text_input(
+                    "Tags (comma-separated)",
+                    key=f"save_tags_{idx}",
+                    placeholder="e.g., safety, certified"
+                )
+                notes_input = st.text_area(
+                    "Notes",
+                    key=f"save_notes_{idx}",
+                    placeholder="Optional notes about this candidate"
+                )
+                
+                if st.button("Save to Database", key=f"save_btn_{idx}"):
+                    try:
+                        user_id = st.session_state.get("user_id")
+                        if not user_id:
+                            st.error("User not authenticated")
+                            return
+                        
+                        # Save to file_assets
+                        from db import get_db, utcnow_str
+                        import uuid
+                        asset_id = str(uuid.uuid4())
+                        
+                        with get_db() as conn:
+                            cur = conn.cursor()
+                            query = prepare_query(conn, """
+                                INSERT INTO file_assets 
+                                (id, user_id, kind, original_name, stored_path, created_at)
+                                VALUES (?, ?, ?, ?, ?, ?)
+                            """)
+                            cur.execute(query, (
+                                asset_id,
+                                user_id,
+                                'resume',
+                                resume_info['original_name'],
+                                resume_info['stored_path'],
+                                utcnow_str()
+                            ))
+                            conn.commit()
+                        
+                        # Parse tags
+                        tags = [t.strip() for t in tags_input.split(',') if t.strip()] if tags_input else []
+                        
+                        # Save to candidate profiles
+                        profile_id = save_candidate_profile(
+                            user_id=user_id,
+                            resume_data=parsed,
+                            resume_file_id=asset_id,
+                            tags=tags,
+                            notes=notes_input or ""
+                        )
+                        
+                        # Link to report if available
+                        if save_data.get('report_id'):
+                            link_candidate_to_analysis(profile_id, save_data['report_id'])
+                        
+                        st.success(f"Resume saved to database!")
+                        
+                        # Remove from list
+                        save_data['resumes'].pop(idx)
+                        if not save_data['resumes']:
+                            st.session_state.pop('new_resumes_to_save', None)
+                        st.rerun()
+                    except Exception as e:
+                        logger.error(f"Error saving resume to database: {e}", exc_info=True)
+                        st.error(f"Error saving resume: {str(e)}")
+        
+        if st.button("Skip Saving", key="skip_saving"):
+            st.session_state.pop('new_resumes_to_save', None)
+            st.rerun()
+        
+        st.markdown("---")
+    
     # Download section
     st.markdown('<div class="section-header">Download Reports</div>', unsafe_allow_html=True)
 
@@ -1514,7 +1943,11 @@ def display_results(results):
         else:
             st.error("CSV data unavailable for download.")
 
-    st.info(f"PDF report saved locally at: {pdf_path}")
+    # Only show PDF path info if PDF exists
+    if pdf_path and os.path.exists(pdf_path):
+        st.info(f"PDF report saved locally at: {pdf_path}")
+    elif pdf_path:
+        st.warning(f"PDF report file not found at: {pdf_path}. The file may have been moved or deleted.")
 
 
 def main():
@@ -1782,14 +2215,21 @@ def main():
     if st.session_state.get("view_report_id"):
         user_id = st.session_state.get("user_id")
         if user_id:
-            analysis_data = load_analysis_data(st.session_state["view_report_id"], user_id)
-            if analysis_data:
-                # Store in results format for display_results
-                st.session_state.results = analysis_data
-                st.session_state.pop("view_report_id", None)
-                st.rerun()
-            else:
-                st.error("Analysis not found or access denied.")
+            try:
+                analysis_data = load_analysis_data(st.session_state["view_report_id"], user_id)
+                if analysis_data:
+                    # Store in results format for display_results
+                    st.session_state.results = analysis_data
+                    st.session_state.pop("view_report_id", None)
+                    st.rerun()
+                else:
+                    st.error("⚠️ Analysis not found or access denied. The report may have been deleted or you may not have permission to view it.")
+                    logger.warning(f"Failed to load analysis {st.session_state['view_report_id']} for user {user_id}")
+                    st.session_state.pop("view_report_id", None)
+                    # Don't rerun here - let user see the error and continue
+            except Exception as e:
+                logger.error(f"Error loading analysis data: {e}", exc_info=True)
+                st.error(f"❌ Error loading analysis: {str(e)}")
                 st.session_state.pop("view_report_id", None)
 
     # If we have stored results, show them instead of the input form
@@ -1807,7 +2247,7 @@ def main():
     # Main page tabs: New Analysis and Previous Analyses
     user_id = st.session_state.get("user_id")
     if user_id:
-        tab_new, tab_history, tab_analytics = st.tabs(["New Analysis", "Previous Analyses", "Analytics"])
+        tab_new, tab_history, tab_database, tab_analytics = st.tabs(["New Analysis", "Previous Analyses", "Resume Database", "Analytics"])
         
         with tab_new:
             # Introduction
@@ -1986,20 +2426,55 @@ The AI will analyze this to extract skills and requirements.""",
 
             # Resume Upload
             st.markdown('<div class="section-header">Candidate Resumes</div>', unsafe_allow_html=True)
-
-            uploaded_files = st.file_uploader(
-                "Upload Resume Files",
-                type=["pdf", "docx", "txt"],
-                accept_multiple_files=True,
-                help="Upload candidate resumes in PDF, DOCX, or TXT format"
+            
+            resume_source = st.radio(
+                "Resume Source:",
+                ["Upload New Resumes", "Select from Database"],
+                horizontal=True,
+                key="resume_source"
             )
+            
+            uploaded_files = []
+            selected_candidate_ids = []
+            
+            if resume_source == "Upload New Resumes":
+                uploaded_files = st.file_uploader(
+                    "Upload Resume Files",
+                    type=["pdf", "docx", "txt"],
+                    accept_multiple_files=True,
+                    help="Upload candidate resumes in PDF, DOCX, or TXT format"
+                )
 
-            if uploaded_files:
-                st.success(f"Uploaded {len(uploaded_files)} resume(s)")
-                with st.expander("View uploaded files"):
-                    for file in uploaded_files:
-                        size_kb = file.size / 1024
-                        st.write(f"- {file.name} ({size_kb:.1f} KB)")
+                if uploaded_files:
+                    st.success(f"Uploaded {len(uploaded_files)} resume(s)")
+                    with st.expander("View uploaded files"):
+                        for file in uploaded_files:
+                            size_kb = file.size / 1024
+                            st.write(f"- {file.name} ({size_kb:.1f} KB)")
+            else:
+                # Select from database
+                st.markdown("**Select candidates from your resume database:**")
+                
+                # Get all candidates for selection
+                all_candidates = search_candidates(user_id, query="", filters={})
+                
+                if all_candidates:
+                    candidate_options = {f"{c['name']} ({c['email']})": c['id'] for c in all_candidates}
+                    selected_names = st.multiselect(
+                        "Choose candidates",
+                        options=list(candidate_options.keys()),
+                        key="selected_candidate_names"
+                    )
+                    selected_candidate_ids = [candidate_options[name] for name in selected_names]
+                    
+                    if selected_candidate_ids:
+                        st.success(f"Selected {len(selected_candidate_ids)} candidate(s) from database")
+                        with st.expander("View selected candidates"):
+                            selected_profiles = get_candidates_for_analysis(user_id, selected_candidate_ids)
+                            for profile in selected_profiles:
+                                st.write(f"- {profile['name']} ({profile['email']})")
+                else:
+                    st.info("No candidates in database. Upload resumes first or switch to 'Upload New Resumes'.")
 
             # Process Button
             st.markdown('<div class="section-header"></div>', unsafe_allow_html=True)
@@ -2026,8 +2501,8 @@ The AI will analyze this to extract skills and requirements.""",
                     errors.append("Location is required")
                 if not job_description:
                     errors.append("Job description is required")
-                if not uploaded_files:
-                    errors.append("At least one resume file is required")
+                if not uploaded_files and not selected_candidate_ids:
+                    errors.append("At least one resume file or candidate from database is required")
 
                 if errors:
                     for error in errors:
@@ -2067,8 +2542,10 @@ The AI will analyze this to extract skills and requirements.""",
                         temp_dir = tempfile.mkdtemp()
                         resume_paths = []
                         resume_assets = []
+                        new_resume_data = []  # Store new resumes for database saving
 
                         try:
+                            # Handle uploaded files
                             for uploaded_file in uploaded_files:
                                 file_bytes = uploaded_file.getvalue()
                                 file_path = os.path.join(temp_dir, uploaded_file.name)
@@ -2082,7 +2559,43 @@ The AI will analyze this to extract skills and requirements.""",
                                     "stored_path": stored_path,
                                     "file_hash": file_hash
                                 })
-
+                                
+                                # Parse resume for potential database saving
+                                from resume_parser import ResumeParser
+                                parser = ResumeParser()
+                                parsed_data = parser.parse(file_path)
+                                new_resume_data.append({
+                                    "parsed_data": parsed_data,
+                                    "file_bytes": file_bytes,
+                                    "original_name": uploaded_file.name,
+                                    "stored_path": stored_path,
+                                    "file_hash": file_hash
+                                })
+                            
+                            # Handle selected candidates from database
+                            if selected_candidate_ids:
+                                selected_profiles = get_candidates_for_analysis(user_id, selected_candidate_ids)
+                                for profile in selected_profiles:
+                                    # Get resume file if available
+                                    if profile.get('resume_file_id'):
+                                        # Get stored path from file_assets
+                                        with get_db() as conn:
+                                            cur = conn.cursor()
+                                            query = prepare_query(conn, """
+                                                SELECT stored_path FROM file_assets
+                                                WHERE id = ? AND user_id = ?
+                                            """)
+                                            cur.execute(query, (profile['resume_file_id'], user_id))
+                                            row = cur.fetchone()
+                                            if row and row[0]:
+                                                stored_path = row[0]
+                                                if os.path.exists(stored_path):
+                                                    # Copy to temp directory for processing
+                                                    import shutil
+                                                    temp_file_path = os.path.join(temp_dir, f"{profile['name'] or 'candidate'}.pdf")
+                                                    shutil.copy2(stored_path, temp_file_path)
+                                                    resume_paths.append(temp_file_path)
+                            
                             # Initialize app (logo is now fixed, no need to pass it)
                             app = CandidateRankerApp()
 
@@ -2097,6 +2610,21 @@ The AI will analyze this to extract skills and requirements.""",
                                 user_id=st.session_state.get("user_id"),
                                 resume_assets=resume_assets
                             )
+                            
+                            # Get report ID if available (from app.run)
+                            report_id = getattr(app, 'last_report_id', None)
+                            
+                            # Link selected database candidates to report
+                            if report_id and selected_candidate_ids:
+                                for candidate_id in selected_candidate_ids:
+                                    link_candidate_to_analysis(candidate_id, report_id)
+                            
+                            # Offer to save new resumes to database
+                            if new_resume_data and report_id:
+                                st.session_state['new_resumes_to_save'] = {
+                                    'resumes': new_resume_data,
+                                    'report_id': report_id
+                                }
 
                             # Read PDF data before cleanup
                             with open(pdf_path, "rb") as f:
@@ -2147,6 +2675,15 @@ The AI will analyze this to extract skills and requirements.""",
                 '<div style="text-align: center; color: #7f8c8d; padding: 1rem;">ResponsAble Safety Staffing | Recruitment Candidate Ranker</div>',
                 unsafe_allow_html=True
             )
+        
+        with tab_history:
+            display_analysis_history(user_id)
+        
+        with tab_database:
+            display_resume_database(user_id)
+        
+        with tab_analytics:
+            display_analysis_analytics(user_id)
 
 
 if __name__ == "__main__":

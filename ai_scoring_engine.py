@@ -123,7 +123,7 @@ class AIScoringEngine:
         # IMPORTANT: Only include certifications explicitly listed in the resume
         explicit_certifications = candidate.get('certifications', [])
 
-        # Generate a concise (2-3 sentences) rationale from the AI output
+        # Generate a concise (4-5 sentences) rationale from the AI output
         concise_rationale = self._extract_concise_rationale(reasoning or evaluation_text)
         
         return CandidateScore(
@@ -242,7 +242,7 @@ class AIScoringEngine:
         # IMPORTANT: Only include certifications explicitly listed in the resume
         explicit_certifications = candidate.get('certifications', [])
         
-        # Generate a concise (2-3 sentences) rationale from the AI output
+        # Generate a concise (4-5 sentences) rationale from the AI output
         concise_rationale = self._extract_concise_rationale(reasoning or evaluation_text)
         
         return CandidateScore(
@@ -436,10 +436,12 @@ EVALUATION STRUCTURE:
    - Location compatibility
    - Component score (0-10): ___
 
-8. **OVERALL ASSESSMENT**:
+8. **OVERALL ASSESSMENT** (4-5 sentences):
+   - Provide a 4-5 sentence summary explaining why the candidate is or isn't a good fit
    - Key strengths
    - Notable gaps
    - Growth potential
+   - Overall recommendation
 
 9. **COMPONENT SCORES SUMMARY** (REQUIRED):
 Provide component scores in this EXACT format:
@@ -688,26 +690,58 @@ Format your response with clear headers. Be specific and cite evidence from the 
 
     def _extract_concise_rationale(self, text: str) -> str:
         """
-        Produce a concise, 2-3 sentence rationale from the AI output.
+        Produce a concise, 4-5 sentence rationale from the AI output.
         Falls back to a trimmed snippet if not enough structure is available.
+        Ensures sentences are complete and don't cut off mid-sentence.
         """
         if not text:
             return ""
 
         import re
+        # Split on sentence boundaries (period, exclamation, question mark followed by space)
         sentences = re.split(r'(?<=[.!?])\s+', text.strip())
         concise = []
         for s in sentences:
-            if s:
+            if s and s.strip():
                 concise.append(s.strip())
-            if len(concise) >= 3:
+            # Extract 4-5 sentences (prefer 5 if available)
+            if len(concise) >= 5:
                 break
 
         if concise:
+            # Join sentences and ensure we have at least 4 if available
+            if len(concise) < 4 and len(sentences) > len(concise):
+                # Try to get one more sentence if we have less than 4
+                for s in sentences[len(concise):]:
+                    if s and s.strip():
+                        concise.append(s.strip())
+                        if len(concise) >= 4:
+                            break
+            
             candidate_summary = " ".join(concise)
-            return candidate_summary[:600]
+            # Allow up to 1500 characters for 4-5 sentences
+            if len(candidate_summary) > 1500:
+                # Truncate at the last complete sentence within limit
+                truncated = candidate_summary[:1500]
+                # Find the last complete sentence
+                last_period = truncated.rfind('.')
+                last_exclamation = truncated.rfind('!')
+                last_question = truncated.rfind('?')
+                last_sentence_end = max(last_period, last_exclamation, last_question)
+                if last_sentence_end > 1000:  # Only truncate if we have a reasonable amount
+                    candidate_summary = truncated[:last_sentence_end + 1]
+            return candidate_summary
 
-        return text[:600]
+        # Fallback: return first 1500 chars but try to end at sentence boundary
+        if len(text) > 1500:
+            truncated = text[:1500]
+            last_period = truncated.rfind('.')
+            last_exclamation = truncated.rfind('!')
+            last_question = truncated.rfind('?')
+            last_sentence_end = max(last_period, last_exclamation, last_question)
+            if last_sentence_end > 1000:
+                return text[:last_sentence_end + 1]
+        return text[:1500]
 
     def _validate_score_consistency(self, score: float, reasoning: str, 
                                    component_scores: Dict[str, float],

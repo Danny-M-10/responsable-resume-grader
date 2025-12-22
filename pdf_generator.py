@@ -399,14 +399,26 @@ class PDFGenerator:
         # Rationale - clean and format properly
         cleaned_rationale = self._clean_rationale_text(candidate.rationale)
 
-        # Truncate very long rationale text
-        MAX_RATIONALE_CHARS = 800
+        # Truncate very long rationale text (allow 4-5 sentences, ~1500 chars)
+        # Ensure truncation happens at sentence boundaries
+        MAX_RATIONALE_CHARS = 1500
         if cleaned_rationale and len(cleaned_rationale) > MAX_RATIONALE_CHARS:
-            # Truncate at word boundary
+            # Truncate at the last complete sentence before the limit
             truncated = cleaned_rationale[:MAX_RATIONALE_CHARS]
-            if ' ' in truncated:
-                truncated = truncated.rsplit(' ', 1)[0]
-            cleaned_rationale = truncated + "..."
+            # Find the last sentence boundary (period, exclamation, question mark)
+            last_period = truncated.rfind('.')
+            last_exclamation = truncated.rfind('!')
+            last_question = truncated.rfind('?')
+            last_sentence_end = max(last_period, last_exclamation, last_question)
+            
+            # Only truncate at sentence boundary if we found one and it's reasonable (at least 1000 chars)
+            if last_sentence_end > 1000:
+                cleaned_rationale = truncated[:last_sentence_end + 1]
+            else:
+                # Fallback: truncate at word boundary if no sentence boundary found
+                if ' ' in truncated:
+                    truncated = truncated.rsplit(' ', 1)[0]
+                cleaned_rationale = truncated + "..."
 
         # Wrap rationale in a table with proper formatting to prevent overflow
         rationale_width = 6.5 * inch  # Fit within page margins

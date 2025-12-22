@@ -111,12 +111,13 @@ class SkillsResearcher:
             ]
         }
 
-    def find_equivalent_titles(self, job_title: str) -> List[str]:
+    def find_equivalent_titles(self, job_title: str, experience_level: str = "") -> List[str]:
         """
         Find equivalent job titles
 
         Args:
             job_title: The job title to find equivalents for
+            experience_level: Optional experience level ("Junior", "Mid", "Senior") to filter seniority variations
 
         Returns:
             List of equivalent titles
@@ -125,16 +126,16 @@ class SkillsResearcher:
 
         # Check exact match
         if job_title_lower in self.title_equivalents:
-            return self.title_equivalents[job_title_lower]
+            equivalents = self.title_equivalents[job_title_lower].copy()
+        else:
+            # Check partial matches
+            equivalents = []
+            for key, values in self.title_equivalents.items():
+                if key in job_title_lower or job_title_lower in key:
+                    equivalents.extend(values)
 
-        # Check partial matches
-        equivalents = []
-        for key, values in self.title_equivalents.items():
-            if key in job_title_lower or job_title_lower in key:
-                equivalents.extend(values)
-
-        # Add variations with seniority levels
-        base_variations = self._generate_seniority_variations(job_title)
+        # Add variations with seniority levels (filtered by experience level)
+        base_variations = self._generate_seniority_variations(job_title, experience_level)
         equivalents.extend(base_variations)
 
         return list(set(equivalents))  # Remove duplicates
@@ -187,8 +188,17 @@ class SkillsResearcher:
 
         return list(set(equivalents))
 
-    def _generate_seniority_variations(self, title: str) -> List[str]:
-        """Generate variations with different seniority levels"""
+    def _generate_seniority_variations(self, title: str, experience_level: str = "") -> List[str]:
+        """
+        Generate variations with different seniority levels, filtered by experience level
+        
+        Args:
+            title: The job title to generate variations for
+            experience_level: Optional experience level to filter variations ("Junior", "Mid", "Senior")
+        
+        Returns:
+            List of seniority variations, filtered based on experience_level
+        """
         variations = []
 
         # Remove existing seniority markers
@@ -198,10 +208,29 @@ class SkillsResearcher:
         for marker in seniority_markers:
             base_title = base_title.lower().replace(marker, '').strip()
 
-        # Add variations
-        variations.append(f"Senior {base_title.title()}")
-        variations.append(f"Junior {base_title.title()}")
-        variations.append(f"Lead {base_title.title()}")
-        variations.append(f"Principal {base_title.title()}")
+        # Normalize experience level for comparison
+        exp_level_lower = experience_level.lower().strip() if experience_level else ""
+
+        # Filter variations based on experience level
+        if exp_level_lower == "senior":
+            # For Senior roles: exclude Junior variations
+            variations.append(f"Senior {base_title.title()}")
+            variations.append(f"Lead {base_title.title()}")
+            variations.append(f"Principal {base_title.title()}")
+        elif exp_level_lower == "junior":
+            # For Junior roles: exclude Senior, Lead, Principal variations
+            variations.append(f"Junior {base_title.title()}")
+        elif exp_level_lower == "mid" or exp_level_lower == "":
+            # For Mid-level or unspecified: include all variations
+            variations.append(f"Senior {base_title.title()}")
+            variations.append(f"Junior {base_title.title()}")
+            variations.append(f"Lead {base_title.title()}")
+            variations.append(f"Principal {base_title.title()}")
+        else:
+            # Unknown experience level: include all variations
+            variations.append(f"Senior {base_title.title()}")
+            variations.append(f"Junior {base_title.title()}")
+            variations.append(f"Lead {base_title.title()}")
+            variations.append(f"Principal {base_title.title()}")
 
         return variations

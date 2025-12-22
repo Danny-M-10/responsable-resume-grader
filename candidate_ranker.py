@@ -303,9 +303,10 @@ class CandidateRankerApp:
 
     def _research_equivalents(self):
         """Research equivalent titles, skills, and certifications"""
-        # Use SkillsResearcher to find equivalents
+        # Use SkillsResearcher to find equivalents, passing experience level to filter seniority variations
         self.job_details.equivalent_titles = self.skills_researcher.find_equivalent_titles(
-            self.job_details.job_title
+            self.job_details.job_title,
+            experience_level=self.job_details.experience_level
         )
 
         # Find skill synonyms
