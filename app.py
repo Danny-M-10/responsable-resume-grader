@@ -1809,16 +1809,6 @@ def main():
     if user_id:
         tab_new, tab_history, tab_analytics = st.tabs(["New Analysis", "Previous Analyses", "Analytics"])
         
-        with tab_history:
-            display_analysis_history(user_id)
-            # Don't show new analysis form in history tab
-            st.stop()
-        
-        with tab_analytics:
-            display_analysis_analytics(user_id)
-            st.stop()
-        
-        # New Analysis form content (default tab)
         with tab_new:
             # Introduction
             with st.expander("How It Works", expanded=False):
