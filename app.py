@@ -5,6 +5,7 @@ Run with: streamlit run app.py
 """
 
 import streamlit as st
+import streamlit.components.v1 as components
 import os
 import tempfile
 import csv
@@ -42,6 +43,26 @@ def _bootstrap_db():
     return True
 
 
+def set_session_token_cookie(token):
+    """Set session token in browser cookie using JavaScript"""
+    if token:
+        cookie_js = f"""
+        <script>
+        const expires = new Date();
+        expires.setTime(expires.getTime() + (7 * 24 * 60 * 60 * 1000)); // 7 days
+        document.cookie = "session_token={token}; path=/; expires=" + expires.toUTCString() + "; SameSite=Lax";
+        </script>
+        """
+    else:
+        # Clear cookie
+        cookie_js = """
+        <script>
+        document.cookie = "session_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC;";
+        </script>
+        """
+    components.html(cookie_js, height=0, width=0, key=f"set_cookie_{token or 'clear'}")
+
+
 def _auth_gate():
     """
     Simple login/register gate. Returns (user_id, email) when authenticated.
@@ -49,8 +70,26 @@ def _auth_gate():
     """
     _bootstrap_db()
 
-    st.session_state.setdefault("session_token", None)
+    # Initialize session token from session state or query params
+    # Streamlit query params can persist across reloads
     token = st.session_state.get("session_token")
+    
+    # If no token in session state, try to get from query params (fallback)
+    if not token:
+        query_params = st.query_params
+        # Handle both dict-like and list-like query param formats
+        if hasattr(query_params, 'get'):
+            token_param = query_params.get("token")
+            if token_param:
+                # If it's a list, get first element; otherwise use directly
+                token = token_param[0] if isinstance(token_param, list) else token_param
+                if token:
+                    st.session_state["session_token"] = token
+    
+    # Also set cookie for better persistence (runs on every request)
+    if token:
+        set_session_token_cookie(token)
+    
     user = get_user_by_session(token) if token else None
 
     def logout():
@@ -59,6 +98,10 @@ def _auth_gate():
         st.session_state["session_token"] = None
         st.session_state.pop("user_id", None)
         st.session_state.pop("user_email", None)
+        # Clear cookie
+        set_session_token_cookie(None)
+        # Clear query param
+        st.query_params.clear()
         st.success("Logged out.")
         st.rerun()
 
@@ -66,8 +109,12 @@ def _auth_gate():
         user_id, email = user
         st.session_state["user_id"] = user_id
         st.session_state["user_email"] = email
-        # Update session activity on each request
+        # Ensure token is stored in cookie and query params for persistence
         if token:
+            set_session_token_cookie(token)
+            # Store in query params as backup (less secure but works across reloads)
+            if not st.query_params.get("token"):
+                st.query_params["token"] = token
             update_session_activity(token)
         st.sidebar.success(f"Logged in as {email}")
         st.sidebar.info("Session expires after 2 hours of inactivity")
@@ -193,6 +240,9 @@ def _auth_gate():
                 st.session_state["session_token"] = session_token
                 st.session_state["user_id"] = user_id
                 st.session_state["user_email"] = login_email.strip().lower()
+                # Store token in cookie and query params for persistence
+                set_session_token_cookie(session_token)
+                st.query_params["token"] = session_token
                 # Clear registration email after successful login
                 st.session_state.pop("registration_email", None)
                 st.session_state.pop("active_tab", None)
