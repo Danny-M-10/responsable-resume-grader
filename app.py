@@ -420,35 +420,326 @@ def clear_results():
 
 
 def generate_csv_export(candidate_scores, job_title, location):
-    """Generate CSV data from candidate scores"""
+    """Generate enhanced CSV data from candidate scores with all details"""
     output = io.StringIO()
     writer = csv.writer(output)
 
-    # Header row
+    # Job details header
+    writer.writerow(['Job Title', job_title])
+    writer.writerow(['Location', location])
+    writer.writerow([])  # Empty row
+    
+    # Enhanced header row with component scores
     writer.writerow([
         'Rank', 'Name', 'Email', 'Phone', 'Fit Score',
-        'Certifications', 'Has Must-Have Certs', 'Location Match',
+        'Must-Have Certs Match', 'Bonus Certs Match', 'Required Skills Match Rate',
+        'Preferred Skills Match Rate', 'Experience Level Match', 'Job Title Match',
+        'Location Match', 'Certifications', 'Skills', 'Years Experience',
         'Rationale'
     ])
 
     # Sort candidates by score
     sorted_candidates = sorted(candidate_scores, key=lambda x: x.fit_score, reverse=True)
 
-    # Data rows
+    # Data rows with enhanced details
     for i, candidate in enumerate(sorted_candidates, 1):
+        cert_match = candidate.certification_match
+        skills_match = candidate.skills_match
+        exp_match = candidate.experience_match
+        
         writer.writerow([
             i,
             candidate.name,
             candidate.email,
             candidate.phone,
             f"{candidate.fit_score:.2f}",
-            '; '.join(candidate.certifications) if candidate.certifications else 'None',
-            'Yes' if candidate.certification_match.get('has_must_have', False) else 'No',
+            'Yes' if cert_match.get('has_must_have', False) else 'No',
+            'Yes' if cert_match.get('has_bonus', False) else 'No',
+            f"{skills_match.get('required_match_rate', 0.0):.2%}" if skills_match else 'N/A',
+            f"{skills_match.get('preferred_match_rate', 0.0):.2%}" if skills_match else 'N/A',
+            f"{exp_match.get('level_match', 0.0):.2%}" if exp_match else 'N/A',
             'Yes' if candidate.location_match else 'No',
-            candidate.rationale[:500] if candidate.rationale else ''
+            'Yes' if candidate.location_match else 'No',
+            '; '.join(candidate.certifications) if candidate.certifications else 'None',
+            '; '.join(skills_match.get('candidate_skills', [])) if skills_match else 'None',
+            exp_match.get('years', 0) if exp_match else 0,
+            candidate.rationale[:1000] if candidate.rationale else ''  # Longer rationale
         ])
 
     return output.getvalue()
+
+
+def _matches_date_filter(created_at_str: str, date_from, date_to) -> bool:
+    """Check if analysis date matches date filter range"""
+    try:
+        if created_at_str.endswith('Z'):
+            dt = datetime.fromisoformat(created_at_str.replace('Z', '+00:00'))
+        else:
+            dt = datetime.fromisoformat(created_at_str)
+        analysis_date = dt.date()
+        
+        if date_from and analysis_date < date_from:
+            return False
+        if date_to and analysis_date > date_to:
+            return False
+        return True
+    except (ValueError, AttributeError, TypeError):
+        return True  # Include if date parsing fails
+
+
+def _sort_analyses(analyses: List[Dict], sort_option: str) -> List[Dict]:
+    """Sort analyses based on selected option"""
+    if sort_option == "Date (Newest First)":
+        return sorted(analyses, key=lambda x: x.get('created_at', ''), reverse=True)
+    elif sort_option == "Date (Oldest First)":
+        return sorted(analyses, key=lambda x: x.get('created_at', ''), reverse=False)
+    elif sort_option == "Job Title (A-Z)":
+        return sorted(analyses, key=lambda x: x.get('title', '').lower())
+    elif sort_option == "Job Title (Z-A)":
+        return sorted(analyses, key=lambda x: x.get('title', '').lower(), reverse=True)
+    elif sort_option == "Candidates (Most First)":
+        return sorted(analyses, key=lambda x: x.get('num_candidates', 0), reverse=True)
+    elif sort_option == "Candidates (Least First)":
+        return sorted(analyses, key=lambda x: x.get('num_candidates', 0), reverse=False)
+    else:
+        return analyses
+
+
+def delete_analysis(report_id: str, user_id: str) -> bool:
+    """
+    Delete an analysis and its associated data.
+    Returns True if successful, False otherwise.
+    """
+    with get_db() as conn:
+        try:
+            cur = conn.cursor()
+            
+            # Verify ownership
+            cur.execute(
+                _prepare_query_wrapper(conn, "SELECT pdf_path FROM reports WHERE id = ? AND user_id = ?"),
+                (report_id, user_id)
+            )
+            row = cur.fetchone()
+            if not row:
+                return False  # Not found or not owned by user
+            
+            pdf_path = row[0]
+            
+            # Delete from database (cascade will handle related records)
+            cur.execute(
+                _prepare_query_wrapper(conn, "DELETE FROM reports WHERE id = ? AND user_id = ?"),
+                (report_id, user_id)
+            )
+            
+            # Optionally delete PDF file
+            if pdf_path and os.path.exists(pdf_path) and is_safe_path(pdf_path):
+                try:
+                    os.remove(pdf_path)
+                except Exception as e:
+                    logger.warning(f"Failed to delete PDF file {pdf_path}: {e}", exc_info=True)
+                    # Continue even if file deletion fails
+            
+            conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error deleting analysis {report_id}: {e}", exc_info=True)
+            conn.rollback()
+            return False
+
+
+def generate_excel_export(analysis_data: Dict, job_title: str, location: str) -> Optional[bytes]:
+    """Generate Excel export with multiple sheets"""
+    try:
+        try:
+            import openpyxl
+            from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+            from openpyxl.utils import get_column_letter
+        except ImportError:
+            # Try pandas as fallback
+            try:
+                import pandas as pd
+                use_pandas = True
+            except ImportError:
+                logger.warning("Neither openpyxl nor pandas available for Excel export")
+                return None
+        else:
+            use_pandas = False
+        
+        if use_pandas:
+            # Use pandas for Excel export
+            import pandas as pd
+            from io import BytesIO
+            
+            # Create Excel writer
+            output = BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                # Sheet 1: Job Summary
+                job_summary = pd.DataFrame({
+                    'Field': ['Job Title', 'Location', 'Total Candidates', 'Analysis Date'],
+                    'Value': [
+                        job_title,
+                        location,
+                        len(analysis_data.get('candidate_scores', [])),
+                        datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    ]
+                })
+                job_summary.to_excel(writer, sheet_name='Job Summary', index=False)
+                
+                # Sheet 2: Candidate Rankings
+                candidates_data = []
+                for i, candidate in enumerate(sorted(analysis_data.get('candidate_scores', []), 
+                                                     key=lambda x: x.fit_score, reverse=True), 1):
+                    candidates_data.append({
+                        'Rank': i,
+                        'Name': candidate.name,
+                        'Email': candidate.email,
+                        'Phone': candidate.phone,
+                        'Fit Score': candidate.fit_score,
+                        'Must-Have Certs': 'Yes' if candidate.certification_match.get('has_must_have') else 'No',
+                        'Bonus Certs': 'Yes' if candidate.certification_match.get('has_bonus') else 'No',
+                        'Required Skills Match': f"{candidate.skills_match.get('required_match_rate', 0.0):.2%}" if candidate.skills_match else 'N/A',
+                        'Preferred Skills Match': f"{candidate.skills_match.get('preferred_match_rate', 0.0):.2%}" if candidate.skills_match else 'N/A',
+                        'Experience Match': f"{candidate.experience_match.get('level_match', 0.0):.2%}" if candidate.experience_match else 'N/A',
+                        'Location Match': 'Yes' if candidate.location_match else 'No',
+                        'Certifications': '; '.join(candidate.certifications) if candidate.certifications else 'None',
+                        'Years Experience': candidate.experience_match.get('years', 0) if candidate.experience_match else 0,
+                        'Rationale': candidate.rationale[:500] if candidate.rationale else ''
+                    })
+                
+                if candidates_data:
+                    candidates_df = pd.DataFrame(candidates_data)
+                    candidates_df.to_excel(writer, sheet_name='Candidates', index=False)
+                
+                # Sheet 3: Component Scores Matrix
+                if analysis_data.get('candidate_scores'):
+                    scores_matrix = []
+                    for candidate in sorted(analysis_data['candidate_scores'], 
+                                          key=lambda x: x.fit_score, reverse=True):
+                        comp_scores = candidate.component_scores or {}
+                        row = {'Candidate': candidate.name, 'Fit Score': candidate.fit_score}
+                        row.update({
+                            f"{k.replace('_', ' ').title()}": v 
+                            for k, v in comp_scores.items()
+                        })
+                        scores_matrix.append(row)
+                    
+                    if scores_matrix:
+                        scores_df = pd.DataFrame(scores_matrix)
+                        scores_df.to_excel(writer, sheet_name='Component Scores', index=False)
+            
+            output.seek(0)
+            return output.read()
+        else:
+            # Use openpyxl directly for better formatting
+            from openpyxl import Workbook
+            from io import BytesIO
+            
+            wb = Workbook()
+            wb.remove(wb.active)  # Remove default sheet
+            
+            # Sheet 1: Job Summary
+            ws1 = wb.create_sheet("Job Summary")
+            header_fill = PatternFill(start_color="0066CC", end_color="0066CC", fill_type="solid")
+            header_font = Font(bold=True, color="FFFFFF")
+            
+            ws1['A1'] = 'Field'
+            ws1['B1'] = 'Value'
+            ws1['A1'].fill = header_fill
+            ws1['A1'].font = header_font
+            ws1['B1'].fill = header_fill
+            ws1['B1'].font = header_font
+            
+            ws1['A2'] = 'Job Title'
+            ws1['B2'] = job_title
+            ws1['A3'] = 'Location'
+            ws1['B3'] = location
+            ws1['A4'] = 'Total Candidates'
+            ws1['B4'] = len(analysis_data.get('candidate_scores', []))
+            ws1['A5'] = 'Analysis Date'
+            ws1['B5'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            
+            # Sheet 2: Candidates
+            ws2 = wb.create_sheet("Candidates")
+            headers = ['Rank', 'Name', 'Email', 'Phone', 'Fit Score', 'Must-Have Certs', 
+                      'Bonus Certs', 'Req Skills %', 'Pref Skills %', 'Exp Match %', 
+                      'Location Match', 'Certifications', 'Years Exp', 'Rationale']
+            
+            for col_idx, header in enumerate(headers, 1):
+                cell = ws2.cell(row=1, column=col_idx, value=header)
+                cell.fill = header_fill
+                cell.font = header_font
+            
+            sorted_candidates = sorted(analysis_data.get('candidate_scores', []), 
+                                     key=lambda x: x.fit_score, reverse=True)
+            for row_idx, candidate in enumerate(sorted_candidates, 2):
+                ws2.cell(row=row_idx, column=1, value=row_idx - 1)
+                ws2.cell(row=row_idx, column=2, value=candidate.name)
+                ws2.cell(row=row_idx, column=3, value=candidate.email)
+                ws2.cell(row=row_idx, column=4, value=candidate.phone)
+                ws2.cell(row=row_idx, column=5, value=round(candidate.fit_score, 2))
+                ws2.cell(row=row_idx, column=6, value='Yes' if candidate.certification_match.get('has_must_have') else 'No')
+                ws2.cell(row=row_idx, column=7, value='Yes' if candidate.certification_match.get('has_bonus') else 'No')
+                ws2.cell(row=row_idx, column=8, value=f"{candidate.skills_match.get('required_match_rate', 0.0):.2%}" if candidate.skills_match else 'N/A')
+                ws2.cell(row=row_idx, column=9, value=f"{candidate.skills_match.get('preferred_match_rate', 0.0):.2%}" if candidate.skills_match else 'N/A')
+                ws2.cell(row=row_idx, column=10, value=f"{candidate.experience_match.get('level_match', 0.0):.2%}" if candidate.experience_match else 'N/A')
+                ws2.cell(row=row_idx, column=11, value='Yes' if candidate.location_match else 'No')
+                ws2.cell(row=row_idx, column=12, value='; '.join(candidate.certifications) if candidate.certifications else 'None')
+                ws2.cell(row=row_idx, column=13, value=candidate.experience_match.get('years', 0) if candidate.experience_match else 0)
+                ws2.cell(row=row_idx, column=14, value=candidate.rationale[:500] if candidate.rationale else '')
+            
+            # Auto-adjust column widths
+            for ws in [ws1, ws2]:
+                for column in ws.columns:
+                    max_length = 0
+                    column_letter = get_column_letter(column[0].column)
+                    for cell in column:
+                        try:
+                            if len(str(cell.value)) > max_length:
+                                max_length = len(str(cell.value))
+                        except:
+                            pass
+                    adjusted_width = min(max_length + 2, 50)
+                    ws.column_dimensions[column_letter].width = adjusted_width
+            
+            # Save to bytes
+            output = BytesIO()
+            wb.save(output)
+            output.seek(0)
+            return output.read()
+            
+    except Exception as e:
+        logger.error(f"Error generating Excel export: {e}", exc_info=True)
+        return None
+
+
+def generate_json_export(analysis_data: Dict, job_title: str, location: str) -> bytes:
+    """Generate JSON export with full analysis data"""
+    export_data = {
+        'job_title': job_title,
+        'location': location,
+        'export_date': datetime.now().isoformat(),
+        'candidates': []
+    }
+    
+    for candidate in sorted(analysis_data.get('candidate_scores', []), 
+                           key=lambda x: x.fit_score, reverse=True):
+        export_data['candidates'].append({
+            'name': candidate.name,
+            'email': candidate.email,
+            'phone': candidate.phone,
+            'fit_score': candidate.fit_score,
+            'certifications': candidate.certifications,
+            'certification_match': candidate.certification_match,
+            'skills_match': candidate.skills_match,
+            'experience_match': candidate.experience_match,
+            'location_match': candidate.location_match,
+            'component_scores': candidate.component_scores,
+            'rationale': candidate.rationale,
+            'chain_of_thought': candidate.chain_of_thought
+        })
+    
+    json_str = json.dumps(export_data, indent=2, default=str)
+    return json_str.encode('utf-8')
 
 
 def _make_download_link(data_bytes: bytes, filename: str, mime: str) -> str:
@@ -471,7 +762,7 @@ def get_score_color(score):
 
 def display_analysis_history(user_id: str):
     """
-    Display list of user's previous analyses with view/download options.
+    Display list of user's previous analyses with search, filter, sort, and management options.
     """
     st.markdown('<div class="section-header">Previous Analyses</div>', unsafe_allow_html=True)
     
@@ -481,99 +772,513 @@ def display_analysis_history(user_id: str):
         st.info("You haven't run any analyses yet. Start a new analysis to see results here.")
         return
     
-    st.info(f"Found {len(analyses)} previous analysis(es)")
+    total_count = len(analyses)
     
-    # Display analyses in a table format
-    for idx, analysis in enumerate(analyses):
+    # Search and Filter Section
+    with st.expander("Search & Filter", expanded=False):
+        col_search, col_date1, col_date2 = st.columns([2, 1, 1])
+        
+        with col_search:
+            search_query = st.text_input(
+                "Search by job title",
+                value=st.session_state.get("analysis_search", ""),
+                key="analysis_search_input",
+                placeholder="Enter job title to search..."
+            )
+            st.session_state["analysis_search"] = search_query
+        
+        with col_date1:
+            date_from = st.date_input(
+                "From Date",
+                value=None,
+                key="filter_date_from"
+            )
+        
+        with col_date2:
+            date_to = st.date_input(
+                "To Date",
+                value=None,
+                key="filter_date_to"
+            )
+        
+        col_loc, col_cand1, col_cand2 = st.columns([2, 1, 1])
+        
+        with col_loc:
+            # Get unique locations
+            unique_locations = sorted(list(set([a['location'] for a in analyses if a.get('location')])))
+            location_filter = st.selectbox(
+                "Filter by Location",
+                options=["All"] + unique_locations,
+                key="filter_location"
+            )
+        
+        with col_cand1:
+            min_candidates = st.number_input(
+                "Min Candidates",
+                min_value=0,
+                max_value=1000,
+                value=0,
+                key="filter_min_candidates"
+            )
+        
+        with col_cand2:
+            max_candidates = st.number_input(
+                "Max Candidates",
+                min_value=0,
+                max_value=1000,
+                value=1000,
+                key="filter_max_candidates"
+            )
+        
+        col_clear, col_sort = st.columns([1, 2])
+        with col_clear:
+            if st.button("Clear Filters", key="clear_filters"):
+                st.session_state["analysis_search"] = ""
+                st.session_state["filter_date_from"] = None
+                st.session_state["filter_date_to"] = None
+                st.session_state["filter_location"] = "All"
+                st.session_state["filter_min_candidates"] = 0
+                st.session_state["filter_max_candidates"] = 1000
+                st.rerun()
+        
+        with col_sort:
+            sort_option = st.selectbox(
+                "Sort By",
+                options=[
+                    "Date (Newest First)",
+                    "Date (Oldest First)",
+                    "Job Title (A-Z)",
+                    "Job Title (Z-A)",
+                    "Candidates (Most First)",
+                    "Candidates (Least First)"
+                ],
+                key="analysis_sort"
+            )
+    
+    # Apply filters
+    filtered_analyses = analyses.copy()
+    
+    # Search filter
+    if search_query:
+        search_lower = search_query.lower()
+        filtered_analyses = [
+            a for a in filtered_analyses
+            if search_lower in a.get('title', '').lower()
+        ]
+    
+    # Date filter
+    if date_from or date_to:
+        filtered_analyses = [
+            a for a in filtered_analyses
+            if _matches_date_filter(a.get('created_at', ''), date_from, date_to)
+        ]
+    
+    # Location filter
+    if location_filter != "All":
+        filtered_analyses = [
+            a for a in filtered_analyses
+            if a.get('location') == location_filter
+        ]
+    
+    # Candidate count filter
+    filtered_analyses = [
+        a for a in filtered_analyses
+        if min_candidates <= a.get('num_candidates', 0) <= max_candidates
+    ]
+    
+    # Apply sorting
+    filtered_analyses = _sort_analyses(filtered_analyses, sort_option)
+    
+    # Display filtered count
+    if len(filtered_analyses) != total_count:
+        st.info(f"Showing {len(filtered_analyses)} of {total_count} analyses")
+    else:
+        st.info(f"Found {total_count} previous analysis(es)")
+    
+    if not filtered_analyses:
+        st.warning("No analyses match your search and filter criteria.")
+        return
+    
+    # Pagination
+    items_per_page = st.session_state.get("analyses_per_page", 10)
+    page_num = st.session_state.get("analysis_page", 0)
+    
+    col_page1, col_page2, col_page3 = st.columns([1, 2, 1])
+    with col_page2:
+        items_per_page = st.selectbox(
+            "Items per page",
+            options=[10, 20, 50, 100],
+            index=[10, 20, 50, 100].index(items_per_page) if items_per_page in [10, 20, 50, 100] else 0,
+            key="analyses_per_page_select"
+        )
+        st.session_state["analyses_per_page"] = items_per_page
+    
+    total_pages = (len(filtered_analyses) + items_per_page - 1) // items_per_page
+    start_idx = page_num * items_per_page
+    end_idx = min(start_idx + items_per_page, len(filtered_analyses))
+    paginated_analyses = filtered_analyses[start_idx:end_idx]
+    
+    # Page navigation
+    if total_pages > 1:
+        nav_col1, nav_col2, nav_col3, nav_col4, nav_col5 = st.columns([1, 1, 2, 1, 1])
+        with nav_col1:
+            if st.button("◀◀ First", key="page_first", disabled=(page_num == 0)):
+                st.session_state["analysis_page"] = 0
+                st.rerun()
+        with nav_col2:
+            if st.button("◀ Prev", key="page_prev", disabled=(page_num == 0)):
+                st.session_state["analysis_page"] = max(0, page_num - 1)
+                st.rerun()
+        with nav_col3:
+            st.markdown(f"<div style='text-align: center; padding-top: 0.5rem;'>Page {page_num + 1} of {total_pages}</div>", unsafe_allow_html=True)
+        with nav_col4:
+            if st.button("Next ▶", key="page_next", disabled=(page_num >= total_pages - 1)):
+                st.session_state["analysis_page"] = min(total_pages - 1, page_num + 1)
+                st.rerun()
+        with nav_col5:
+            if st.button("Last ▶▶", key="page_last", disabled=(page_num >= total_pages - 1)):
+                st.session_state["analysis_page"] = total_pages - 1
+                st.rerun()
+    
+    # Display analyses in card format
+    for idx, analysis in enumerate(paginated_analyses):
+        # Parse date for color coding
+        try:
+            created_at_str = analysis['created_at']
+            if created_at_str.endswith('Z'):
+                dt = datetime.fromisoformat(created_at_str.replace('Z', '+00:00'))
+            else:
+                dt = datetime.fromisoformat(created_at_str)
+            analysis_date = dt.date()
+            date_str = dt.strftime('%Y-%m-%d')
+            time_str = dt.strftime('%H:%M:%S')
+            days_ago = (datetime.now().date() - analysis_date).days
+        except (ValueError, AttributeError, TypeError):
+            date_str = analysis['created_at'][:10] if len(analysis['created_at']) >= 10 else 'Unknown'
+            time_str = analysis['created_at'][11:19] if len(analysis['created_at']) > 19 else ''
+            days_ago = 999
+        
+        # Card styling based on age
+        if days_ago <= 7:
+            border_color = "#00A651"  # Green for recent
+        elif days_ago <= 30:
+            border_color = "#0066CC"  # Blue for recent month
+        else:
+            border_color = "#CCCCCC"  # Gray for older
+        
+        # Card container
         with st.container():
-            col1, col2, col3, col4 = st.columns([3, 2, 1, 2])
+            st.markdown(
+                f"""
+                <div style="
+                    border: 2px solid {border_color};
+                    border-radius: 0.5rem;
+                    padding: 1rem;
+                    margin-bottom: 1rem;
+                    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                ">
+                """,
+                unsafe_allow_html=True
+            )
             
-            with col1:
-                st.markdown(f"**{analysis['title']}**")
+            # Card header with title and actions
+            col_header1, col_header2 = st.columns([3, 1])
+            with col_header1:
+                st.markdown(f"### {analysis['title']}")
                 st.caption(f"Location: {analysis['location']}")
-            
-            with col2:
-                # Improved date formatting with proper parsing
-                try:
-                    from datetime import datetime
-                    created_at_str = analysis['created_at']
-                    if created_at_str.endswith('Z'):
-                        dt = datetime.fromisoformat(created_at_str.replace('Z', '+00:00'))
-                    else:
-                        dt = datetime.fromisoformat(created_at_str)
-                    date_str = dt.strftime('%Y-%m-%d')
-                    time_str = dt.strftime('%H:%M:%S')
-                    st.caption(f"Date: {date_str}")
-                    st.caption(f"Time: {time_str}")
-                except (ValueError, AttributeError, TypeError):
-                    # Fallback to simple string slicing
-                    date_str = analysis['created_at'][:10] if len(analysis['created_at']) >= 10 else 'Unknown'
-                    time_str = analysis['created_at'][11:19] if len(analysis['created_at']) > 19 else ''
-                    st.caption(f"Date: {date_str}")
-                    if time_str:
-                        st.caption(f"Time: {time_str}")
-            
-            with col3:
+            with col_header2:
+                # Quick stats
                 st.metric("Candidates", analysis['num_candidates'])
             
-            with col4:
-                col_view, col_pdf, col_csv = st.columns(3)
-                
-                with col_view:
-                    if st.button("View", key=f"view_{analysis['report_id']}"):
-                        st.session_state["view_report_id"] = analysis['report_id']
-                        st.rerun()
-                
-                with col_pdf:
-                    # Load PDF data for download (with validation)
-                    pdf_data = None
-                    if analysis['pdf_path'] and os.path.exists(analysis['pdf_path']):
-                        try:
-                            # Validate path safety
-                            if not is_safe_path(analysis['pdf_path']):
-                                st.caption("PDF unavailable (invalid path)")
-                            else:
-                                # Check file size
-                                file_size = os.path.getsize(analysis['pdf_path'])
-                                if file_size > MAX_PDF_SIZE:
-                                    st.caption(f"PDF unavailable (file too large: {file_size / (1024*1024):.1f}MB)")
-                                else:
-                                    with open(analysis['pdf_path'], 'rb') as f:
-                                        pdf_data = f.read()
-                                    pdf_link = _make_download_link(
-                                        pdf_data,
-                                        os.path.basename(analysis['pdf_path']),
-                                        "application/pdf"
-                                    )
-                                    if pdf_link:
-                                        st.markdown(pdf_link, unsafe_allow_html=True)
-                        except Exception as e:
-                            logger.warning(f"Failed to load PDF from {analysis['pdf_path']}: {e}", exc_info=True)
-                            st.caption("PDF unavailable")
-                    else:
-                        st.caption("PDF unavailable")
-                
-                with col_csv:
-                    # Generate CSV from stored data
+            # Card body with details
+            col_body1, col_body2 = st.columns([2, 1])
+            with col_body1:
+                st.markdown(f"**Date:** {date_str} at {time_str}")
+                if days_ago == 0:
+                    st.caption("Created today")
+                elif days_ago <= 7:
+                    st.caption(f"Created {days_ago} day(s) ago")
+                elif days_ago <= 30:
+                    st.caption(f"Created {days_ago} day(s) ago")
+                else:
+                    st.caption(f"Created {days_ago} day(s) ago")
+            
+            with col_body2:
+                # Preview expander
+                with st.expander("Quick Preview", expanded=False):
                     analysis_data = load_analysis_data(analysis['report_id'], user_id)
                     if analysis_data and analysis_data.get('candidate_scores'):
-                        csv_data = generate_csv_export(
-                            analysis_data['candidate_scores'],
+                        scores = [cs.fit_score for cs in analysis_data['candidate_scores']]
+                        if scores:
+                            avg_score = sum(scores) / len(scores)
+                            max_score = max(scores)
+                            min_score = min(scores)
+                            st.metric("Avg Score", f"{avg_score:.2f}")
+                            st.caption(f"Range: {min_score:.2f} - {max_score:.2f}")
+                            # Top 3 candidates
+                            top_3 = sorted(analysis_data['candidate_scores'], key=lambda x: x.fit_score, reverse=True)[:3]
+                            st.markdown("**Top 3:**")
+                            for i, cand in enumerate(top_3, 1):
+                                st.caption(f"{i}. {cand.name}: {cand.fit_score:.2f}/10")
+                    else:
+                        st.caption("Preview unavailable")
+            
+            # Action buttons
+            col_actions1, col_actions2, col_actions3, col_actions4, col_actions5 = st.columns([1, 1, 1, 1, 1])
+            
+            with col_actions1:
+                if st.button("View", key=f"view_{analysis['report_id']}", use_container_width=True):
+                    st.session_state["view_report_id"] = analysis['report_id']
+                    st.rerun()
+            
+            with col_actions2:
+                # PDF download
+                pdf_data = None
+                if analysis['pdf_path'] and os.path.exists(analysis['pdf_path']):
+                    try:
+                        if is_safe_path(analysis['pdf_path']):
+                            file_size = os.path.getsize(analysis['pdf_path'])
+                            if file_size <= MAX_PDF_SIZE:
+                                with open(analysis['pdf_path'], 'rb') as f:
+                                    pdf_data = f.read()
+                    except Exception:
+                        pass
+                
+                if pdf_data:
+                    pdf_link = _make_download_link(
+                        pdf_data,
+                        os.path.basename(analysis['pdf_path']),
+                        "application/pdf"
+                    )
+                    if pdf_link:
+                        st.markdown(pdf_link, unsafe_allow_html=True)
+                else:
+                    st.caption("PDF N/A")
+            
+            with col_actions3:
+                # CSV download
+                analysis_data = load_analysis_data(analysis['report_id'], user_id)
+                if analysis_data and analysis_data.get('candidate_scores'):
+                    csv_data = generate_csv_export(
+                        analysis_data['candidate_scores'],
+                        analysis['title'],
+                        analysis['location']
+                    )
+                    csv_link = _make_download_link(
+                        csv_data.encode("utf-8"),
+                        f"candidates_{analysis['created_at'][:10].replace('-', '')}.csv",
+                        "text/csv"
+                    )
+                    if csv_link:
+                        st.markdown(csv_link, unsafe_allow_html=True)
+                    else:
+                        st.caption("CSV N/A")
+            
+            with col_actions4:
+                # Excel and JSON downloads
+                analysis_data = load_analysis_data(analysis['report_id'], user_id)
+                if analysis_data and analysis_data.get('candidate_scores'):
+                    col_excel, col_json = st.columns(2)
+                    with col_excel:
+                        excel_data = generate_excel_export(
+                            analysis_data,
                             analysis['title'],
                             analysis['location']
                         )
-                        csv_link = _make_download_link(
-                            csv_data.encode("utf-8"),
-                            f"candidates_{analysis['created_at'][:10].replace('-', '')}.csv",
-                            "text/csv"
+                        if excel_data:
+                            excel_link = _make_download_link(
+                                excel_data,
+                                f"analysis_{analysis['created_at'][:10].replace('-', '')}.xlsx",
+                                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                            )
+                            if excel_link:
+                                st.markdown(excel_link, unsafe_allow_html=True)
+                        else:
+                            st.caption("Excel N/A")
+                    with col_json:
+                        json_data = generate_json_export(
+                            analysis_data,
+                            analysis['title'],
+                            analysis['location']
                         )
-                        if csv_link:
-                            st.markdown(csv_link, unsafe_allow_html=True)
-                    else:
-                        st.caption("CSV unavailable")
+                        json_link = _make_download_link(
+                            json_data,
+                            f"analysis_{analysis['created_at'][:10].replace('-', '')}.json",
+                            "application/json"
+                        )
+                        if json_link:
+                            st.markdown(json_link, unsafe_allow_html=True)
+                else:
+                    st.caption("Export N/A")
             
-            if idx < len(analyses) - 1:
-                st.markdown("---")
+            with col_actions5:
+                # Delete button
+                delete_key = f"delete_{analysis['report_id']}"
+                if delete_key not in st.session_state:
+                    st.session_state[delete_key] = False
+                
+                if st.button("Delete", key=f"del_btn_{analysis['report_id']}", use_container_width=True, type="secondary"):
+                    st.session_state[delete_key] = True
+                    st.rerun()
+                
+                if st.session_state.get(delete_key):
+                    st.warning(f"Delete '{analysis['title']}'?")
+                    col_confirm1, col_confirm2 = st.columns(2)
+                    with col_confirm1:
+                        if st.button("Confirm", key=f"confirm_del_{analysis['report_id']}"):
+                            if delete_analysis(analysis['report_id'], user_id):
+                                st.success("Analysis deleted successfully!")
+                                st.session_state.pop(delete_key, None)
+                                # Reset pagination if needed
+                                if page_num > 0 and len(filtered_analyses) <= page_num * items_per_page:
+                                    st.session_state["analysis_page"] = max(0, page_num - 1)
+                                st.rerun()
+                            else:
+                                st.error("Failed to delete analysis.")
+                                st.session_state.pop(delete_key, None)
+                    with col_confirm2:
+                        if st.button("Cancel", key=f"cancel_del_{analysis['report_id']}"):
+                            st.session_state.pop(delete_key, None)
+                            st.rerun()
+            
+            st.markdown("</div>", unsafe_allow_html=True)
+            
+            if idx < len(paginated_analyses) - 1:
+                st.markdown("<br>", unsafe_allow_html=True)
+
+
+def display_analysis_analytics(user_id: str):
+    """Display analytics dashboard for user's analyses"""
+    st.markdown('<div class="section-header">Analysis Analytics</div>', unsafe_allow_html=True)
+    
+    analyses = load_user_analyses(user_id)
+    
+    if not analyses:
+        st.info("No analyses available for analytics. Run some analyses first!")
+        return
+    
+    # Calculate statistics
+    total_analyses = len(analyses)
+    total_candidates = sum(a.get('num_candidates', 0) for a in analyses)
+    avg_candidates = total_candidates / total_analyses if total_analyses > 0 else 0
+    
+    # Date range
+    dates = []
+    for a in analyses:
+        try:
+            created_at_str = a.get('created_at', '')
+            if created_at_str.endswith('Z'):
+                dt = datetime.fromisoformat(created_at_str.replace('Z', '+00:00'))
+            else:
+                dt = datetime.fromisoformat(created_at_str)
+            dates.append(dt.date())
+        except:
+            pass
+    
+    first_date = min(dates) if dates else None
+    last_date = max(dates) if dates else None
+    
+    # Most common job title
+    job_titles = [a.get('title', '') for a in analyses if a.get('title')]
+    most_common_title = max(set(job_titles), key=job_titles.count) if job_titles else 'N/A'
+    
+    # Most common location
+    locations = [a.get('location', '') for a in analyses if a.get('location')]
+    most_common_location = max(set(locations), key=locations.count) if locations else 'N/A'
+    
+    # Display key metrics
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Total Analyses", total_analyses)
+    with col2:
+        st.metric("Total Candidates", total_candidates)
+    with col3:
+        st.metric("Avg Candidates/Analysis", f"{avg_candidates:.1f}")
+    with col4:
+        st.metric("Date Range", f"{first_date} to {last_date}" if first_date and last_date else "N/A")
+    
+    st.markdown("---")
+    
+    # Charts section
+    col_chart1, col_chart2 = st.columns(2)
+    
+    with col_chart1:
+        st.subheader("Analyses Over Time")
+        # Group by month
+        monthly_counts = {}
+        for a in analyses:
+            try:
+                created_at_str = a.get('created_at', '')
+                if created_at_str.endswith('Z'):
+                    dt = datetime.fromisoformat(created_at_str.replace('Z', '+00:00'))
+                else:
+                    dt = datetime.fromisoformat(created_at_str)
+                month_key = dt.strftime('%Y-%m')
+                monthly_counts[month_key] = monthly_counts.get(month_key, 0) + 1
+            except:
+                pass
+        
+        if monthly_counts:
+            import pandas as pd
+            chart_data = pd.DataFrame({
+                'Month': list(monthly_counts.keys()),
+                'Count': list(monthly_counts.values())
+            }).sort_values('Month')
+            st.bar_chart(chart_data.set_index('Month'))
+    
+    with col_chart2:
+        st.subheader("Job Titles Distribution")
+        # Count job titles
+        title_counts = {}
+        for title in job_titles:
+            title_counts[title] = title_counts.get(title, 0) + 1
+        
+        if title_counts:
+            # Show top 10
+            top_titles = sorted(title_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+            chart_data = pd.DataFrame({
+                'Job Title': [t[0][:30] for t in top_titles],  # Truncate long titles
+                'Count': [t[1] for t in top_titles]
+            })
+            st.bar_chart(chart_data.set_index('Job Title'))
+    
+    # Additional statistics
+    st.markdown("---")
+    st.subheader("Summary Statistics")
+    
+    col_stat1, col_stat2 = st.columns(2)
+    with col_stat1:
+        st.markdown(f"**Most Analyzed Job Title:** {most_common_title}")
+        st.markdown(f"**Most Common Location:** {most_common_location}")
+    with col_stat2:
+        st.markdown(f"**First Analysis:** {first_date}" if first_date else "**First Analysis:** N/A")
+        st.markdown(f"**Latest Analysis:** {last_date}" if last_date else "**Latest Analysis:** N/A")
+    
+    # Candidate count trend
+    if len(analyses) > 1:
+        st.markdown("---")
+        st.subheader("Candidate Count Trend")
+        candidate_trend = []
+        for a in sorted(analyses, key=lambda x: x.get('created_at', '')):
+            try:
+                created_at_str = a.get('created_at', '')
+                if created_at_str.endswith('Z'):
+                    dt = datetime.fromisoformat(created_at_str.replace('Z', '+00:00'))
+                else:
+                    dt = datetime.fromisoformat(created_at_str)
+                candidate_trend.append({
+                    'Date': dt.strftime('%Y-%m-%d'),
+                    'Candidates': a.get('num_candidates', 0)
+                })
+            except:
+                pass
+        
+        if candidate_trend:
+            trend_df = pd.DataFrame(candidate_trend)
+            trend_df['Date'] = pd.to_datetime(trend_df['Date'])
+            trend_df = trend_df.sort_values('Date')
+            st.line_chart(trend_df.set_index('Date'))
 
 
 def display_results(results):
@@ -1051,11 +1756,15 @@ def main():
     # Main page tabs: New Analysis and Previous Analyses
     user_id = st.session_state.get("user_id")
     if user_id:
-        tab_new, tab_history = st.tabs(["New Analysis", "Previous Analyses"])
+        tab_new, tab_history, tab_analytics = st.tabs(["New Analysis", "Previous Analyses", "Analytics"])
         
         with tab_history:
             display_analysis_history(user_id)
             # Don't show new analysis form in history tab
+            st.stop()
+        
+        with tab_analytics:
+            display_analysis_analytics(user_id)
             st.stop()
         
         # Continue with new analysis form in tab_new (default)
