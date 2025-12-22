@@ -214,20 +214,24 @@ CRITICAL RULES FOR JOB TITLE EXTRACTION - READ CAREFULLY:
 
 9. **Certifications**: Extract certification names only (e.g., "OSHA 30", "CDL")
 
-10. **Skills** - CRITICAL EXTRACTION RULES:
-   - Extract ONLY professional/technical skills explicitly mentioned as requirements
+10. **Skills** - CRITICAL EXTRACTION RULES (MANDATORY):
+   - Extract ONLY professional/technical skills EXPLICITLY mentioned as requirements
    - Skills are typically found in "Requirements", "Qualifications", "Skills Required" sections
+   - DO NOT infer, guess, or extract skills that are not explicitly stated
    - DO NOT extract:
      * Single letters or very short words (e.g., "ai", "go", "aws" are NOT skills unless clearly stated as requirements)
      * Generic words from the job description
      * Industry names (e.g., "medical", "solar", "safety" alone are NOT skills)
      * Random words from sentences
+     * Skills inferred from context - ONLY extract what is explicitly listed
    - Valid skills examples:
      * Technical: "Python programming", "Project Management", "Data Analysis", "Welding"
      * Professional: "Safety Management", "Risk Assessment", "Team Leadership"
      * Certifications as skills: "OSHA Compliance", "First Aid", "Forklift Operation"
-   - If NO specific skills are mentioned in requirements, return empty array []
+   - **CRITICAL**: If NO specific skills are mentioned in requirements, you MUST return empty array []
+   - **CRITICAL**: DO NOT create fallback skills - if not explicitly stated, return []
    - Separate into required vs preferred based on section headings
+   - If a section says "not specified" or has no skills listed, return [] for that section
 
 11. **Experience**: Look for years or level (Junior/Mid/Senior)
 

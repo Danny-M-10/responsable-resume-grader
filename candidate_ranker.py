@@ -8,6 +8,7 @@ import os
 import re
 import hashlib
 import uuid
+import asyncio
 from dataclasses import asdict
 from datetime import datetime
 from typing import List, Dict, Any, Tuple
@@ -110,7 +111,7 @@ class CandidateRankerApp:
         if progress_callback:
             progress_callback("researching", 0.20, 0, 0)
 
-        # Step 3: Parse all resumes (20-40%)
+        # Step 3: Parse all resumes (20-40%) - now parallelized
         print(f"STEP 3: Parsing {len(resume_files)} resume(s)...")
         # Merge external cache if provided (e.g., Streamlit session)
         if resume_cache is not None:
@@ -119,7 +120,7 @@ class CandidateRankerApp:
 
         candidates = self._parse_resumes(resume_files, progress_callback)
 
-        # Step 4: Score each candidate (40-70%)
+        # Step 4: Score each candidate (40-70%) - now parallelized
         print(f"STEP 4: Scoring {len(candidates)} candidate(s)...")
         self._score_candidates(candidates, progress_callback)
 
@@ -178,14 +179,20 @@ class CandidateRankerApp:
             full_description=job_description
         )
         
-        # Use AI-extracted skills if provided, otherwise extract from description
-        # Apply post-processing validation to ensure skills are clean
+        # Use AI-extracted skills if provided, otherwise set to empty arrays
+        # NO FALLBACKS - skills must come from AI extraction or be empty
         if required_skills:
             job.required_skills = self._validate_and_filter_skills(required_skills)
+        else:
+            job.required_skills = []  # Empty array if not provided by AI
+        
         if preferred_skills:
             job.preferred_skills = self._validate_and_filter_skills(preferred_skills)
+        else:
+            job.preferred_skills = []  # Empty array if not provided by AI
 
         # Extract structured information from description (for other fields)
+        # Note: This does NOT populate required_skills or preferred_skills anymore
         self._extract_job_requirements(job)
 
         return job
@@ -274,41 +281,9 @@ class CandidateRankerApp:
             if skill in description
         ]
 
-        # Extract required vs preferred skills
-        # Look for sections with "required" or "preferred"
-        required_section = re.search(
-            r'(?:required|must have|essential)[\s\S]*?(?:preferred|nice to have|bonus|$)',
-            description,
-            re.IGNORECASE
-        )
-
-        preferred_section = re.search(
-            r'(?:preferred|nice to have|bonus)[\s\S]*?$',
-            description,
-            re.IGNORECASE
-        )
-
-        if required_section:
-            req_text = required_section.group(0)
-            job.required_skills = [
-                tech for tech in job.technical_stack
-                if tech.lower() in req_text.lower()
-            ]
-        else:
-            # Default: most mentioned skills are required
-            job.required_skills = job.technical_stack[:len(job.technical_stack)//2]
-
-        if preferred_section:
-            pref_text = preferred_section.group(0)
-            job.preferred_skills = [
-                tech for tech in job.technical_stack
-                if tech.lower() in pref_text.lower() and tech not in job.required_skills
-            ]
-        else:
-            job.preferred_skills = [
-                tech for tech in job.technical_stack
-                if tech not in job.required_skills
-            ]
+        # NOTE: Skills extraction removed - required_skills and preferred_skills
+        # are now ONLY populated by AI extraction in _parse_job_details()
+        # No fallback to technical_stack - if AI doesn't extract, they remain empty arrays
 
         # Extract industry context
         industry_keywords = {
@@ -342,96 +317,270 @@ class CandidateRankerApp:
         print(f"  Found {len(self.job_details.equivalent_titles)} equivalent titles")
         print(f"  Mapped {len(self.job_details.skill_synonyms)} skill synonyms")
 
-    def _expand_certification_equivalents(self):
-        """Expand certifications that mention 'or equivalent' using AI"""
+    async def _expand_certification_equivalents_async(self):
+        """Expand certifications that mention 'or equivalent' using AI in parallel"""
         # AI certification researcher is always available (required)
         
         job_context = self.job_details.full_description
         
-        for cert in self.job_details.certifications:
-            cert_name = cert.name
-            
-            # Check if certification mentions "or equivalent"
-            if "equivalent" in cert_name.lower():
-                equivalents = self.cert_researcher.find_equivalents(cert_name, job_context)
-                if equivalents:
-                    print(f"  Found {len(equivalents)} equivalent(s) for {cert_name}")
-                    # Store equivalents in job_details for matching
-                    self.job_details.certification_equivalents[cert_name] = equivalents
-                else:
-                    print(f"  No equivalents found for {cert_name}")
-
-    def _parse_resumes(self, resume_files: List[str], progress_callback=None) -> List[Dict[str, Any]]:
-        """Parse all resume files with simple cache by file hash"""
-        candidates = []
-        total = len(resume_files)
-
-        for i, resume_file in enumerate(resume_files, 1):
-            print(f"  Parsing resume {i}/{total}: {Path(resume_file).name}")
-            if progress_callback:
-                # Progress from 20% to 40% (20% range for parsing)
-                progress = 0.20 + ((i - 1) / total * 0.20)
-                progress_callback("parsing", progress, i, total)
-
-            # Compute hash of file contents to reuse parsed output
+        # Find all certs that need research
+        certs_to_research = [
+            cert for cert in self.job_details.certifications
+            if "equivalent" in cert.name.lower()
+        ]
+        
+        if not certs_to_research:
+            return
+        
+        async def research_cert_equivalent(cert):
+            """Research equivalent for a single certification"""
             try:
-                with open(resume_file, "rb") as f:
-                    file_bytes = f.read()
-                file_hash = hashlib.sha256(file_bytes).hexdigest()
+                cert_name = cert.name
+                # Run in thread pool since find_equivalents may be blocking
+                loop = asyncio.get_event_loop()
+                equivalents = await loop.run_in_executor(
+                    None,
+                    self.cert_researcher.find_equivalents,
+                    cert_name,
+                    job_context
+                )
+                return cert_name, equivalents
             except Exception as e:
-                print(f"    WARNING: Failed to read {resume_file}: {e}")
-                file_hash = None
-
-            cached_candidate = self.resume_cache.get(file_hash) if file_hash else None
-
-            if cached_candidate:
-                print("    Using cached parse for this resume")
-                candidate_data = cached_candidate
+                print(f"  ERROR researching equivalents for {cert.name}: {e}")
+                return cert.name, []
+        
+        # Research all certs in parallel
+        tasks = [research_cert_equivalent(cert) for cert in certs_to_research]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Process results
+        for result in results:
+            if isinstance(result, Exception):
+                print(f"  ERROR: Exception during cert research: {result}")
+                continue
+            cert_name, equivalents = result
+            if equivalents:
+                print(f"  Found {len(equivalents)} equivalent(s) for {cert_name}")
+                # Store equivalents in job_details for matching
+                self.job_details.certification_equivalents[cert_name] = equivalents
             else:
+                print(f"  No equivalents found for {cert_name}")
+    
+    def _expand_certification_equivalents(self):
+        """Expand certifications that mention 'or equivalent' using AI (sync wrapper)"""
+        # Run async version - handle existing event loop (e.g., Streamlit)
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # Event loop is already running (e.g., in Streamlit), use nest_asyncio
+                import nest_asyncio
+                nest_asyncio.apply()
+                return loop.run_until_complete(self._expand_certification_equivalents_async())
+            else:
+                return loop.run_until_complete(self._expand_certification_equivalents_async())
+        except RuntimeError:
+            # No event loop, create new one
+            return asyncio.run(self._expand_certification_equivalents_async())
+
+    async def _parse_resumes_async(self, resume_files: List[str], progress_callback=None) -> List[Dict[str, Any]]:
+        """Parse all resume files in parallel with simple cache by file hash"""
+        total = len(resume_files)
+        if total == 0:
+            return []
+        
+        async def parse_single_resume(resume_file, index):
+            """Parse a single resume file"""
+            try:
+                print(f"  Parsing resume {index}/{total}: {Path(resume_file).name}")
+                if progress_callback:
+                    # Progress from 20% to 40% (20% range for parsing)
+                    progress = 0.20 + ((index - 1) / total * 0.20)
+                    progress_callback("parsing", progress, index, total)
+                
+                # Compute hash of file contents to reuse parsed output
+                file_hash = None
                 try:
-                    candidate_data = self.resume_parser.parse(resume_file)
-                    # Store in cache if hash available
-                    if file_hash:
-                        self.resume_cache[file_hash] = candidate_data
+                    # Use asyncio to read file in thread pool (non-blocking)
+                    loop = asyncio.get_event_loop()
+                    def read_file():
+                        with open(resume_file, "rb") as f:
+                            return f.read()
+                    file_bytes = await loop.run_in_executor(None, read_file)
+                    file_hash = hashlib.sha256(file_bytes).hexdigest()
                 except Exception as e:
-                    print(f"    WARNING: Failed to parse {resume_file}: {e}")
-                    continue
-
-            candidates.append(candidate_data)
-
-            if progress_callback:
-                # Update progress after each resume
-                progress = 0.20 + (i / total * 0.20)
-                progress_callback("parsing", progress, i, total)
-
+                    print(f"    WARNING: Failed to read {resume_file}: {e}")
+                    file_hash = None
+                
+                # Check cache first
+                cached_candidate = self.resume_cache.get(file_hash) if file_hash else None
+                
+                if cached_candidate:
+                    print("    Using cached parse for this resume")
+                    candidate_data = cached_candidate
+                else:
+                    try:
+                        # Run parsing in thread pool since it's I/O bound
+                        loop = asyncio.get_event_loop()
+                        candidate_data = await loop.run_in_executor(
+                            None, 
+                            self.resume_parser.parse, 
+                            resume_file
+                        )
+                        # Store in cache if hash available
+                        if file_hash:
+                            self.resume_cache[file_hash] = candidate_data
+                    except Exception as e:
+                        print(f"    WARNING: Failed to parse {resume_file}: {e}")
+                        return None
+                
+                if progress_callback:
+                    # Update progress after each resume
+                    progress = 0.20 + (index / total * 0.20)
+                    progress_callback("parsing", progress, index, total)
+                
+                return candidate_data
+            except Exception as e:
+                print(f"    ERROR parsing resume {index} ({Path(resume_file).name}): {e}")
+                return None
+        
+        # Create tasks for all resumes
+        tasks = [
+            parse_single_resume(resume_file, i)
+            for i, resume_file in enumerate(resume_files, 1)
+        ]
+        
+        # Execute all parsing tasks in parallel
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Filter out None results and exceptions
+        candidates = []
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                print(f"  ERROR: Exception during parsing resume {i+1}: {result}")
+                continue
+            if result is not None:
+                candidates.append(result)
+        
         print(f"  Successfully parsed {len(candidates)} resume(s)")
         return candidates
+    
+    def _parse_resumes(self, resume_files: List[str], progress_callback=None) -> List[Dict[str, Any]]:
+        """Parse all resume files (sync wrapper for backward compatibility)"""
+        # Run async version - handle existing event loop (e.g., Streamlit)
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # Event loop is already running (e.g., in Streamlit), use create_task
+                import nest_asyncio
+                nest_asyncio.apply()
+                return loop.run_until_complete(self._parse_resumes_async(resume_files, progress_callback))
+            else:
+                return loop.run_until_complete(self._parse_resumes_async(resume_files, progress_callback))
+        except RuntimeError:
+            # No event loop, create new one
+            return asyncio.run(self._parse_resumes_async(resume_files, progress_callback))
 
-    def _score_candidates(self, candidates: List[Dict[str, Any]], progress_callback=None):
-        """Score each candidate with chain-of-thought reasoning"""
-        self.candidate_scores = []
+    async def _score_candidates_async(self, candidates: List[Dict[str, Any]], progress_callback=None):
+        """Score all candidates in parallel using async"""
         total = len(candidates)
-
-        for i, candidate in enumerate(candidates, 1):
-            print(f"  Scoring candidate {i}/{total}: {candidate.get('name', 'Unknown')}")
-            if progress_callback:
-                # Progress from 40% to 70% (30% range for scoring)
-                progress = 0.40 + ((i - 1) / total * 0.30)
-                progress_callback("scoring", progress, i, total)
-
-            score_result = self.scoring_engine.score_candidate(
-                candidate=candidate,
-                job_details=self.job_details
-            )
-
-            self.candidate_scores.append(score_result)
-            if progress_callback:
-                # Update progress after each candidate
-                progress = 0.40 + (i / total * 0.30)
-                progress_callback("scoring", progress, i, total)
+        self.candidate_scores = []
+        
+        if total == 0:
+            return
+        
+        # Create semaphore to limit concurrent API calls (max 10)
+        semaphore = asyncio.Semaphore(10)
+        
+        async def score_with_semaphore(candidate, index):
+            """Score a single candidate with semaphore for rate limiting"""
+            async with semaphore:
+                try:
+                    print(f"  Scoring candidate {index}/{total}: {candidate.get('name', 'Unknown')}")
+                    if progress_callback:
+                        # Progress from 40% to 70% (30% range for scoring)
+                        progress = 0.40 + ((index - 1) / total * 0.30)
+                        progress_callback("scoring", progress, index, total)
+                    
+                    score_result = await self.scoring_engine.score_candidate_async(
+                        candidate=candidate,
+                        job_details=self.job_details
+                    )
+                    
+                    if progress_callback:
+                        # Update progress after each candidate
+                        progress = 0.40 + (index / total * 0.30)
+                        progress_callback("scoring", progress, index, total)
+                    
+                    return score_result
+                except Exception as e:
+                    print(f"  ERROR scoring candidate {index} ({candidate.get('name', 'Unknown')}): {e}")
+                    # Return a default low score for failed candidates
+                    from models import CandidateScore
+                    return CandidateScore(
+                        name=candidate.get('name', 'Unknown'),
+                        phone=candidate.get('phone', ''),
+                        email=candidate.get('email', ''),
+                        certifications=candidate.get('certifications', []),
+                        fit_score=1.0,
+                        chain_of_thought=f"Error during scoring: {str(e)}",
+                        rationale=f"Scoring failed: {str(e)}",
+                        experience_match={'level_match': 0.0, 'titles': [], 'years': 0},
+                        certification_match={'has_must_have': False, 'has_bonus': False, 'candidate_certs': []},
+                        skills_match={'required_match_rate': 0.0, 'preferred_match_rate': 0.0, 'candidate_skills': []},
+                        location_match=False,
+                        component_scores={}
+                    )
+        
+        # Create tasks for all candidates
+        tasks = [
+            score_with_semaphore(candidate, i) 
+            for i, candidate in enumerate(candidates, 1)
+        ]
+        
+        # Execute all scoring tasks in parallel
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Process results and handle any exceptions
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                print(f"  ERROR: Exception during scoring candidate {i+1}: {result}")
+                # Create a default low score for exceptions
+                from models import CandidateScore
+                candidate = candidates[i]
+                result = CandidateScore(
+                    name=candidate.get('name', 'Unknown'),
+                    phone=candidate.get('phone', ''),
+                    email=candidate.get('email', ''),
+                    certifications=candidate.get('certifications', []),
+                    fit_score=1.0,
+                    chain_of_thought=f"Exception during scoring: {str(result)}",
+                    rationale=f"Scoring failed: {str(result)}",
+                    experience_match={'level_match': 0.0, 'titles': [], 'years': 0},
+                    certification_match={'has_must_have': False, 'has_bonus': False, 'candidate_certs': []},
+                    skills_match={'required_match_rate': 0.0, 'preferred_match_rate': 0.0, 'candidate_skills': []},
+                    location_match=False,
+                    component_scores={}
+                )
+            self.candidate_scores.append(result)
         
         # Apply score calibration after all candidates are scored
         self._calibrate_scores()
+    
+    def _score_candidates(self, candidates: List[Dict[str, Any]], progress_callback=None):
+        """Score all candidates (sync wrapper for backward compatibility)"""
+        # Run async version - handle existing event loop (e.g., Streamlit)
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # Event loop is already running (e.g., in Streamlit), use nest_asyncio
+                import nest_asyncio
+                nest_asyncio.apply()
+                return loop.run_until_complete(self._score_candidates_async(candidates, progress_callback))
+            else:
+                return loop.run_until_complete(self._score_candidates_async(candidates, progress_callback))
+        except RuntimeError:
+            # No event loop, create new one
+            return asyncio.run(self._score_candidates_async(candidates, progress_callback))
 
     def _calibrate_scores(self):
         """

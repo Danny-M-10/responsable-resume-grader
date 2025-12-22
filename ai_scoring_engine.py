@@ -4,8 +4,9 @@ Uses OpenAI GPT-4 Turbo for intelligent candidate evaluation
 """
 
 import os
+import asyncio
 from typing import Dict, Any, List, Tuple
-from openai import OpenAI
+from openai import OpenAI, AsyncOpenAI
 from models import JobDetails, CandidateScore
 from config import OpenAIConfig
 
@@ -30,6 +31,7 @@ class AIScoringEngine:
             )
 
         self.client = OpenAI(api_key=self.api_key)
+        self.async_client = AsyncOpenAI(api_key=self.api_key)
         self.model = OpenAIConfig.get_model()
 
     def score_candidate(self, candidate: Dict[str, Any],
@@ -151,6 +153,123 @@ class AIScoringEngine:
             component_scores=component_scores,  # Store component scores
             calibration_applied=False,  # Will be set during calibration phase
             calibration_factor=1.0
+        )
+    
+    async def score_candidate_async(self, candidate: Dict[str, Any],
+                                   job_details: JobDetails) -> CandidateScore:
+        """
+        Async version of score_candidate for parallel processing
+        
+        Args:
+            candidate: Parsed candidate data
+            job_details: Structured job requirements
+            
+        Returns:
+            CandidateScore with AI-generated fit score and detailed reasoning
+        """
+        # Build the evaluation prompt (same as sync version)
+        prompt = self._build_evaluation_prompt(candidate, job_details)
+        
+        # Call OpenAI API asynchronously
+        response = await self.async_client.chat.completions.create(
+            model=self.model,
+            max_tokens=4000,
+            temperature=0.0,  # Zero temperature for deterministic, consistent evaluations
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ]
+        )
+        
+        # Extract response
+        if not response.choices or len(response.choices) == 0:
+            raise ValueError("OpenAI response was empty")
+        evaluation_text = response.choices[0].message.content
+        
+        # Parse the AI response to extract score, reasoning, and component scores
+        score, reasoning, component_scores = self._parse_ai_response(evaluation_text)
+        
+        # Post-processing: Check if candidate is missing ALL must-have certs and adjust
+        has_must_have = self._check_must_have_certs(candidate, job_details)
+        must_have_certs_required = any(c.category == 'must-have' for c in job_details.certifications)
+        
+        # CRITICAL: If missing ALL must-have certs, enforce penalty even if component scores weren't extracted
+        if must_have_certs_required and not has_must_have:
+            if component_scores:
+                # We have component scores - check and correct cert component
+                cert_component_score = component_scores.get('must_have_certs', 5.0)
+                
+                if cert_component_score > 1.0:
+                    # Force cert component to 0-1 range (use 0.5 as default)
+                    print(f"  CORRECTING: Candidate missing ALL must-have certs but cert component score is {cert_component_score:.2f}, forcing to 0.5")
+                    component_scores['must_have_certs'] = 0.5
+                    
+                    # Recalculate weighted score with corrected component
+                    weights = {
+                        'must_have_certs': 0.30,
+                        'bonus_certs': 0.10,
+                        'required_skills': 0.25,
+                        'preferred_skills': 0.10,
+                        'experience_level': 0.10,
+                        'job_title_match': 0.10,
+                        'location': 0.05
+                    }
+                    
+                    recalculated_score = sum(
+                        component_scores.get(key, 5.0) * weight
+                        for key, weight in weights.items()
+                    )
+                    recalculated_score = max(0.0, min(10.0, recalculated_score))
+                    
+                    # Use recalculated score
+                    score = recalculated_score
+                    print(f"  RECALCULATED: Score adjusted from AI score to {score:.2f} due to missing must-have certs")
+            else:
+                # No component scores extracted - apply direct penalty
+                # Cap score at 5.0 maximum for missing all must-have certs
+                if score > 5.0:
+                    print(f"  CORRECTING: Candidate missing ALL must-have certs but score is {score:.2f}, capping at 5.0 (component scores not extracted)")
+                    score = min(score, 5.0)
+        
+        # Validate score consistency
+        validated_score = self._validate_score_consistency(
+            score, reasoning, component_scores, candidate, job_details
+        )
+        
+        # Create CandidateScore matching the expected model structure
+        # IMPORTANT: Only include certifications explicitly listed in the resume
+        explicit_certifications = candidate.get('certifications', [])
+        
+        # Generate a concise (2-3 sentences) rationale from the AI output
+        concise_rationale = self._extract_concise_rationale(reasoning or evaluation_text)
+        
+        return CandidateScore(
+            name=candidate.get('name', 'Unknown'),
+            phone=candidate.get('phone', ''),
+            email=candidate.get('email', ''),
+            certifications=explicit_certifications,  # Only explicit certifications from resume
+            fit_score=round(validated_score, 2),
+            chain_of_thought=evaluation_text,
+            rationale=concise_rationale,
+            experience_match={
+                'level_match': (component_scores.get('experience_level', 8.0) / 10.0) if component_scores else 0.8,
+                'titles': candidate.get('job_titles', []),
+                'years': candidate.get('years_of_experience', 0)
+            },
+            certification_match={
+                'has_must_have': self._check_must_have_certs(candidate, job_details),
+                'has_bonus': len(explicit_certifications) > 0,
+                'candidate_certs': explicit_certifications  # Only explicit certifications
+            },
+            skills_match={
+                'required_match_rate': (component_scores.get('required_skills', 7.5) / 10.0) if component_scores else 0.75,
+                'preferred_match_rate': (component_scores.get('preferred_skills', 6.0) / 10.0) if component_scores else 0.6,
+                'candidate_skills': candidate.get('skills', [])  # Only explicit skills
+            },
+            location_match=self._check_location_match(candidate, job_details),
+            component_scores=component_scores or {}
         )
 
     def _check_must_have_certs(self, candidate: Dict[str, Any], job_details: JobDetails) -> bool:
@@ -704,10 +823,10 @@ class HybridScoringEngine:
         if not use_ai:
             raise ValueError("AI is now required for scoring. 'use_ai' must be True.")
 
-            try:
-                self.ai_engine = AIScoringEngine(api_key=api_key)
+        try:
+            self.ai_engine = AIScoringEngine(api_key=api_key)
             print(f"AI-powered scoring enabled (using OpenAI {self.ai_engine.model})")
-            except Exception as e:
+        except Exception as e:
             raise RuntimeError(f"AI scoring is required but unavailable: {e}. Please configure OpenAI API key.")
 
     def score_candidate(self, candidate: Dict[str, Any],
@@ -715,4 +834,11 @@ class HybridScoringEngine:
         """Score candidate using AI"""
         if not self.ai_engine:
             raise RuntimeError("AI scoring engine is not initialized.")
-                return self.ai_engine.score_candidate(candidate, job_details)
+        return self.ai_engine.score_candidate(candidate, job_details)
+    
+    async def score_candidate_async(self, candidate: Dict[str, Any],
+                                   job_details: JobDetails) -> CandidateScore:
+        """Async version of score_candidate for parallel processing"""
+        if not self.ai_engine:
+            raise RuntimeError("AI scoring engine is not initialized.")
+        return await self.ai_engine.score_candidate_async(candidate, job_details)
