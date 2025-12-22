@@ -47,23 +47,23 @@ class PDFGenerator:
         self._setup_custom_styles()
 
     def _setup_custom_styles(self):
-        """Setup custom paragraph styles"""
-        # Title style
+        """Setup custom paragraph styles with consistent font sizes"""
+        # Title style - 20pt (standardized)
         self.styles.add(ParagraphStyle(
             name='CustomTitle',
             parent=self.styles['Heading1'],
-            fontSize=24,
+            fontSize=20,
             textColor=colors.HexColor('#1a1a1a'),
             spaceAfter=30,
             alignment=TA_CENTER,
             fontName='Helvetica-Bold'
         ))
 
-        # Section header
+        # Section header - 14pt (standardized)
         self.styles.add(ParagraphStyle(
             name='SectionHeader',
             parent=self.styles['Heading2'],
-            fontSize=16,
+            fontSize=14,
             textColor=colors.HexColor('#2c3e50'),
             spaceAfter=12,
             spaceBefore=20,
@@ -74,7 +74,7 @@ class PDFGenerator:
             backColor=colors.HexColor('#ecf0f1')
         ))
 
-        # Body text
+        # Body text - 10pt (keep)
         self.styles.add(ParagraphStyle(
             name='CustomBody',
             parent=self.styles['Normal'],
@@ -83,22 +83,22 @@ class PDFGenerator:
             alignment=TA_JUSTIFY
         ))
 
-        # Candidate name
+        # Candidate name - 11pt (standardized)
         self.styles.add(ParagraphStyle(
             name='CandidateName',
             parent=self.styles['Heading3'],
-            fontSize=12,
+            fontSize=11,
             textColor=colors.HexColor('#2c3e50'),
             fontName='Helvetica-Bold',
             spaceAfter=6
         ))
 
-        # Rationale style with proper word wrapping
+        # Rationale style - 9pt (increased from 8pt for better readability)
         self.styles.add(ParagraphStyle(
             name='RationaleStyle',
             parent=self.styles['Normal'],
-            fontSize=8,
-            leading=11,
+            fontSize=9,
+            leading=12,
             alignment=TA_LEFT,
             textColor=colors.HexColor('#2c3e50'),
             wordWrap='LTR',
@@ -229,7 +229,7 @@ class PDFGenerator:
             ParagraphStyle(
                 'LogoStyle',
                 parent=self.styles['Normal'],
-                fontSize=14,
+                fontSize=12,  # Standardized (reduced from 14pt)
                 textColor=colors.HexColor('#2c3e50'),
                 fontName='Helvetica-Bold',
                 alignment=TA_LEFT,
@@ -250,7 +250,7 @@ class PDFGenerator:
         table.setStyle(TableStyle([
             ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
             ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),  # Standardized to 10pt
             ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#2c3e50')),
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
         ]))
@@ -366,7 +366,7 @@ class PDFGenerator:
         contact_table.setStyle(TableStyle([
             ('FONTNAME', (0, 0), (0, 0), 'Helvetica-Bold'),
             ('FONTNAME', (2, 0), (2, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),  # Standardized to 10pt
             ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#34495e')),
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
             ('ALIGN', (0, 0), (0, -1), 'LEFT'),
@@ -459,12 +459,15 @@ class PDFGenerator:
         Clean rationale text to remove prompt headers and section markers
         
         Removes:
-        - Section headers like "MUST-HAVE CERTIFICATIONS ANALYSIS:"
+        - Section headers like "MUST-HAVE CERTIFICATIONS ANALYSIS:", "REQUIRED CERTIFICATION ANALYSIS"
         - Numbered sections like "1. **MUST-HAVE CERTIFICATIONS ANALYSIS**"
         - Prompt-like phrases such as "Component score (0-10): ___"
+        - Question-format prompts ("Which required certifications...")
+        - Instruction-format prompts ("Provide component scores...")
         - Markdown headers (###, ##, #)
         - Lines that are only section titles
         - COMPONENT_SCORES and WEIGHTED CALCULATION sections
+        - All variations of "ANALYSIS" headers
         
         Args:
             rationale: Raw rationale text from AI
@@ -498,13 +501,52 @@ class PDFGenerator:
                 skip_until_content = True
                 continue
             
-            # Remove all-caps section headers (e.g., "MUST-HAVE CERTIFICATIONS ANALYSIS:")
+            # Remove all-caps section headers with "ANALYSIS" (e.g., "MUST-HAVE CERTIFICATIONS ANALYSIS:")
             if re.match(r'^[A-Z\s]+ANALYSIS:', line_stripped):
                 skip_until_content = True
                 continue
             
+            # Remove "REQUIRED CERTIFICATION" or "BONUS CERTIFICATION" (without "ANALYSIS")
+            if re.match(r'^[A-Z\s]*(?:REQUIRED|BONUS|MUST-HAVE)\s+CERTIFICATION', line_stripped, re.IGNORECASE):
+                skip_until_content = True
+                continue
+            
+            # Remove "CERTIFICATION ANALYSIS" (any variation)
+            if re.search(r'CERTIFICATION\s+ANALYSIS', line_stripped, re.IGNORECASE):
+                skip_until_content = True
+                continue
+            
+            # Remove "SKILLS ANALYSIS" (any variation)
+            if re.search(r'SKILLS\s+ANALYSIS', line_stripped, re.IGNORECASE):
+                skip_until_content = True
+                continue
+            
+            # Remove "EXPERIENCE ANALYSIS" or "EXPERIENCE EVALUATION"
+            if re.search(r'EXPERIENCE\s+(?:ANALYSIS|EVALUATION)', line_stripped, re.IGNORECASE):
+                skip_until_content = True
+                continue
+            
+            # Remove "JOB TITLE MATCH" or "TITLE MATCH ANALYSIS"
+            if re.search(r'(?:JOB\s+)?TITLE\s+MATCH(?:\s+ANALYSIS)?', line_stripped, re.IGNORECASE):
+                skip_until_content = True
+                continue
+            
+            # Remove "LOCATION MATCH" or "LOCATION ANALYSIS"
+            if re.search(r'LOCATION\s+(?:MATCH|ANALYSIS)', line_stripped, re.IGNORECASE):
+                skip_until_content = True
+                continue
+            
             # Remove component score placeholders (e.g., "Component score (0-10): ___")
-            if re.search(r'Component score.*:', line_stripped, re.IGNORECASE):
+            if re.search(r'Component\s+score.*:', line_stripped, re.IGNORECASE):
+                continue
+            
+            # Remove lines with score patterns like "X.X/10" or "Score (0-10)"
+            if re.search(r'\d+\.?\d*\s*/\s*10|Score\s*\(0-10\)', line_stripped, re.IGNORECASE):
+                if not re.search(r'\d+\.\d+/10', line_stripped):  # Keep actual scores in text
+                    continue
+            
+            # Remove lines with colons followed by underscores or placeholders
+            if re.search(r':\s*(?:___|___|\.\.\.|placeholder)', line_stripped, re.IGNORECASE):
                 continue
             
             # Remove COMPONENT_SCORES section entirely
@@ -513,9 +555,31 @@ class PDFGenerator:
                 continue
             
             # Remove WEIGHTED CALCULATION section
-            if 'WEIGHTED CALCULATION' in line_stripped.upper():
+            if 'WEIGHTED CALCULATION' in line_stripped.upper() or re.search(r'WEIGHTED\s+CALCULATION', line_stripped, re.IGNORECASE):
                 skip_until_content = True
                 continue
+            
+            # Remove lines starting with question/instruction words
+            question_starters = ['Which', 'Provide', 'Calculate', 'Evaluate', 'Determine', 'Identify', 'List']
+            if any(line_stripped.startswith(word) for word in question_starters):
+                # Check if it's a question/instruction (ends with ? or contains instruction words)
+                if '?' in line_stripped or any(word in line_stripped for word in ['required certifications', 'missing', 'present', 'component score', 'match percentage']):
+                    continue
+            
+            # Remove common prompt phrases
+            prompt_phrases = [
+                r'Which\s+required\s+certifications',
+                r'Which\s+are\s+missing',
+                r'Match\s+percentage',
+                r'Component\s+score\s*\(0-10\)',
+                r'Provide\s+component\s+scores',
+                r'Calculate\s+weighted',
+                r'Final\s+score\s*:',
+                r'Overall\s+fit\s*:'
+            ]
+            for phrase in prompt_phrases:
+                if re.search(phrase, line_stripped, re.IGNORECASE):
+                    continue
             
             # Remove lines that are just section titles in various formats
             section_patterns = [
@@ -527,7 +591,15 @@ class PDFGenerator:
                 r'^[A-Z\s]+EVALUATION\s*$',
                 r'^OVERALL\s+ASSESSMENT\s*$',
                 r'^RECOMMENDATIONS\s*$',
-                r'^FINAL\s+SCORE\s*$'
+                r'^FINAL\s+SCORE\s*$',
+                r'^REQUIRED\s+CERTIFICATION',
+                r'^BONUS\s+CERTIFICATION',
+                r'^MUST-HAVE\s+CERTIFICATION',
+                r'^REQUIRED\s+SKILLS',
+                r'^PREFERRED\s+SKILLS',
+                r'^EXPERIENCE\s+LEVEL',
+                r'^JOB\s+TITLE\s+MATCH',
+                r'^LOCATION\s+MATCH'
             ]
             
             is_section_header = False
@@ -547,7 +619,11 @@ class PDFGenerator:
             # If we're skipping until content, check if this line has actual content
             if skip_until_content:
                 # Look for lines with substantial content (more than just a few words)
-                if len(line_stripped) > 20 and not line_stripped.startswith('Which') and not line_stripped.startswith('Provide'):
+                # Exclude question/instruction formats
+                if (len(line_stripped) > 20 and 
+                    not any(line_stripped.startswith(word) for word in question_starters) and
+                    not re.search(r'^\d+\.', line_stripped) and  # Not a numbered list item that's a header
+                    ':' not in line_stripped[:30]):  # Not a label: value format that's a prompt
                     skip_until_content = False
                     cleaned_lines.append(line)
                 continue
@@ -561,8 +637,35 @@ class PDFGenerator:
         # Remove any remaining markdown headers
         cleaned_text = re.sub(r'^#{1,6}\s+', '', cleaned_text, flags=re.MULTILINE)
         
+        # Remove any remaining all-caps section headers (standalone lines)
+        cleaned_text = re.sub(r'^[A-Z\s]{10,}\s*$', '', cleaned_text, flags=re.MULTILINE)
+        
+        # Remove lines that are just evaluation instructions
+        instruction_patterns = [
+            r'^Which\s+.*\?',
+            r'^Provide\s+.*',
+            r'^Calculate\s+.*',
+            r'^Evaluate\s+.*',
+            r'^Determine\s+.*'
+        ]
+        for pattern in instruction_patterns:
+            cleaned_text = re.sub(pattern, '', cleaned_text, flags=re.MULTILINE | re.IGNORECASE)
+        
         # Remove multiple consecutive blank lines
         cleaned_text = re.sub(r'\n{3,}', '\n\n', cleaned_text)
+        
+        # Final cleanup: remove any remaining prompt-like patterns
+        # Remove lines that are just "X:" or "X: ___" format (likely prompt labels)
+        lines_final = cleaned_text.split('\n')
+        cleaned_final = []
+        for line in lines_final:
+            line_stripped = line.strip()
+            # Skip lines that look like prompt labels (short, ends with colon, no substantial content after)
+            if re.match(r'^[A-Z\s]{2,30}:\s*(?:___|\.\.\.|$)', line_stripped):
+                continue
+            cleaned_final.append(line)
+        
+        cleaned_text = '\n'.join(cleaned_final).strip()
         
         return cleaned_text.strip()
 
@@ -607,13 +710,13 @@ class PDFGenerator:
         for j in range(num_criteria + 2):  # +2 for name and score columns
             ax.axvline(j, color='gray', linewidth=0.5)
 
-        # Headers - horizontal text, no rotation
+        # Headers - horizontal text, no rotation - standardized to 9pt
         ax.text(0.5, num_candidates + 0.5, 'Candidate', ha='center', va='center',
                 fontweight='bold', fontsize=9)
 
         for j, criterion in enumerate(criteria, 1):
             ax.text(j + 0.5, num_candidates + 0.5, criterion, ha='center', va='center',
-                    fontweight='bold', fontsize=7)
+                    fontweight='bold', fontsize=9)  # Standardized to 9pt
 
         ax.text(num_criteria + 1.5, num_candidates + 0.5, 'Score', ha='center', va='center',
                 fontweight='bold', fontsize=9)
@@ -622,9 +725,9 @@ class PDFGenerator:
         for i, candidate in enumerate(chart_candidates):
             row = num_candidates - i - 1  # Reverse order (top candidate at top)
 
-            # Candidate name
+            # Candidate name - standardized to 9pt
             ax.text(0.5, row + 0.5, candidate_names[i], ha='center', va='center',
-                    fontsize=8)
+                    fontsize=9)
 
             # Evaluation criteria
             evaluations = [
@@ -647,7 +750,7 @@ class PDFGenerator:
                     ax.text(j + 0.5, row + 0.5, 'N', ha='center', va='center',
                            color='red', fontsize=12, fontweight='bold')
 
-            # Score
+            # Score - standardized to 10pt
             score_color = 'darkgreen' if candidate.fit_score >= 8 else \
                          'green' if candidate.fit_score >= 6.5 else \
                          'orange' if candidate.fit_score >= 5 else 'red'
@@ -669,8 +772,8 @@ class PDFGenerator:
         ax.legend(handles=legend_elements, loc='upper left', bbox_to_anchor=(0, -0.05),
                  ncol=2, fontsize=9)
 
-        # Add title
-        plt.title('Candidate Ranking Matrix', fontsize=12, fontweight='bold', pad=20)
+        # Add title - standardized to 11pt
+        plt.title('Candidate Ranking Matrix', fontsize=11, fontweight='bold', pad=20)
 
         plt.tight_layout()
 
