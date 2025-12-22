@@ -1818,172 +1818,172 @@ def main():
             display_analysis_analytics(user_id)
             st.stop()
         
-        # Continue with new analysis form in tab_new (default)
-    
-    # Introduction
-    with st.expander("How It Works", expanded=False):
-        st.markdown("""
-        This application analyzes job requirements and candidate resumes to provide intelligent rankings:
+        # New Analysis form content (default tab)
+        with tab_new:
+            # Introduction
+            with st.expander("How It Works", expanded=False):
+                st.markdown("""
+                This application analyzes job requirements and candidate resumes to provide intelligent rankings:
 
-        1. **Job Analysis**: Extracts requirements from job description
-        2. **Research**: Identifies equivalent skills and job titles
-        3. **Resume Parsing**: Extracts structured data from resumes
-        4. **Scoring**: Evaluates candidates with chain-of-thought reasoning
-        5. **Ranking**: Selects top 4-10 candidates
-        6. **Report**: Generates professional PDF with visualizations
+                1. **Job Analysis**: Extracts requirements from job description
+                2. **Research**: Identifies equivalent skills and job titles
+                3. **Resume Parsing**: Extracts structured data from resumes
+                4. **Scoring**: Evaluates candidates with chain-of-thought reasoning
+                5. **Ranking**: Selects top 4-10 candidates
+                6. **Report**: Generates professional PDF with visualizations
 
-        **Scoring Criteria**:
-        - Must-have certifications: 30%
-        - Bonus certifications: 10%
-        - Required skills: 25%
-        - Preferred skills: 10%
-        - Experience level: 10%
-        - Job title match: 10%
-        - Location: 5%
-        """)
+                **Scoring Criteria**:
+                - Must-have certifications: 30%
+                - Bonus certifications: 10%
+                - Required skills: 25%
+                - Preferred skills: 10%
+                - Experience level: 10%
+                - Job title match: 10%
+                - Location: 5%
+                """)
 
-    # Main input toggle
-    st.markdown('<div class="section-header">Input Method</div>', unsafe_allow_html=True)
+            # Main input toggle
+            st.markdown('<div class="section-header">Input Method</div>', unsafe_allow_html=True)
 
-    input_mode = st.radio(
-        "Choose how to provide job details:",
-        ["Upload Job Description File (AI Extracts Everything)", "Manual Entry"],
-        horizontal=True,
-        help="File upload uses AI to automatically extract all job details"
-    )
+            input_mode = st.radio(
+                "Choose how to provide job details:",
+                ["Upload Job Description File (AI Extracts Everything)", "Manual Entry"],
+                horizontal=True,
+                help="File upload uses AI to automatically extract all job details"
+            )
 
-    job_title = ""
-    location = ""
-    certifications = []
-    job_description = ""
+            job_title = ""
+            location = ""
+            certifications = []
+            job_description = ""
 
-    # MODE 1: File Upload (AI Auto-Extraction)
-    if input_mode == "Upload Job Description File (AI Extracts Everything)":
-        st.markdown('<div class="section-header">Upload Job Description</div>', unsafe_allow_html=True)
+            # MODE 1: File Upload (AI Auto-Extraction)
+            if input_mode == "Upload Job Description File (AI Extracts Everything)":
+                st.markdown('<div class="section-header">Upload Job Description</div>', unsafe_allow_html=True)
 
-        job_desc_file = st.file_uploader(
-            "Upload Job Description File",
-            type=["txt", "pdf", "docx"],
-            help="Upload job description - AI will automatically extract job title, location, certifications, and all requirements"
-        )
+                job_desc_file = st.file_uploader(
+                    "Upload Job Description File",
+                    type=["txt", "pdf", "docx"],
+                    help="Upload job description - AI will automatically extract job title, location, certifications, and all requirements"
+                )
 
-        if job_desc_file:
-            with st.spinner("AI is analyzing job description..."):
-                try:
-                    # Save to temp file for parser
-                    temp_dir = tempfile.mkdtemp()
-                    temp_path = os.path.join(temp_dir, job_desc_file.name)
-
-                    try:
-                        with open(temp_path, 'wb') as f:
-                            f.write(job_desc_file.getbuffer())
-
-                        # Parse the job description file using AI parser
-                        parser = AIJobParser()  # Uses AI if API key available
-                        job_data = parser.parse(temp_path)
-                    finally:
-                        # Cleanup temporary files
-                        import shutil
+                if job_desc_file:
+                    with st.spinner("AI is analyzing job description..."):
                         try:
-                            shutil.rmtree(temp_dir)
+                            # Save to temp file for parser
+                            temp_dir = tempfile.mkdtemp()
+                            temp_path = os.path.join(temp_dir, job_desc_file.name)
+
+                            try:
+                                with open(temp_path, 'wb') as f:
+                                    f.write(job_desc_file.getbuffer())
+
+                                # Parse the job description file using AI parser
+                                parser = AIJobParser()  # Uses AI if API key available
+                                job_data = parser.parse(temp_path)
+                            finally:
+                                # Cleanup temporary files
+                                import shutil
+                                try:
+                                    shutil.rmtree(temp_dir)
+                                except Exception as e:
+                                    logger.warning(f"Failed to cleanup temp directory {temp_dir}: {e}", exc_info=True)
+                                    # Continue - cleanup errors are non-critical
+
+                            job_description = job_data['full_description']
+                            job_title = job_data.get('job_title', '')
+                            location = job_data.get('location', '')
+                            certifications = job_data.get('certifications', [])
+
+                            # Show success with extracted info
+                            st.success(f"Successfully processed: {job_desc_file.name}")
+
+                            # Show extracted information in a nice format
+                            st.markdown("### AI-Extracted Information")
+
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.metric("Job Title", job_title if job_title else "Not found")
+                                st.metric("Location", location if location else "Not found")
+                            with col2:
+                                st.metric("Certifications Found", len(certifications))
+                                st.metric("Document Length", f"{len(job_description)} chars")
+
+                            # Show certifications if found
+                            if certifications:
+                                with st.expander("View Extracted Certifications"):
+                                    for i, cert in enumerate(certifications, 1):
+                                        category_label = "[Required]" if cert.get('category') == 'must-have' else "[Preferred]"
+                                        st.write(f"{i}. {category_label} - **{cert.get('name')}**")
+
+                            # Show preview
+                            with st.expander("View Full Job Description"):
+                                st.text_area("Content", job_description, height=300, disabled=True, key="jd_preview")
+
                         except Exception as e:
-                            logger.warning(f"Failed to cleanup temp directory {temp_dir}: {e}", exc_info=True)
-                            # Continue - cleanup errors are non-critical
+                            logger.error(f"Error processing job description file: {e}", exc_info=True)
+                            st.error(f"Error processing file: {e}")
+                            job_description = ""
 
-                    job_description = job_data['full_description']
-                    job_title = job_data.get('job_title', '')
-                    location = job_data.get('location', '')
-                    certifications = job_data.get('certifications', [])
+            # MODE 2: Manual Entry
+            else:
+                st.markdown('<div class="section-header">Job Details</div>', unsafe_allow_html=True)
 
-                    # Show success with extracted info
-                    st.success(f"Successfully processed: {job_desc_file.name}")
+                col1, col2 = st.columns(2)
 
-                    # Show extracted information in a nice format
-                    st.markdown("### AI-Extracted Information")
+                with col1:
+                    job_title = st.text_input(
+                        "Job Title",
+                        placeholder="e.g., Safety Specialist",
+                        help="Enter the exact job title"
+                    )
 
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.metric("Job Title", job_title if job_title else "Not found")
-                        st.metric("Location", location if location else "Not found")
-                    with col2:
-                        st.metric("Certifications Found", len(certifications))
-                        st.metric("Document Length", f"{len(job_description)} chars")
+                with col2:
+                    location = st.text_input(
+                        "Location",
+                        placeholder="e.g., Houston, TX or Remote",
+                        help="Enter the job location"
+                    )
 
-                    # Show certifications if found
-                    if certifications:
-                        with st.expander("View Extracted Certifications"):
-                            for i, cert in enumerate(certifications, 1):
-                                category_label = "[Required]" if cert.get('category') == 'must-have' else "[Preferred]"
-                                st.write(f"{i}. {category_label} - **{cert.get('name')}**")
+                # Simplified Certifications Entry
+                st.markdown("**Certifications** (one per line, prefix with `*` for required)")
+                st.caption("Example: `*OSHA 30` (required) or `First Aid` (preferred)")
 
-                    # Show preview
-                    with st.expander("View Full Job Description"):
-                        st.text_area("Content", job_description, height=300, disabled=True, key="jd_preview")
+                cert_text = st.text_area(
+                    "Certifications",
+                    height=100,
+                    placeholder="*OSHA 30\n*BCSP Certification\nFirst Aid\nCPR",
+                    help="Enter one certification per line. Prefix with * for must-have/required certifications.",
+                    label_visibility="collapsed"
+                )
 
-                except Exception as e:
-                    logger.error(f"Error processing job description file: {e}", exc_info=True)
-                    st.error(f"Error processing file: {e}")
-                    job_description = ""
+                # Parse certifications from text
+                certifications = []
+                if cert_text:
+                    for line in cert_text.strip().split('\n'):
+                        line = line.strip()
+                        if line:
+                            if line.startswith('*'):
+                                certifications.append({
+                                    "name": line[1:].strip(),
+                                    "category": "must-have"
+                                })
+                            else:
+                                certifications.append({
+                                    "name": line,
+                                    "category": "bonus"
+                                })
 
-    # MODE 2: Manual Entry
-    else:
-        st.markdown('<div class="section-header">Job Details</div>', unsafe_allow_html=True)
+                if certifications:
+                    st.caption(f"Parsed: {len([c for c in certifications if c['category'] == 'must-have'])} required, {len([c for c in certifications if c['category'] == 'bonus'])} preferred")
 
-        col1, col2 = st.columns(2)
+                # Job Description
+                st.markdown('<div class="section-header">Job Description</div>', unsafe_allow_html=True)
 
-        with col1:
-            job_title = st.text_input(
-                "Job Title",
-                placeholder="e.g., Safety Specialist",
-                help="Enter the exact job title"
-            )
-
-        with col2:
-            location = st.text_input(
-                "Location",
-                placeholder="e.g., Houston, TX or Remote",
-                help="Enter the job location"
-            )
-
-        # Simplified Certifications Entry
-        st.markdown("**Certifications** (one per line, prefix with `*` for required)")
-        st.caption("Example: `*OSHA 30` (required) or `First Aid` (preferred)")
-
-        cert_text = st.text_area(
-            "Certifications",
-            height=100,
-            placeholder="*OSHA 30\n*BCSP Certification\nFirst Aid\nCPR",
-            help="Enter one certification per line. Prefix with * for must-have/required certifications.",
-            label_visibility="collapsed"
-        )
-
-        # Parse certifications from text
-        certifications = []
-        if cert_text:
-            for line in cert_text.strip().split('\n'):
-                line = line.strip()
-                if line:
-                    if line.startswith('*'):
-                        certifications.append({
-                            "name": line[1:].strip(),
-                            "category": "must-have"
-                        })
-                    else:
-                        certifications.append({
-                            "name": line,
-                            "category": "bonus"
-                        })
-
-        if certifications:
-            st.caption(f"Parsed: {len([c for c in certifications if c['category'] == 'must-have'])} required, {len([c for c in certifications if c['category'] == 'bonus'])} preferred")
-
-        # Job Description
-        st.markdown('<div class="section-header">Job Description</div>', unsafe_allow_html=True)
-
-        job_description = st.text_area(
-            "Full Job Description",
-            height=300,
-            placeholder="""Paste the complete job description including:
+                job_description = st.text_area(
+                    "Full Job Description",
+                    height=300,
+                    placeholder="""Paste the complete job description including:
 - Required skills and experience
 - Preferred qualifications
 - Responsibilities
@@ -1991,172 +1991,172 @@ def main():
 - Any other relevant details
 
 The AI will analyze this to extract skills and requirements.""",
-            help="Provide as much detail as possible for accurate matching"
-        )
+                    help="Provide as much detail as possible for accurate matching"
+                )
 
-    # Resume Upload
-    st.markdown('<div class="section-header">Candidate Resumes</div>', unsafe_allow_html=True)
+            # Resume Upload
+            st.markdown('<div class="section-header">Candidate Resumes</div>', unsafe_allow_html=True)
 
-    uploaded_files = st.file_uploader(
-        "Upload Resume Files",
-        type=["pdf", "docx", "txt"],
-        accept_multiple_files=True,
-        help="Upload candidate resumes in PDF, DOCX, or TXT format"
-    )
+            uploaded_files = st.file_uploader(
+                "Upload Resume Files",
+                type=["pdf", "docx", "txt"],
+                accept_multiple_files=True,
+                help="Upload candidate resumes in PDF, DOCX, or TXT format"
+            )
 
-    if uploaded_files:
-        st.success(f"Uploaded {len(uploaded_files)} resume(s)")
-        with st.expander("View uploaded files"):
-            for file in uploaded_files:
-                size_kb = file.size / 1024
-                st.write(f"- {file.name} ({size_kb:.1f} KB)")
+            if uploaded_files:
+                st.success(f"Uploaded {len(uploaded_files)} resume(s)")
+                with st.expander("View uploaded files"):
+                    for file in uploaded_files:
+                        size_kb = file.size / 1024
+                        st.write(f"- {file.name} ({size_kb:.1f} KB)")
 
-    # Process Button
-    st.markdown('<div class="section-header"></div>', unsafe_allow_html=True)
+            # Process Button
+            st.markdown('<div class="section-header"></div>', unsafe_allow_html=True)
 
-    col1, col2, col3 = st.columns([1, 1, 1])
+            col1, col2, col3 = st.columns([1, 1, 1])
 
-    with col2:
-        # Use a custom styled button with brand green
-        process_button = st.button(
-            "Process Candidates",
-            use_container_width=True,
-            type="primary",
-            key="process_btn"
-        )
+            with col2:
+                # Use a custom styled button with brand green
+                process_button = st.button(
+                    "Process Candidates",
+                    use_container_width=True,
+                    type="primary",
+                    key="process_btn"
+                )
 
-    # Process
-    if process_button:
-        # Validation
-        errors = []
+            # Process
+            if process_button:
+                # Validation
+                errors = []
 
-        if not job_title:
-            errors.append("Job title is required")
-        if not location:
-            errors.append("Location is required")
-        if not job_description:
-            errors.append("Job description is required")
-        if not uploaded_files:
-            errors.append("At least one resume file is required")
+                if not job_title:
+                    errors.append("Job title is required")
+                if not location:
+                    errors.append("Location is required")
+                if not job_description:
+                    errors.append("Job description is required")
+                if not uploaded_files:
+                    errors.append("At least one resume file is required")
 
-        if errors:
-            for error in errors:
-                st.error(error)
-        else:
-            # Process the candidates with progress tracking
-            start_time = datetime.now()
+                if errors:
+                    for error in errors:
+                        st.error(error)
+                else:
+                    # Process the candidates with progress tracking
+                    start_time = datetime.now()
 
-            # Create progress UI elements
-            progress_container = st.container()
+                    # Create progress UI elements
+                    progress_container = st.container()
 
-            with progress_container:
-                st.markdown("### Processing Candidates")
-                progress_bar = st.progress(0)
-                status_text = st.empty()
-                step_info = st.empty()
+                    with progress_container:
+                        st.markdown("### Processing Candidates")
+                        progress_bar = st.progress(0)
+                        status_text = st.empty()
+                        step_info = st.empty()
 
-            # Progress callback function
-            def update_progress(step, progress, current, total):
-                progress_bar.progress(min(progress, 1.0))
-                message = get_cycling_message(step, progress, current, total)
+                    # Progress callback function
+                    def update_progress(step, progress, current, total):
+                        progress_bar.progress(min(progress, 1.0))
+                        message = get_cycling_message(step, progress, current, total)
 
-                step_titles = {
-                    "analyzing": "Step 1/6: Analyzing Job Requirements",
-                    "researching": "Step 2/6: Researching Equivalents",
-                    "parsing": f"Step 3/6: Parsing Resumes ({current}/{total})",
-                    "scoring": f"Step 4/6: Scoring Candidates ({current}/{total})",
-                    "ranking": "Step 5/6: Ranking Candidates",
-                    "generating": "Step 6/6: Generating PDF Report"
-                }
+                        step_titles = {
+                            "analyzing": "Step 1/6: Analyzing Job Requirements",
+                            "researching": "Step 2/6: Researching Equivalents",
+                            "parsing": f"Step 3/6: Parsing Resumes ({current}/{total})",
+                            "scoring": f"Step 4/6: Scoring Candidates ({current}/{total})",
+                            "ranking": "Step 5/6: Ranking Candidates",
+                            "generating": "Step 6/6: Generating PDF Report"
+                        }
 
-                step_info.markdown(f"**{step_titles.get(step, 'Processing...')}**")
-                status_text.markdown(f"*{message}*")
+                        step_info.markdown(f"**{step_titles.get(step, 'Processing...')}**")
+                        status_text.markdown(f"*{message}*")
 
-            try:
-                # Save uploaded files temporarily and persist copies
-                temp_dir = tempfile.mkdtemp()
-                resume_paths = []
-                resume_assets = []
-
-                try:
-                    for uploaded_file in uploaded_files:
-                        file_bytes = uploaded_file.getvalue()
-                        file_path = os.path.join(temp_dir, uploaded_file.name)
-                        with open(file_path, "wb") as f:
-                            f.write(file_bytes)
-                        resume_paths.append(file_path)
-
-                        stored_path, file_hash = save_bytes(file_bytes, uploaded_file.name)
-                        resume_assets.append({
-                            "original_name": uploaded_file.name,
-                            "stored_path": stored_path,
-                            "file_hash": file_hash
-                        })
-
-                    # Initialize app (logo is now fixed, no need to pass it)
-                    app = CandidateRankerApp()
-
-                    # Run processing with progress callback
-                    pdf_path = app.run(
-                        job_title=job_title,
-                        certifications=certifications,
-                        location=location,
-                        job_description=job_description,
-                        resume_files=resume_paths,
-                        progress_callback=update_progress,
-                        user_id=st.session_state.get("user_id"),
-                        resume_assets=resume_assets
-                    )
-
-                    # Read PDF data before cleanup
-                    with open(pdf_path, "rb") as f:
-                        pdf_data = f.read()
-
-                finally:
-                    # Cleanup temporary files
-                    import shutil
                     try:
-                        shutil.rmtree(temp_dir)
+                        # Save uploaded files temporarily and persist copies
+                        temp_dir = tempfile.mkdtemp()
+                        resume_paths = []
+                        resume_assets = []
+
+                        try:
+                            for uploaded_file in uploaded_files:
+                                file_bytes = uploaded_file.getvalue()
+                                file_path = os.path.join(temp_dir, uploaded_file.name)
+                                with open(file_path, "wb") as f:
+                                    f.write(file_bytes)
+                                resume_paths.append(file_path)
+
+                                stored_path, file_hash = save_bytes(file_bytes, uploaded_file.name)
+                                resume_assets.append({
+                                    "original_name": uploaded_file.name,
+                                    "stored_path": stored_path,
+                                    "file_hash": file_hash
+                                })
+
+                            # Initialize app (logo is now fixed, no need to pass it)
+                            app = CandidateRankerApp()
+
+                            # Run processing with progress callback
+                            pdf_path = app.run(
+                                job_title=job_title,
+                                certifications=certifications,
+                                location=location,
+                                job_description=job_description,
+                                resume_files=resume_paths,
+                                progress_callback=update_progress,
+                                user_id=st.session_state.get("user_id"),
+                                resume_assets=resume_assets
+                            )
+
+                            # Read PDF data before cleanup
+                            with open(pdf_path, "rb") as f:
+                                pdf_data = f.read()
+
+                        finally:
+                            # Cleanup temporary files
+                            import shutil
+                            try:
+                                shutil.rmtree(temp_dir)
+                            except Exception as e:
+                                logger.warning(f"Failed to cleanup temp directory {temp_dir}: {e}", exc_info=True)
+                                # Continue - cleanup errors are non-critical
+
+                        # Calculate processing time
+                        end_time = datetime.now()
+                        processing_time = (end_time - start_time).total_seconds()
+
+                        # Store results in session state
+                        st.session_state.results = {
+                            'candidate_scores': app.candidate_scores,
+                            'pdf_path': pdf_path,
+                            'pdf_data': pdf_data,
+                            'job_details': {
+                                'title': job_title,
+                                'location': location,
+                                'certifications': certifications
+                            },
+                            'processing_time': processing_time,
+                            'timestamp': datetime.now()
+                        }
+
+                        # Update progress to complete
+                        progress_bar.progress(1.0)
+                        status_text.markdown("*Processing complete!*")
+
+                        # Rerun to show results
+                        st.rerun()
+
                     except Exception as e:
-                        logger.warning(f"Failed to cleanup temp directory {temp_dir}: {e}", exc_info=True)
-                        # Continue - cleanup errors are non-critical
+                        logger.error(f"Error processing candidates: {e}", exc_info=True)
+                        st.error(f"An error occurred: {str(e)}")
+                        st.exception(e)
 
-                # Calculate processing time
-                end_time = datetime.now()
-                processing_time = (end_time - start_time).total_seconds()
-
-                # Store results in session state
-                st.session_state.results = {
-                    'candidate_scores': app.candidate_scores,
-                    'pdf_path': pdf_path,
-                    'pdf_data': pdf_data,
-                    'job_details': {
-                        'title': job_title,
-                        'location': location,
-                        'certifications': certifications
-                    },
-                    'processing_time': processing_time,
-                    'timestamp': datetime.now()
-                }
-
-                # Update progress to complete
-                progress_bar.progress(1.0)
-                status_text.markdown("*Processing complete!*")
-
-                # Rerun to show results
-                st.rerun()
-
-            except Exception as e:
-                logger.error(f"Error processing candidates: {e}", exc_info=True)
-                st.error(f"An error occurred: {str(e)}")
-                st.exception(e)
-
-    # Footer
-    st.markdown("---")
-    st.markdown(
-        '<div style="text-align: center; color: #7f8c8d; padding: 1rem;">ResponsAble Safety Staffing | Recruitment Candidate Ranker</div>',
-        unsafe_allow_html=True
-    )
+            # Footer
+            st.markdown("---")
+            st.markdown(
+                '<div style="text-align: center; color: #7f8c8d; padding: 1rem;">ResponsAble Safety Staffing | Recruitment Candidate Ranker</div>',
+                unsafe_allow_html=True
+            )
 
 
 if __name__ == "__main__":
