@@ -1089,6 +1089,7 @@ def display_analysis_history(user_id: str):
             with col_actions1:
                 if st.button("View", key=f"view_{analysis['report_id']}", use_container_width=True):
                     st.session_state["view_report_id"] = analysis['report_id']
+                    st.session_state["viewing_previous_analysis"] = True
                     st.rerun()
             
             with col_actions2:
@@ -1708,10 +1709,12 @@ def display_results(results):
     with col2:
         if st.button("Back to Analyses", type="secondary", help="Return to Previous Analyses list"):
             clear_results()
+            st.session_state.pop("viewing_previous_analysis", None)
             st.rerun()
     with col3:
         if st.button("New Analysis", type="secondary", help="Start a new analysis"):
             clear_results()
+            st.session_state.pop("viewing_previous_analysis", None)
             st.rerun()
 
     # Summary metrics with color coding
@@ -2211,66 +2214,44 @@ def main():
                 </div>
             """, unsafe_allow_html=True)
 
-    # Check if user wants to view a previous analysis
-    if st.session_state.get("view_report_id"):
-        user_id = st.session_state.get("user_id")
-        if user_id:
-            try:
-                analysis_data = load_analysis_data(st.session_state["view_report_id"], user_id)
-                if analysis_data:
-                    # Store in results format for display_results
-                    st.session_state.results = analysis_data
-                    st.session_state.pop("view_report_id", None)
-                    st.rerun()
-                else:
-                    st.error("⚠️ Analysis not found or access denied. The report may have been deleted or you may not have permission to view it.")
-                    logger.warning(f"Failed to load analysis {st.session_state['view_report_id']} for user {user_id}")
-                    st.session_state.pop("view_report_id", None)
-                    # Don't rerun here - let user see the error and continue
-            except Exception as e:
-                logger.error(f"Error loading analysis data: {e}", exc_info=True)
-                st.error(f"❌ Error loading analysis: {str(e)}")
-                st.session_state.pop("view_report_id", None)
-
-    # If we have stored results, show them instead of the input form
-    if st.session_state.results is not None:
-        display_results(st.session_state.results)
-
-        # Footer
-        st.markdown("---")
-        st.markdown(
-            '<div style="text-align: center; color: #7f8c8d; padding: 1rem;">ResponsAble Safety Staffing | Recruitment Candidate Ranker</div>',
-            unsafe_allow_html=True
-        )
-        return
-
     # Main page tabs: New Analysis and Previous Analyses
     user_id = st.session_state.get("user_id")
     if user_id:
         tab_new, tab_history, tab_database, tab_analytics = st.tabs(["New Analysis", "Previous Analyses", "Resume Database", "Analytics"])
         
         with tab_new:
-            # Introduction
-            with st.expander("How It Works", expanded=False):
-                st.markdown("""
-                This application analyzes job requirements and candidate resumes to provide intelligent rankings:
+            # If we have stored results from a new analysis (not viewing previous), show them
+            if st.session_state.results is not None and not st.session_state.get("viewing_previous_analysis", False):
+                display_results(st.session_state.results)
+                
+                # Footer
+                st.markdown("---")
+                st.markdown(
+                    '<div style="text-align: center; color: #7f8c8d; padding: 1rem;">ResponsAble Safety Staffing | Recruitment Candidate Ranker</div>',
+                    unsafe_allow_html=True
+                )
+            else:
+                # Introduction
+                with st.expander("How It Works", expanded=False):
+                    st.markdown("""
+                    This application analyzes job requirements and candidate resumes to provide intelligent rankings:
 
-                1. **Job Analysis**: Extracts requirements from job description
-                2. **Research**: Identifies equivalent skills and job titles
-                3. **Resume Parsing**: Extracts structured data from resumes
-                4. **Scoring**: Evaluates candidates with chain-of-thought reasoning
-                5. **Ranking**: Selects top 4-10 candidates
-                6. **Report**: Generates professional PDF with visualizations
+                    1. **Job Analysis**: Extracts requirements from job description
+                    2. **Research**: Identifies equivalent skills and job titles
+                    3. **Resume Parsing**: Extracts structured data from resumes
+                    4. **Scoring**: Evaluates candidates with chain-of-thought reasoning
+                    5. **Ranking**: Selects top 4-10 candidates
+                    6. **Report**: Generates professional PDF with visualizations
 
-                **Scoring Criteria**:
-                - Must-have certifications: 30%
-                - Bonus certifications: 10%
-                - Required skills: 25%
-                - Preferred skills: 10%
-                - Experience level: 10%
-                - Job title match: 10%
-                - Location: 5%
-                """)
+                    **Scoring Criteria**:
+                    - Must-have certifications: 30%
+                    - Bonus certifications: 10%
+                    - Required skills: 25%
+                    - Preferred skills: 10%
+                    - Experience level: 10%
+                    - Job title match: 10%
+                    - Location: 5%
+                    """)
 
             # Main input toggle
             st.markdown('<div class="section-header">Input Method</div>', unsafe_allow_html=True)
@@ -2902,7 +2883,33 @@ The AI will analyze this to extract skills and requirements.""",
             )
         
         with tab_history:
-            display_analysis_history(user_id)
+            # Check if user wants to view a previous analysis
+            if st.session_state.get("view_report_id"):
+                try:
+                    analysis_data = load_analysis_data(st.session_state["view_report_id"], user_id)
+                    if analysis_data:
+                        # Store in results format for display_results
+                        st.session_state.results = analysis_data
+                        st.session_state["viewing_previous_analysis"] = True
+                        st.session_state.pop("view_report_id", None)
+                        st.rerun()
+                    else:
+                        st.error("⚠️ Analysis not found or access denied. The report may have been deleted or you may not have permission to view it.")
+                        logger.warning(f"Failed to load analysis {st.session_state['view_report_id']} for user {user_id}")
+                        st.session_state.pop("view_report_id", None)
+                        # Show the history list after error
+                        display_analysis_history(user_id)
+                except Exception as e:
+                    logger.error(f"Error loading analysis data: {e}", exc_info=True)
+                    st.error(f"❌ Error loading analysis: {str(e)}")
+                    st.session_state.pop("view_report_id", None)
+                    # Show the history list after error
+                    display_analysis_history(user_id)
+            # If we have stored results from viewing a previous analysis, show them
+            elif st.session_state.results is not None and st.session_state.get("viewing_previous_analysis", False):
+                display_results(st.session_state.results)
+            else:
+                display_analysis_history(user_id)
         
         with tab_database:
             display_resume_database(user_id)
