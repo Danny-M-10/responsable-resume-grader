@@ -553,12 +553,25 @@ class CandidateRankerApp:
                 print(f"  ERROR: Exception during scoring candidate {i+1}: {result}")
                 # Create a default low score for exceptions
                 from models import CandidateScore
-                candidate = candidates[i]
+                # Safely get candidate data - ensure it's a dictionary
+                if i < len(candidates) and isinstance(candidates[i], dict):
+                    candidate = candidates[i]
+                    name = candidate.get('name', 'Unknown')
+                    phone = candidate.get('phone', '')
+                    email = candidate.get('email', '')
+                    certifications = candidate.get('certifications', [])
+                else:
+                    # Fallback if candidate data is invalid
+                    name = 'Unknown'
+                    phone = ''
+                    email = ''
+                    certifications = []
+                
                 result = CandidateScore(
-                    name=candidate.get('name', 'Unknown'),
-                    phone=candidate.get('phone', ''),
-                    email=candidate.get('email', ''),
-                    certifications=candidate.get('certifications', []),
+                    name=name,
+                    phone=phone,
+                    email=email,
+                    certifications=certifications,
                     fit_score=1.0,
                     chain_of_thought=f"Exception during scoring: {str(result)}",
                     rationale=f"Scoring failed: {str(result)}",
