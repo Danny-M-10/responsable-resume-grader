@@ -826,7 +826,7 @@ def _make_download_link(data_bytes: bytes, filename: str, mime: str) -> str:
     if not data_bytes:
         return ""
     b64 = base64.b64encode(data_bytes).decode()
-    return f'<a class="download-link" href="data:{mime};base64,{b64}" download="{filename}">⬇️ Download {filename}</a>'
+    return f'<a class="download-link" href="data:{mime};base64,{b64}" download="{filename}"><span style="font-size: 1.2em;">↓</span> Download {filename}</a>'
 
 
 def get_score_color(score):
@@ -850,7 +850,7 @@ def display_analysis_history(user_id: str):
         
         # Validate user_id
         if not user_id:
-            st.error("❌ User ID is missing. Please log in again.")
+            st.error("**Error:** User ID is missing. Please log in again.")
             logger.error("display_analysis_history called with empty user_id")
             return
         
@@ -860,7 +860,7 @@ def display_analysis_history(user_id: str):
             logger.info(f"Loaded {len(analyses)} analyses for user {user_id}")
         except Exception as e:
             logger.error(f"Error loading analyses for user {user_id}: {e}", exc_info=True)
-            st.error("❌ Error loading analyses. Please try again or contact support if the issue persists.")
+            st.error("**Error:** Error loading analyses. Please try again or contact support if the issue persists.")
             return
         
         if not analyses:
@@ -1245,7 +1245,7 @@ def display_analysis_history(user_id: str):
     
     except Exception as e:
         logger.error(f"Error in display_analysis_history for user {user_id}: {e}", exc_info=True)
-        st.error("❌ An unexpected error occurred while displaying analysis history. Please try again or contact support if the issue persists.")
+        st.error("**Error:** An unexpected error occurred while displaying analysis history. Please try again or contact support if the issue persists.")
         st.exception(e)
 
 
@@ -1262,7 +1262,7 @@ def display_analysis_analytics(user_id: str):
             logger.info(f"Loaded {len(analyses)} analyses for user {user_id}")
         except Exception as e:
             logger.error(f"Error loading analyses for user {user_id}: {e}", exc_info=True)
-            st.error("❌ Error loading analyses. Please try again or contact support if the issue persists.")
+            st.error("**Error:** Error loading analyses. Please try again or contact support if the issue persists.")
             return
         
         if not analyses:
@@ -1319,7 +1319,7 @@ def display_analysis_analytics(user_id: str):
         except ModuleNotFoundError:
             pandas_available = False
             logger.warning("pandas module not found - charts will be limited")
-            st.warning("⚠️ Charts require pandas. Install with: `pip install pandas`")
+            st.warning("**Warning:** Charts require pandas. Install with: `pip install pandas`")
         
         # Charts section
         col_chart1, col_chart2 = st.columns(2)
@@ -1443,7 +1443,7 @@ def display_analysis_analytics(user_id: str):
     
     except Exception as e:
         logger.error(f"Error in display_analysis_analytics for user {user_id}: {e}", exc_info=True)
-        st.error("❌ An unexpected error occurred while displaying analytics. Please try again or contact support if the issue persists.")
+        st.error("**Error:** An unexpected error occurred while displaying analytics. Please try again or contact support if the issue persists.")
         st.exception(e)
 
 
@@ -1456,7 +1456,7 @@ def display_resume_database(user_id: str):
         
         # Validate user_id
         if not user_id:
-            st.error("❌ User ID is missing. Please log in again.")
+            st.error("**Error:** User ID is missing. Please log in again.")
             logger.error("display_resume_database called with empty user_id")
             return
         
@@ -1508,7 +1508,7 @@ def display_resume_database(user_id: str):
             logger.info(f"Found {len(candidates)} candidates for user {user_id}")
         except Exception as e:
             logger.error(f"Error searching candidates for user {user_id}: {e}", exc_info=True)
-            st.error("❌ Error searching candidates. Please try again or contact support if the issue persists.")
+            st.error("**Error:** Error searching candidates. Please try again or contact support if the issue persists.")
             candidates = []
         
         # Display candidate count
@@ -1588,7 +1588,7 @@ def display_resume_database(user_id: str):
                                 logger.warning(f"Failed to cleanup temp directory: {e}")
                     except Exception as e:
                         logger.error(f"Error saving resume to database for user {user_id}: {e}", exc_info=True)
-                        st.error(f"❌ Error saving resume: {str(e)}")
+                        st.error(f"**Error:** Error saving resume: {str(e)}")
             return
     
         # Display candidates in a grid/list
@@ -1791,11 +1791,11 @@ def display_resume_database(user_id: str):
                             logger.warning(f"Failed to cleanup temp directory: {e}")
                 except Exception as e:
                     logger.error(f"Error saving resume to database for user {user_id}: {e}", exc_info=True)
-                    st.error(f"❌ Error saving resume: {str(e)}")
+                    st.error(f"**Error:** Error saving resume: {str(e)}")
     
     except Exception as e:
         logger.error(f"Error in display_resume_database for user {user_id}: {e}", exc_info=True)
-        st.error("❌ An unexpected error occurred while displaying the resume database. Please try again or contact support if the issue persists.")
+        st.error("**Error:** An unexpected error occurred while displaying the resume database. Please try again or contact support if the issue persists.")
         st.exception(e)
 
 
@@ -1964,7 +1964,7 @@ def display_results(results):
     # Show auto-save success notification if resumes were automatically saved
     if st.session_state.get('resumes_auto_saved'):
         saved_count = st.session_state.pop('resumes_auto_saved')
-        st.success(f"✓ {saved_count} resume(s) automatically saved to your database and linked to this analysis.")
+        st.success(f"**Success:** {saved_count} resume(s) automatically saved to your database and linked to this analysis.")
         
         st.markdown("---")
     
@@ -2440,7 +2440,7 @@ def main():
                 help="File upload uses AI to automatically extract all job details",
                 key="input_mode_radio"
             )
-            st.caption("💡 **Note:** Job details are required. Candidate resumes are optional - you can add them later or upload them now.")
+            st.caption("**Note:** Job details are required. Candidate resumes are optional - you can add them later or upload them now.")
             
             # Clear edited values when switching modes
             if 'last_input_mode' in st.session_state and st.session_state['last_input_mode'] != input_mode:
@@ -2477,7 +2477,7 @@ def main():
                     max_size_mb = 200
                     max_size_bytes = max_size_mb * 1024 * 1024
                     if job_desc_file.size > max_size_bytes:
-                        st.error(f"❌ **File too large**: '{job_desc_file.name}' is {job_desc_file.size / (1024*1024):.1f}MB. Maximum file size is {max_size_mb}MB. Please upload a smaller file.")
+                        st.error(f"**Error - File too large:** '{job_desc_file.name}' is {job_desc_file.size / (1024*1024):.1f}MB. Maximum file size is {max_size_mb}MB. Please upload a smaller file.")
                         job_desc_file = None
                     
                     if job_desc_file:
@@ -2746,7 +2746,7 @@ def main():
                                 # Provide more helpful error messages
                                 error_msg = str(e)
                                 if "400" in error_msg or "Bad Request" in error_msg:
-                                    st.error(f"❌ **File Processing Error**: The file '{job_desc_file.name}' could not be processed. This may be due to:\n\n"
+                                    st.error(f"**Error - File Processing:** The file '{job_desc_file.name}' could not be processed. This may be due to:\n\n"
                                             "- File format issue (corrupted or unsupported format)\n"
                                             "- File is too large or contains invalid content\n"
                                             "- PDF is image-based (scanned) rather than text-based\n\n"
@@ -2755,13 +2755,13 @@ def main():
                                             "- Using a different file format (DOCX or TXT)\n"
                                             "- Ensuring the file is not corrupted")
                                 elif "API" in error_msg or "OpenAI" in error_msg or "key" in error_msg.lower():
-                                    st.error(f"❌ **API Error**: {error_msg}\n\n"
+                                    st.error(f"**Error - API:** {error_msg}\n\n"
                                             "Please check your OpenAI API key configuration.")
                                 elif "read" in error_msg.lower() or "parse" in error_msg.lower() or "encrypted" in error_msg.lower():
-                                    st.error(f"❌ **File Reading Error**: Could not read the file '{job_desc_file.name}'. "
+                                    st.error(f"**Error - File Reading:** Could not read the file '{job_desc_file.name}'. "
                                             "The file may be corrupted, encrypted, or in an unsupported format. Please try a different file.")
                                 else:
-                                    st.error(f"❌ **Error processing file**: {error_msg}\n\n"
+                                    st.error(f"**Error processing file:** {error_msg}\n\n"
                                             f"If this problem persists, please try uploading a different file format (TXT, DOCX, or text-based PDF).")
                                 job_description = ""
                                 # Clear the file from session state on error so user can retry
@@ -2889,9 +2889,9 @@ The AI will analyze this to extract skills and requirements.""",
             # Show combined total
             total_candidates = len(selected_candidate_ids) + len(uploaded_files) if uploaded_files else len(selected_candidate_ids)
             if total_candidates > 0:
-                st.info(f"📊 **Total candidates for analysis: {total_candidates}** ({len(selected_candidate_ids)} from database, {len(uploaded_files) if uploaded_files else 0} uploaded)")
+                st.info(f"**Total candidates for analysis:** {total_candidates} ({len(selected_candidate_ids)} from database, {len(uploaded_files) if uploaded_files else 0} uploaded)")
             else:
-                st.info("ℹ️ **No resumes selected.** The analysis will be created with job requirements only. You can add candidates later or upload resumes now.")
+                st.info("**Info:** No resumes selected. The analysis will be created with job requirements only. You can add candidates later or upload resumes now.")
 
             # Process Button
             st.markdown('<div class="section-header"></div>', unsafe_allow_html=True)
@@ -3157,14 +3157,14 @@ The AI will analyze this to extract skills and requirements.""",
                         st.session_state.pop("view_report_id", None)
                         st.rerun()
                     else:
-                        st.error("⚠️ Analysis not found or access denied. The report may have been deleted or you may not have permission to view it.")
+                        st.error("**Warning:** Analysis not found or access denied. The report may have been deleted or you may not have permission to view it.")
                         logger.warning(f"Failed to load analysis {st.session_state['view_report_id']} for user {user_id}")
                         st.session_state.pop("view_report_id", None)
                         # Show the history list after error
                         display_analysis_history(user_id)
                 except Exception as e:
                     logger.error(f"Error loading analysis data: {e}", exc_info=True)
-                    st.error(f"❌ Error loading analysis: {str(e)}")
+                    st.error(f"**Error:** Error loading analysis: {str(e)}")
                     st.session_state.pop("view_report_id", None)
                     # Show the history list after error
                     display_analysis_history(user_id)
