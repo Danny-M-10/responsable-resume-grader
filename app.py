@@ -290,36 +290,46 @@ def load_user_analyses(user_id: str) -> List[Dict]:
     Load list of user's previous analyses from database.
     Returns list of dicts with report info.
     """
-    with get_db() as conn:
-        cur = conn.cursor()
-        query = _prepare_query_wrapper(conn, """
-            SELECT r.id, r.created_at, r.pdf_path, r.summary_json,
-                   j.title, j.location, j.certifications_json
-            FROM reports r
-            JOIN job_descriptions j ON r.job_description_id = j.id
-            WHERE r.user_id = ?
-            ORDER BY r.created_at DESC
-        """)
-        cur.execute(query, (user_id,))
-        rows = cur.fetchall()
-        
-        analyses = []
-        for row in rows:
-            report_id, created_at, pdf_path, summary_json, title, location, certs_json = row
-            try:
-                summary = json.loads(summary_json) if summary_json else {}
-            except (json.JSONDecodeError, TypeError):
-                summary = {}
-            analyses.append({
-                'report_id': report_id,
-                'created_at': created_at,
-                'pdf_path': pdf_path,
-                'title': title or 'Untitled',
-                'location': location or 'Not specified',
-                'num_candidates': summary.get('all_candidates', 0),
-                'top_candidates': summary.get('top_candidates', 0),
-            })
-        return analyses
+    if not user_id:
+        logger.error("load_user_analyses called with empty user_id")
+        return []
+    
+    try:
+        with get_db() as conn:
+            cur = conn.cursor()
+            query = _prepare_query_wrapper(conn, """
+                SELECT r.id, r.created_at, r.pdf_path, r.summary_json,
+                       j.title, j.location, j.certifications_json
+                FROM reports r
+                JOIN job_descriptions j ON r.job_description_id = j.id
+                WHERE r.user_id = ?
+                ORDER BY r.created_at DESC
+            """)
+            cur.execute(query, (user_id,))
+            rows = cur.fetchall()
+            
+            analyses = []
+            for row in rows:
+                report_id, created_at, pdf_path, summary_json, title, location, certs_json = row
+                try:
+                    summary = json.loads(summary_json) if summary_json else {}
+                except (json.JSONDecodeError, TypeError) as e:
+                    logger.warning(f"Error parsing summary_json for report {report_id}: {e}")
+                    summary = {}
+                analyses.append({
+                    'report_id': report_id,
+                    'created_at': created_at,
+                    'pdf_path': pdf_path,
+                    'title': title or 'Untitled',
+                    'location': location or 'Not specified',
+                    'num_candidates': summary.get('all_candidates', 0),
+                    'top_candidates': summary.get('top_candidates', 0),
+                })
+            logger.info(f"Successfully loaded {len(analyses)} analyses for user {user_id}")
+            return analyses
+    except Exception as e:
+        logger.error(f"Error loading user analyses for user {user_id}: {e}", exc_info=True)
+        return []
 
 
 def load_analysis_data(report_id: str, user_id: str) -> Optional[Dict]:
@@ -327,7 +337,12 @@ def load_analysis_data(report_id: str, user_id: str) -> Optional[Dict]:
     Load full analysis data for a specific report.
     Returns dict with job_details, candidate_scores, pdf_data, etc.
     """
-    with get_db() as conn:
+    if not report_id or not user_id:
+        logger.error(f"load_analysis_data called with invalid params: report_id={report_id}, user_id={user_id}")
+        return None
+    
+    try:
+        with get_db() as conn:
         cur = conn.cursor()
         
         # Get report and job description
@@ -445,21 +460,24 @@ def load_analysis_data(report_id: str, user_id: str) -> Optional[Dict]:
             except json.JSONDecodeError:
                 pass
         
-        return {
-            'report_id': report_id_db,
-            'created_at': created_at,
-            'pdf_path': pdf_path,
-            'pdf_data': pdf_data,
-            'candidate_scores': candidate_scores,
-            'job_details': {
-                'title': title or 'Untitled',
-                'location': location or 'Not specified',
-                'certifications': certifications,
-                'full_description': full_desc or '',
-            },
-            'processing_time': 0,  # Not stored, use 0 as default
-            'timestamp': created_at,
-        }
+            return {
+                'report_id': report_id_db,
+                'created_at': created_at,
+                'pdf_path': pdf_path,
+                'pdf_data': pdf_data,
+                'candidate_scores': candidate_scores,
+                'job_details': {
+                    'title': title or 'Untitled',
+                    'location': location or 'Not specified',
+                    'certifications': certifications,
+                    'full_description': full_desc or '',
+                },
+                'processing_time': 0,  # Not stored, use 0 as default
+                'timestamp': created_at,
+            }
+    except Exception as e:
+        logger.error(f"Error loading analysis data for report {report_id}, user {user_id}: {e}", exc_info=True)
+        return None
 
 
 def init_session_state():
@@ -825,13 +843,29 @@ def display_analysis_history(user_id: str):
     """
     Display list of user's previous analyses with search, filter, sort, and management options.
     """
-    st.markdown('<div class="section-header">Previous Analyses</div>', unsafe_allow_html=True)
+    logger.info(f"Displaying analysis history for user {user_id}")
     
-    analyses = load_user_analyses(user_id)
-    
-    if not analyses:
-        st.info("You haven't run any analyses yet. Start a new analysis to see results here.")
-        return
+    try:
+        st.markdown('<div class="section-header">Previous Analyses</div>', unsafe_allow_html=True)
+        
+        # Validate user_id
+        if not user_id:
+            st.error("❌ User ID is missing. Please log in again.")
+            logger.error("display_analysis_history called with empty user_id")
+            return
+        
+        # Load analyses with error handling
+        try:
+            analyses = load_user_analyses(user_id)
+            logger.info(f"Loaded {len(analyses)} analyses for user {user_id}")
+        except Exception as e:
+            logger.error(f"Error loading analyses for user {user_id}: {e}", exc_info=True)
+            st.error("❌ Error loading analyses. Please try again or contact support if the issue persists.")
+            return
+        
+        if not analyses:
+            st.info("You haven't run any analyses yet. Start a new analysis to see results here.")
+            return
     
     total_count = len(analyses)
     
@@ -1208,17 +1242,32 @@ def display_analysis_history(user_id: str):
             
             if idx < len(paginated_analyses) - 1:
                 st.markdown("<br>", unsafe_allow_html=True)
+    
+    except Exception as e:
+        logger.error(f"Error in display_analysis_history for user {user_id}: {e}", exc_info=True)
+        st.error("❌ An unexpected error occurred while displaying analysis history. Please try again or contact support if the issue persists.")
+        st.exception(e)
 
 
 def display_analysis_analytics(user_id: str):
     """Display analytics dashboard for user's analyses"""
-    st.markdown('<div class="section-header">Analysis Analytics</div>', unsafe_allow_html=True)
+    logger.info(f"Displaying analytics for user {user_id}")
     
-    analyses = load_user_analyses(user_id)
-    
-    if not analyses:
-        st.info("No analyses available for analytics. Run some analyses first!")
-        return
+    try:
+        st.markdown('<div class="section-header">Analysis Analytics</div>', unsafe_allow_html=True)
+        
+        # Load analyses with error handling
+        try:
+            analyses = load_user_analyses(user_id)
+            logger.info(f"Loaded {len(analyses)} analyses for user {user_id}")
+        except Exception as e:
+            logger.error(f"Error loading analyses for user {user_id}: {e}", exc_info=True)
+            st.error("❌ Error loading analyses. Please try again or contact support if the issue persists.")
+            return
+        
+        if not analyses:
+            st.info("No analyses available for analytics. Run some analyses first!")
+            return
     
     # Calculate statistics
     total_analyses = len(analyses)
@@ -1262,93 +1311,156 @@ def display_analysis_analytics(user_id: str):
     
     st.markdown("---")
     
-    # Charts section
-    col_chart1, col_chart2 = st.columns(2)
-    
-    with col_chart1:
-        st.subheader("Analyses Over Time")
-        # Group by month
-        monthly_counts = {}
-        for a in analyses:
-            try:
-                created_at_str = a.get('created_at', '')
-                if created_at_str.endswith('Z'):
-                    dt = datetime.fromisoformat(created_at_str.replace('Z', '+00:00'))
-                else:
-                    dt = datetime.fromisoformat(created_at_str)
-                month_key = dt.strftime('%Y-%m')
-                monthly_counts[month_key] = monthly_counts.get(month_key, 0) + 1
-            except:
-                pass
-        
-        if monthly_counts:
+        # Check if pandas is available
+        try:
             import pandas as pd
-            chart_data = pd.DataFrame({
-                'Month': list(monthly_counts.keys()),
-                'Count': list(monthly_counts.values())
-            }).sort_values('Month')
-            st.bar_chart(chart_data.set_index('Month'))
-    
-    with col_chart2:
-        st.subheader("Job Titles Distribution")
-        # Count job titles
-        title_counts = {}
-        for title in job_titles:
-            title_counts[title] = title_counts.get(title, 0) + 1
+            pandas_available = True
+        except ModuleNotFoundError:
+            pandas_available = False
+            logger.warning("pandas module not found - charts will be limited")
+            st.warning("⚠️ Charts require pandas. Install with: `pip install pandas`")
         
-        if title_counts:
-            # Show top 10
-            top_titles = sorted(title_counts.items(), key=lambda x: x[1], reverse=True)[:10]
-            chart_data = pd.DataFrame({
-                'Job Title': [t[0][:30] for t in top_titles],  # Truncate long titles
-                'Count': [t[1] for t in top_titles]
-            })
-            st.bar_chart(chart_data.set_index('Job Title'))
-    
-    # Additional statistics
-    st.markdown("---")
-    st.subheader("Summary Statistics")
-    
-    col_stat1, col_stat2 = st.columns(2)
-    with col_stat1:
-        st.markdown(f"**Most Analyzed Job Title:** {most_common_title}")
-        st.markdown(f"**Most Common Location:** {most_common_location}")
-    with col_stat2:
-        st.markdown(f"**First Analysis:** {first_date}" if first_date else "**First Analysis:** N/A")
-        st.markdown(f"**Latest Analysis:** {last_date}" if last_date else "**Latest Analysis:** N/A")
-    
-    # Candidate count trend
-    if len(analyses) > 1:
-        st.markdown("---")
-        st.subheader("Candidate Count Trend")
-        candidate_trend = []
-        for a in sorted(analyses, key=lambda x: x.get('created_at', '')):
-            try:
-                created_at_str = a.get('created_at', '')
-                if created_at_str.endswith('Z'):
-                    dt = datetime.fromisoformat(created_at_str.replace('Z', '+00:00'))
+        # Charts section
+        col_chart1, col_chart2 = st.columns(2)
+        
+        with col_chart1:
+            st.subheader("Analyses Over Time")
+            # Group by month
+            monthly_counts = {}
+            for a in analyses:
+                try:
+                    created_at_str = a.get('created_at', '')
+                    if created_at_str.endswith('Z'):
+                        dt = datetime.fromisoformat(created_at_str.replace('Z', '+00:00'))
+                    else:
+                        dt = datetime.fromisoformat(created_at_str)
+                    month_key = dt.strftime('%Y-%m')
+                    monthly_counts[month_key] = monthly_counts.get(month_key, 0) + 1
+                except Exception as e:
+                    logger.debug(f"Error parsing date for analysis: {e}")
+                    pass
+            
+            if monthly_counts:
+                if pandas_available:
+                    try:
+                        chart_data = pd.DataFrame({
+                            'Month': list(monthly_counts.keys()),
+                            'Count': list(monthly_counts.values())
+                        }).sort_values('Month')
+                        st.bar_chart(chart_data.set_index('Month'))
+                    except Exception as e:
+                        logger.error(f"Error creating monthly chart: {e}", exc_info=True)
+                        st.error("Error displaying chart. Showing data in table format instead.")
+                        # Fallback: show as table
+                        for month, count in sorted(monthly_counts.items()):
+                            st.text(f"{month}: {count} analyses")
                 else:
-                    dt = datetime.fromisoformat(created_at_str)
-                candidate_trend.append({
-                    'Date': dt.strftime('%Y-%m-%d'),
-                    'Candidates': a.get('num_candidates', 0)
-                })
-            except:
-                pass
+                    # Fallback without pandas
+                    st.info("Monthly breakdown:")
+                    for month, count in sorted(monthly_counts.items()):
+                        st.text(f"{month}: {count} analyses")
         
-        if candidate_trend:
-            trend_df = pd.DataFrame(candidate_trend)
-            trend_df['Date'] = pd.to_datetime(trend_df['Date'])
-            trend_df = trend_df.sort_values('Date')
-            st.line_chart(trend_df.set_index('Date'))
+        with col_chart2:
+            st.subheader("Job Titles Distribution")
+            # Count job titles
+            title_counts = {}
+            for title in job_titles:
+                title_counts[title] = title_counts.get(title, 0) + 1
+            
+            if title_counts:
+                # Show top 10
+                top_titles = sorted(title_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+                if pandas_available:
+                    try:
+                        chart_data = pd.DataFrame({
+                            'Job Title': [t[0][:30] for t in top_titles],  # Truncate long titles
+                            'Count': [t[1] for t in top_titles]
+                        })
+                        st.bar_chart(chart_data.set_index('Job Title'))
+                    except Exception as e:
+                        logger.error(f"Error creating job titles chart: {e}", exc_info=True)
+                        st.error("Error displaying chart. Showing data in table format instead.")
+                        # Fallback: show as list
+                        for title, count in top_titles:
+                            st.text(f"{title}: {count} analyses")
+                else:
+                    # Fallback without pandas
+                    st.info("Top job titles:")
+                    for title, count in top_titles:
+                        st.text(f"{title}: {count} analyses")
+        
+        # Additional statistics
+        st.markdown("---")
+        st.subheader("Summary Statistics")
+        
+        col_stat1, col_stat2 = st.columns(2)
+        with col_stat1:
+            st.markdown(f"**Most Analyzed Job Title:** {most_common_title}")
+            st.markdown(f"**Most Common Location:** {most_common_location}")
+        with col_stat2:
+            st.markdown(f"**First Analysis:** {first_date}" if first_date else "**First Analysis:** N/A")
+            st.markdown(f"**Latest Analysis:** {last_date}" if last_date else "**Latest Analysis:** N/A")
+        
+        # Candidate count trend
+        if len(analyses) > 1:
+            st.markdown("---")
+            st.subheader("Candidate Count Trend")
+            candidate_trend = []
+            for a in sorted(analyses, key=lambda x: x.get('created_at', '')):
+                try:
+                    created_at_str = a.get('created_at', '')
+                    if created_at_str.endswith('Z'):
+                        dt = datetime.fromisoformat(created_at_str.replace('Z', '+00:00'))
+                    else:
+                        dt = datetime.fromisoformat(created_at_str)
+                    candidate_trend.append({
+                        'Date': dt.strftime('%Y-%m-%d'),
+                        'Candidates': a.get('num_candidates', 0)
+                    })
+                except Exception as e:
+                    logger.debug(f"Error parsing date for trend: {e}")
+                    pass
+            
+            if candidate_trend:
+                if pandas_available:
+                    try:
+                        trend_df = pd.DataFrame(candidate_trend)
+                        trend_df['Date'] = pd.to_datetime(trend_df['Date'])
+                        trend_df = trend_df.sort_values('Date')
+                        st.line_chart(trend_df.set_index('Date'))
+                    except Exception as e:
+                        logger.error(f"Error creating trend chart: {e}", exc_info=True)
+                        st.error("Error displaying trend chart. Showing data in table format instead.")
+                        # Fallback: show as table
+                        for item in sorted(candidate_trend, key=lambda x: x['Date']):
+                            st.text(f"{item['Date']}: {item['Candidates']} candidates")
+                else:
+                    # Fallback without pandas
+                    st.info("Candidate count trend:")
+                    for item in sorted(candidate_trend, key=lambda x: x['Date']):
+                        st.text(f"{item['Date']}: {item['Candidates']} candidates")
+    
+    except Exception as e:
+        logger.error(f"Error in display_analysis_analytics for user {user_id}: {e}", exc_info=True)
+        st.error("❌ An unexpected error occurred while displaying analytics. Please try again or contact support if the issue persists.")
+        st.exception(e)
 
 
 def display_resume_database(user_id: str):
     """Display resume database with search, filter, and management options"""
-    st.markdown('<div class="section-header">Resume Database</div>', unsafe_allow_html=True)
+    logger.info(f"Displaying resume database for user {user_id}")
     
-    # Search and Filter Section
-    with st.expander("Search & Filter", expanded=True):
+    try:
+        st.markdown('<div class="section-header">Resume Database</div>', unsafe_allow_html=True)
+        
+        # Validate user_id
+        if not user_id:
+            st.error("❌ User ID is missing. Please log in again.")
+            logger.error("display_resume_database called with empty user_id")
+            return
+        
+        # Search and Filter Section
+        with st.expander("Search & Filter", expanded=True):
         col1, col2 = st.columns([2, 1])
         
         with col1:
@@ -1389,90 +1501,97 @@ def display_resume_database(user_id: str):
     if tag_filter:
         filters['tags'] = [t.strip() for t in tag_filter.split(',') if t.strip()]
     
-    # Search candidates
-    candidates = search_candidates(user_id, query=search_query or "", filters=filters)
-    
-    # Display candidate count
-    st.markdown(f"**Found {len(candidates)} candidate(s)**")
-    
-    if not candidates:
-        st.info("No candidates found. Upload resumes to build your database!")
+        # Search candidates with error handling
+        try:
+            candidates = search_candidates(user_id, query=search_query or "", filters=filters)
+            logger.info(f"Found {len(candidates)} candidates for user {user_id}")
+        except Exception as e:
+            logger.error(f"Error searching candidates for user {user_id}: {e}", exc_info=True)
+            st.error("❌ Error searching candidates. Please try again or contact support if the issue persists.")
+            candidates = []
         
-        # Upload new resume section
-        st.markdown("---")
-        st.markdown("### Upload New Resume")
-        uploaded_file = st.file_uploader(
-            "Upload a resume to add to your database",
-            type=["pdf", "docx", "txt"],
-            key="resume_db_upload"
-        )
+        # Display candidate count
+        st.markdown(f"**Found {len(candidates)} candidate(s)**")
         
-        if uploaded_file:
-            if st.button("Save to Database", type="primary"):
-                try:
-                    # Parse the resume
-                    from resume_parser import ResumeParser
-                    import tempfile
-                    import shutil
-                    
-                    temp_dir = tempfile.mkdtemp()
-                    temp_path = os.path.join(temp_dir, uploaded_file.name)
-                    
+        if not candidates:
+            st.info("No candidates found. Upload resumes to build your database!")
+            
+            # Upload new resume section
+            st.markdown("---")
+            st.markdown("### Upload New Resume")
+            uploaded_file = st.file_uploader(
+                "Upload a resume to add to your database",
+                type=["pdf", "docx", "txt"],
+                key="resume_db_upload"
+            )
+            
+            if uploaded_file:
+                if st.button("Save to Database", type="primary"):
                     try:
-                        with open(temp_path, 'wb') as f:
-                            f.write(uploaded_file.getbuffer())
+                        # Parse the resume
+                        from resume_parser import ResumeParser
+                        import tempfile
+                        import shutil
                         
-                        parser = ResumeParser()
-                        resume_data = parser.parse(temp_path)
+                        temp_dir = tempfile.mkdtemp()
+                        temp_path = os.path.join(temp_dir, uploaded_file.name)
                         
-                        # Save file
-                        file_bytes = uploaded_file.getbuffer()
-                        stored_path, file_hash = save_bytes(file_bytes, uploaded_file.name)
-                        
-                        # Save to file_assets
-                        import uuid
-                        asset_id = str(uuid.uuid4())
-                        
-                        with get_db() as conn:
-                            cur = conn.cursor()
-                            query = prepare_query(conn, """
-                                INSERT INTO file_assets 
-                                (id, user_id, kind, original_name, stored_path, created_at)
-                                VALUES (?, ?, ?, ?, ?, ?)
-                            """)
-                            cur.execute(query, (
-                                asset_id,
-                                user_id,
-                                'resume',
-                                uploaded_file.name,
-                                stored_path,
-                                utcnow_str()
-                            ))
-                            conn.commit()
-                        
-                        # Save to candidate profiles
-                        profile_id = save_candidate_profile(
-                            user_id=user_id,
-                            resume_data=resume_data,
-                            resume_file_id=asset_id,
-                            tags=[],
-                            notes=""
-                        )
-                        
-                        st.success(f"Resume saved to database! Profile ID: {profile_id}")
-                        st.rerun()
-                    finally:
                         try:
-                            shutil.rmtree(temp_dir)
-                        except:
-                            pass
-                except Exception as e:
-                    logger.error(f"Error saving resume to database: {e}", exc_info=True)
-                    st.error(f"Error saving resume: {str(e)}")
-        return
+                            with open(temp_path, 'wb') as f:
+                                f.write(uploaded_file.getbuffer())
+                            
+                            parser = ResumeParser()
+                            resume_data = parser.parse(temp_path)
+                            
+                            # Save file
+                            file_bytes = uploaded_file.getbuffer()
+                            stored_path, file_hash = save_bytes(file_bytes, uploaded_file.name)
+                            
+                            # Save to file_assets
+                            import uuid
+                            asset_id = str(uuid.uuid4())
+                            
+                            with get_db() as conn:
+                                cur = conn.cursor()
+                                query = prepare_query(conn, """
+                                    INSERT INTO file_assets 
+                                    (id, user_id, kind, original_name, stored_path, created_at)
+                                    VALUES (?, ?, ?, ?, ?, ?)
+                                """)
+                                cur.execute(query, (
+                                    asset_id,
+                                    user_id,
+                                    'resume',
+                                    uploaded_file.name,
+                                    stored_path,
+                                    utcnow_str()
+                                ))
+                                conn.commit()
+                            
+                            # Save to candidate profiles
+                            profile_id = save_candidate_profile(
+                                user_id=user_id,
+                                resume_data=resume_data,
+                                resume_file_id=asset_id,
+                                tags=[],
+                                notes=""
+                            )
+                            
+                            st.success(f"Resume saved to database! Profile ID: {profile_id}")
+                            logger.info(f"Resume saved successfully for user {user_id}, profile_id: {profile_id}")
+                            st.rerun()
+                        finally:
+                            try:
+                                shutil.rmtree(temp_dir)
+                            except Exception as e:
+                                logger.warning(f"Failed to cleanup temp directory: {e}")
+                    except Exception as e:
+                        logger.error(f"Error saving resume to database for user {user_id}: {e}", exc_info=True)
+                        st.error(f"❌ Error saving resume: {str(e)}")
+            return
     
-    # Display candidates in a grid/list
-    for idx, candidate in enumerate(candidates):
+        # Display candidates in a grid/list
+        for idx, candidate in enumerate(candidates):
         with st.container():
             col1, col2, col3, col4 = st.columns([3, 2, 2, 2])
             
@@ -1593,84 +1712,90 @@ def display_resume_database(user_id: str):
             
             if idx < len(candidates) - 1:
                 st.markdown("---")
-    
-    # Upload new resume section at bottom
-    st.markdown("---")
-    st.markdown("### Upload New Resume")
-    uploaded_file = st.file_uploader(
-        "Upload a resume to add to your database",
-        type=["pdf", "docx", "txt"],
-        key="resume_db_upload_bottom"
-    )
-    
-    if uploaded_file:
-        tags_input = st.text_input("Tags (comma-separated)", key="new_resume_tags")
-        notes_input = st.text_area("Notes", key="new_resume_notes")
         
-        if st.button("Save to Database", type="primary", key="save_new_resume"):
-            try:
-                # Parse the resume
-                from resume_parser import ResumeParser
-                import tempfile
-                import shutil
-                
-                temp_dir = tempfile.mkdtemp()
-                temp_path = os.path.join(temp_dir, uploaded_file.name)
-                
+        # Upload new resume section at bottom
+        st.markdown("---")
+        st.markdown("### Upload New Resume")
+        uploaded_file = st.file_uploader(
+            "Upload a resume to add to your database",
+            type=["pdf", "docx", "txt"],
+            key="resume_db_upload_bottom"
+        )
+        
+        if uploaded_file:
+            tags_input = st.text_input("Tags (comma-separated)", key="new_resume_tags")
+            notes_input = st.text_area("Notes", key="new_resume_notes")
+            
+            if st.button("Save to Database", type="primary", key="save_new_resume"):
                 try:
-                    with open(temp_path, 'wb') as f:
-                        f.write(uploaded_file.getbuffer())
+                    # Parse the resume
+                    from resume_parser import ResumeParser
+                    import tempfile
+                    import shutil
                     
-                    parser = ResumeParser()
-                    resume_data = parser.parse(temp_path)
+                    temp_dir = tempfile.mkdtemp()
+                    temp_path = os.path.join(temp_dir, uploaded_file.name)
                     
-                    # Save file
-                    file_bytes = uploaded_file.getbuffer()
-                    stored_path, file_hash = save_bytes(file_bytes, uploaded_file.name)
-                    
-                    # Save to file_assets
-                    import uuid
-                    asset_id = str(uuid.uuid4())
-                    
-                    with get_db() as conn:
-                        cur = conn.cursor()
-                        query = prepare_query(conn, """
-                            INSERT INTO file_assets 
-                            (id, user_id, kind, original_name, stored_path, created_at)
-                            VALUES (?, ?, ?, ?, ?, ?)
-                        """)
-                        cur.execute(query, (
-                            asset_id,
-                            user_id,
-                            'resume',
-                            uploaded_file.name,
-                            stored_path,
-                            utcnow_str()
-                        ))
-                        conn.commit()
-                    
-                    # Parse tags
-                    tags = [t.strip() for t in tags_input.split(',') if t.strip()] if tags_input else []
-                    
-                    # Save to candidate profiles
-                    profile_id = save_candidate_profile(
-                        user_id=user_id,
-                        resume_data=resume_data,
-                        resume_file_id=asset_id,
-                        tags=tags,
-                        notes=notes_input or ""
-                    )
-                    
-                    st.success(f"Resume saved to database!")
-                    st.rerun()
-                finally:
                     try:
-                        shutil.rmtree(temp_dir)
-                    except:
-                        pass
-            except Exception as e:
-                logger.error(f"Error saving resume to database: {e}", exc_info=True)
-                st.error(f"Error saving resume: {str(e)}")
+                        with open(temp_path, 'wb') as f:
+                            f.write(uploaded_file.getbuffer())
+                        
+                        parser = ResumeParser()
+                        resume_data = parser.parse(temp_path)
+                        
+                        # Save file
+                        file_bytes = uploaded_file.getbuffer()
+                        stored_path, file_hash = save_bytes(file_bytes, uploaded_file.name)
+                        
+                        # Save to file_assets
+                        import uuid
+                        asset_id = str(uuid.uuid4())
+                        
+                        with get_db() as conn:
+                            cur = conn.cursor()
+                            query = prepare_query(conn, """
+                                INSERT INTO file_assets 
+                                (id, user_id, kind, original_name, stored_path, created_at)
+                                VALUES (?, ?, ?, ?, ?, ?)
+                            """)
+                            cur.execute(query, (
+                                asset_id,
+                                user_id,
+                                'resume',
+                                uploaded_file.name,
+                                stored_path,
+                                utcnow_str()
+                            ))
+                            conn.commit()
+                        
+                        # Parse tags
+                        tags = [t.strip() for t in tags_input.split(',') if t.strip()] if tags_input else []
+                        
+                        # Save to candidate profiles
+                        profile_id = save_candidate_profile(
+                            user_id=user_id,
+                            resume_data=resume_data,
+                            resume_file_id=asset_id,
+                            tags=tags,
+                            notes=notes_input or ""
+                        )
+                        
+                        st.success(f"Resume saved to database!")
+                        logger.info(f"Resume saved successfully for user {user_id}, profile_id: {profile_id}")
+                        st.rerun()
+                    finally:
+                        try:
+                            shutil.rmtree(temp_dir)
+                        except Exception as e:
+                            logger.warning(f"Failed to cleanup temp directory: {e}")
+                except Exception as e:
+                    logger.error(f"Error saving resume to database for user {user_id}: {e}", exc_info=True)
+                    st.error(f"❌ Error saving resume: {str(e)}")
+    
+    except Exception as e:
+        logger.error(f"Error in display_resume_database for user {user_id}: {e}", exc_info=True)
+        st.error("❌ An unexpected error occurred while displaying the resume database. Please try again or contact support if the issue persists.")
+        st.exception(e)
 
 
 def display_results(results):

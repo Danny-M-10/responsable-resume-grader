@@ -6,6 +6,7 @@ Uses OpenAI GPT-4 Turbo to intelligently extract skills and certifications with 
 import os
 import re
 import json
+import hashlib
 from typing import Dict, List, Any
 from openai import OpenAI
 from resume_parser import ResumeParser
@@ -119,10 +120,14 @@ JSON:
 """
 
         try:
+            # Generate deterministic seed from resume content
+            seed = self._generate_deterministic_seed(content)
+            
             response = self.client.chat.completions.create(
                 model=self.model,
                 max_tokens=3000,
-                temperature=0.1,
+                temperature=0.0,  # Zero temperature for maximum determinism
+                seed=seed,  # Deterministic seed ensures same resume = same parsing result
                 messages=[
                     {"role": "user", "content": prompt}
                 ]
