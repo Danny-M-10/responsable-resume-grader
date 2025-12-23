@@ -866,12 +866,12 @@ def display_analysis_history(user_id: str):
         if not analyses:
             st.info("You haven't run any analyses yet. Start a new analysis to see results here.")
             return
-    
-    total_count = len(analyses)
-    
-    # Search and Filter Section
-    with st.expander("Search & Filter", expanded=False):
-        col_search, col_date1, col_date2 = st.columns([2, 1, 1])
+        
+        total_count = len(analyses)
+        
+        # Search and Filter Section
+        with st.expander("Search & Filter", expanded=False):
+            col_search, col_date1, col_date2 = st.columns([2, 1, 1])
         
         with col_search:
             search_query = st.text_input(
@@ -949,299 +949,299 @@ def display_analysis_history(user_id: str):
                 ],
                 key="analysis_sort"
             )
-    
-    # Apply filters
-    filtered_analyses = analyses.copy()
-    
-    # Search filter
-    if search_query:
-        search_lower = search_query.lower()
-        filtered_analyses = [
-            a for a in filtered_analyses
-            if search_lower in a.get('title', '').lower()
-        ]
-    
-    # Date filter
-    if date_from or date_to:
-        filtered_analyses = [
-            a for a in filtered_analyses
-            if _matches_date_filter(a.get('created_at', ''), date_from, date_to)
-        ]
-    
-    # Location filter
-    if location_filter != "All":
-        filtered_analyses = [
-            a for a in filtered_analyses
-            if a.get('location') == location_filter
-        ]
-    
-    # Candidate count filter
-    filtered_analyses = [
-        a for a in filtered_analyses
-        if min_candidates <= a.get('num_candidates', 0) <= max_candidates
-    ]
-    
-    # Apply sorting
-    filtered_analyses = _sort_analyses(filtered_analyses, sort_option)
-    
-    # Display filtered count
-    if len(filtered_analyses) != total_count:
-        st.info(f"Showing {len(filtered_analyses)} of {total_count} analyses")
-    else:
-        st.info(f"Found {total_count} previous analysis(es)")
-    
-    if not filtered_analyses:
-        st.warning("No analyses match your search and filter criteria.")
-        return
-    
-    # Pagination
-    items_per_page = st.session_state.get("analyses_per_page", 10)
-    page_num = st.session_state.get("analysis_page", 0)
-    
-    col_page1, col_page2, col_page3 = st.columns([1, 2, 1])
-    with col_page2:
-        items_per_page = st.selectbox(
-            "Items per page",
-            options=[10, 20, 50, 100],
-            index=[10, 20, 50, 100].index(items_per_page) if items_per_page in [10, 20, 50, 100] else 0,
-            key="analyses_per_page_select"
-        )
-        st.session_state["analyses_per_page"] = items_per_page
-    
-    total_pages = (len(filtered_analyses) + items_per_page - 1) // items_per_page
-    start_idx = page_num * items_per_page
-    end_idx = min(start_idx + items_per_page, len(filtered_analyses))
-    paginated_analyses = filtered_analyses[start_idx:end_idx]
-    
-    # Page navigation
-    if total_pages > 1:
-        nav_col1, nav_col2, nav_col3, nav_col4, nav_col5 = st.columns([1, 1, 2, 1, 1])
-        with nav_col1:
-            if st.button("◀◀ First", key="page_first", disabled=(page_num == 0)):
-                st.session_state["analysis_page"] = 0
-                st.rerun()
-        with nav_col2:
-            if st.button("◀ Prev", key="page_prev", disabled=(page_num == 0)):
-                st.session_state["analysis_page"] = max(0, page_num - 1)
-                st.rerun()
-        with nav_col3:
-            st.markdown(f"<div style='text-align: center; padding-top: 0.5rem;'>Page {page_num + 1} of {total_pages}</div>", unsafe_allow_html=True)
-        with nav_col4:
-            if st.button("Next ▶", key="page_next", disabled=(page_num >= total_pages - 1)):
-                st.session_state["analysis_page"] = min(total_pages - 1, page_num + 1)
-                st.rerun()
-        with nav_col5:
-            if st.button("Last ▶▶", key="page_last", disabled=(page_num >= total_pages - 1)):
-                st.session_state["analysis_page"] = total_pages - 1
-                st.rerun()
-    
-    # Display analyses in card format
-    for idx, analysis in enumerate(paginated_analyses):
-        # Parse date for color coding
-        try:
-            created_at_str = analysis['created_at']
-            if created_at_str.endswith('Z'):
-                dt = datetime.fromisoformat(created_at_str.replace('Z', '+00:00'))
-            else:
-                dt = datetime.fromisoformat(created_at_str)
-            analysis_date = dt.date()
-            date_str = dt.strftime('%Y-%m-%d')
-            time_str = dt.strftime('%H:%M:%S')
-            days_ago = (datetime.now().date() - analysis_date).days
-        except (ValueError, AttributeError, TypeError):
-            date_str = analysis['created_at'][:10] if len(analysis['created_at']) >= 10 else 'Unknown'
-            time_str = analysis['created_at'][11:19] if len(analysis['created_at']) > 19 else ''
-            days_ago = 999
         
-        # Card styling based on age
-        if days_ago <= 7:
-            border_color = "#00A651"  # Green for recent
-        elif days_ago <= 30:
-            border_color = "#0066CC"  # Blue for recent month
+        # Apply filters
+        filtered_analyses = analyses.copy()
+        
+        # Search filter
+        if search_query:
+            search_lower = search_query.lower()
+            filtered_analyses = [
+                a for a in filtered_analyses
+                if search_lower in a.get('title', '').lower()
+            ]
+        
+        # Date filter
+        if date_from or date_to:
+            filtered_analyses = [
+                a for a in filtered_analyses
+                if _matches_date_filter(a.get('created_at', ''), date_from, date_to)
+            ]
+        
+        # Location filter
+        if location_filter != "All":
+            filtered_analyses = [
+                a for a in filtered_analyses
+                if a.get('location') == location_filter
+            ]
+        
+        # Candidate count filter
+        filtered_analyses = [
+            a for a in filtered_analyses
+            if min_candidates <= a.get('num_candidates', 0) <= max_candidates
+        ]
+        
+        # Apply sorting
+        filtered_analyses = _sort_analyses(filtered_analyses, sort_option)
+        
+        # Display filtered count
+        if len(filtered_analyses) != total_count:
+            st.info(f"Showing {len(filtered_analyses)} of {total_count} analyses")
         else:
-            border_color = "#CCCCCC"  # Gray for older
+            st.info(f"Found {total_count} previous analysis(es)")
         
-        # Card container
-        with st.container():
-            st.markdown(
-                f"""
-                <div style="
-                    border: 2px solid {border_color};
-                    border-radius: 0.5rem;
-                    padding: 1rem;
-                    margin-bottom: 1rem;
-                    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                ">
-                """,
-                unsafe_allow_html=True
+        if not filtered_analyses:
+            st.warning("No analyses match your search and filter criteria.")
+            return
+        
+        # Pagination
+        items_per_page = st.session_state.get("analyses_per_page", 10)
+        page_num = st.session_state.get("analysis_page", 0)
+        
+        col_page1, col_page2, col_page3 = st.columns([1, 2, 1])
+        with col_page2:
+            items_per_page = st.selectbox(
+                "Items per page",
+                options=[10, 20, 50, 100],
+                index=[10, 20, 50, 100].index(items_per_page) if items_per_page in [10, 20, 50, 100] else 0,
+                key="analyses_per_page_select"
             )
-            
-            # Card header with title and actions
-            col_header1, col_header2 = st.columns([3, 1])
-            with col_header1:
-                st.markdown(f"### {analysis['title']}")
-                st.caption(f"Location: {analysis['location']}")
-            with col_header2:
-                # Quick stats
-                st.metric("Candidates", analysis['num_candidates'])
-            
-            # Card body with details
-            col_body1, col_body2 = st.columns([2, 1])
-            with col_body1:
-                st.markdown(f"**Date:** {date_str} at {time_str}")
-                if days_ago == 0:
-                    st.caption("Created today")
-                elif days_ago <= 7:
-                    st.caption(f"Created {days_ago} day(s) ago")
-                elif days_ago <= 30:
-                    st.caption(f"Created {days_ago} day(s) ago")
+            st.session_state["analyses_per_page"] = items_per_page
+        
+        total_pages = (len(filtered_analyses) + items_per_page - 1) // items_per_page
+        start_idx = page_num * items_per_page
+        end_idx = min(start_idx + items_per_page, len(filtered_analyses))
+        paginated_analyses = filtered_analyses[start_idx:end_idx]
+        
+        # Page navigation
+        if total_pages > 1:
+            nav_col1, nav_col2, nav_col3, nav_col4, nav_col5 = st.columns([1, 1, 2, 1, 1])
+            with nav_col1:
+                if st.button("◀◀ First", key="page_first", disabled=(page_num == 0)):
+                    st.session_state["analysis_page"] = 0
+                    st.rerun()
+            with nav_col2:
+                if st.button("◀ Prev", key="page_prev", disabled=(page_num == 0)):
+                    st.session_state["analysis_page"] = max(0, page_num - 1)
+                    st.rerun()
+            with nav_col3:
+                st.markdown(f"<div style='text-align: center; padding-top: 0.5rem;'>Page {page_num + 1} of {total_pages}</div>", unsafe_allow_html=True)
+            with nav_col4:
+                if st.button("Next ▶", key="page_next", disabled=(page_num >= total_pages - 1)):
+                    st.session_state["analysis_page"] = min(total_pages - 1, page_num + 1)
+                    st.rerun()
+            with nav_col5:
+                if st.button("Last ▶▶", key="page_last", disabled=(page_num >= total_pages - 1)):
+                    st.session_state["analysis_page"] = total_pages - 1
+                    st.rerun()
+        
+        # Display analyses in card format
+        for idx, analysis in enumerate(paginated_analyses):
+            # Parse date for color coding
+            try:
+                created_at_str = analysis['created_at']
+                if created_at_str.endswith('Z'):
+                    dt = datetime.fromisoformat(created_at_str.replace('Z', '+00:00'))
                 else:
-                    st.caption(f"Created {days_ago} day(s) ago")
+                    dt = datetime.fromisoformat(created_at_str)
+                analysis_date = dt.date()
+                date_str = dt.strftime('%Y-%m-%d')
+                time_str = dt.strftime('%H:%M:%S')
+                days_ago = (datetime.now().date() - analysis_date).days
+            except (ValueError, AttributeError, TypeError):
+                date_str = analysis['created_at'][:10] if len(analysis['created_at']) >= 10 else 'Unknown'
+                time_str = analysis['created_at'][11:19] if len(analysis['created_at']) > 19 else ''
+                days_ago = 999
             
-            with col_body2:
-                # Preview expander
-                with st.expander("Quick Preview", expanded=False):
+            # Card styling based on age
+            if days_ago <= 7:
+                border_color = "#00A651"  # Green for recent
+            elif days_ago <= 30:
+                border_color = "#0066CC"  # Blue for recent month
+            else:
+                border_color = "#CCCCCC"  # Gray for older
+            
+            # Card container
+            with st.container():
+                st.markdown(
+                    f"""
+                    <div style="
+                        border: 2px solid {border_color};
+                        border-radius: 0.5rem;
+                        padding: 1rem;
+                        margin-bottom: 1rem;
+                        background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+                        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                    ">
+                    """,
+                    unsafe_allow_html=True
+                )
+                
+                # Card header with title and actions
+                col_header1, col_header2 = st.columns([3, 1])
+                with col_header1:
+                    st.markdown(f"### {analysis['title']}")
+                    st.caption(f"Location: {analysis['location']}")
+                with col_header2:
+                    # Quick stats
+                    st.metric("Candidates", analysis['num_candidates'])
+                
+                # Card body with details
+                col_body1, col_body2 = st.columns([2, 1])
+                with col_body1:
+                    st.markdown(f"**Date:** {date_str} at {time_str}")
+                    if days_ago == 0:
+                        st.caption("Created today")
+                    elif days_ago <= 7:
+                        st.caption(f"Created {days_ago} day(s) ago")
+                    elif days_ago <= 30:
+                        st.caption(f"Created {days_ago} day(s) ago")
+                    else:
+                        st.caption(f"Created {days_ago} day(s) ago")
+                
+                with col_body2:
+                    # Preview expander
+                    with st.expander("Quick Preview", expanded=False):
+                        analysis_data = load_analysis_data(analysis['report_id'], user_id)
+                        if analysis_data and analysis_data.get('candidate_scores'):
+                            scores = [cs.fit_score for cs in analysis_data['candidate_scores']]
+                            if scores:
+                                avg_score = sum(scores) / len(scores)
+                                max_score = max(scores)
+                                min_score = min(scores)
+                                st.metric("Avg Score", f"{avg_score:.2f}")
+                                st.caption(f"Range: {min_score:.2f} - {max_score:.2f}")
+                                # Top 3 candidates
+                                top_3 = sorted(analysis_data['candidate_scores'], key=lambda x: x.fit_score, reverse=True)[:3]
+                                st.markdown("**Top 3:**")
+                                for i, cand in enumerate(top_3, 1):
+                                    st.caption(f"{i}. {cand.name}: {cand.fit_score:.2f}/10")
+                        else:
+                            st.caption("Preview unavailable")
+                
+                # Action buttons
+                col_actions1, col_actions2, col_actions3, col_actions4, col_actions5 = st.columns([1, 1, 1, 1, 1])
+                
+                with col_actions1:
+                    if st.button("View", key=f"view_{analysis['report_id']}", use_container_width=True):
+                        st.session_state["view_report_id"] = analysis['report_id']
+                        st.session_state["viewing_previous_analysis"] = True
+                        st.rerun()
+                
+                with col_actions2:
+                    # PDF download
+                    pdf_data = None
+                    if analysis['pdf_path'] and os.path.exists(analysis['pdf_path']):
+                        try:
+                            if is_safe_path(analysis['pdf_path']):
+                                file_size = os.path.getsize(analysis['pdf_path'])
+                                if file_size <= MAX_PDF_SIZE:
+                                    with open(analysis['pdf_path'], 'rb') as f:
+                                        pdf_data = f.read()
+                        except Exception:
+                            pass
+                    
+                    if pdf_data:
+                        pdf_link = _make_download_link(
+                            pdf_data,
+                            os.path.basename(analysis['pdf_path']),
+                            "application/pdf"
+                        )
+                        if pdf_link:
+                            st.markdown(pdf_link, unsafe_allow_html=True)
+                    else:
+                        st.caption("PDF N/A")
+                
+                with col_actions3:
+                    # CSV download
                     analysis_data = load_analysis_data(analysis['report_id'], user_id)
                     if analysis_data and analysis_data.get('candidate_scores'):
-                        scores = [cs.fit_score for cs in analysis_data['candidate_scores']]
-                        if scores:
-                            avg_score = sum(scores) / len(scores)
-                            max_score = max(scores)
-                            min_score = min(scores)
-                            st.metric("Avg Score", f"{avg_score:.2f}")
-                            st.caption(f"Range: {min_score:.2f} - {max_score:.2f}")
-                            # Top 3 candidates
-                            top_3 = sorted(analysis_data['candidate_scores'], key=lambda x: x.fit_score, reverse=True)[:3]
-                            st.markdown("**Top 3:**")
-                            for i, cand in enumerate(top_3, 1):
-                                st.caption(f"{i}. {cand.name}: {cand.fit_score:.2f}/10")
-                    else:
-                        st.caption("Preview unavailable")
-            
-            # Action buttons
-            col_actions1, col_actions2, col_actions3, col_actions4, col_actions5 = st.columns([1, 1, 1, 1, 1])
-            
-            with col_actions1:
-                if st.button("View", key=f"view_{analysis['report_id']}", use_container_width=True):
-                    st.session_state["view_report_id"] = analysis['report_id']
-                    st.session_state["viewing_previous_analysis"] = True
-                    st.rerun()
-            
-            with col_actions2:
-                # PDF download
-                pdf_data = None
-                if analysis['pdf_path'] and os.path.exists(analysis['pdf_path']):
-                    try:
-                        if is_safe_path(analysis['pdf_path']):
-                            file_size = os.path.getsize(analysis['pdf_path'])
-                            if file_size <= MAX_PDF_SIZE:
-                                with open(analysis['pdf_path'], 'rb') as f:
-                                    pdf_data = f.read()
-                    except Exception:
-                        pass
-                
-                if pdf_data:
-                    pdf_link = _make_download_link(
-                        pdf_data,
-                        os.path.basename(analysis['pdf_path']),
-                        "application/pdf"
-                    )
-                    if pdf_link:
-                        st.markdown(pdf_link, unsafe_allow_html=True)
-                else:
-                    st.caption("PDF N/A")
-            
-            with col_actions3:
-                # CSV download
-                analysis_data = load_analysis_data(analysis['report_id'], user_id)
-                if analysis_data and analysis_data.get('candidate_scores'):
-                    csv_data = generate_csv_export(
-                        analysis_data['candidate_scores'],
-                        analysis['title'],
-                        analysis['location']
-                    )
-                    csv_link = _make_download_link(
-                        csv_data.encode("utf-8"),
-                        f"candidates_{analysis['created_at'][:10].replace('-', '')}.csv",
-                        "text/csv"
-                    )
-                    if csv_link:
-                        st.markdown(csv_link, unsafe_allow_html=True)
-                    else:
-                        st.caption("CSV N/A")
-            
-            with col_actions4:
-                # Excel and JSON downloads
-                analysis_data = load_analysis_data(analysis['report_id'], user_id)
-                if analysis_data and analysis_data.get('candidate_scores'):
-                    col_excel, col_json = st.columns(2)
-                    with col_excel:
-                        excel_data = generate_excel_export(
-                            analysis_data,
+                        csv_data = generate_csv_export(
+                            analysis_data['candidate_scores'],
                             analysis['title'],
                             analysis['location']
                         )
-                        if excel_data:
-                            excel_link = _make_download_link(
-                                excel_data,
-                                f"analysis_{analysis['created_at'][:10].replace('-', '')}.xlsx",
-                                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                            )
-                            if excel_link:
-                                st.markdown(excel_link, unsafe_allow_html=True)
+                        csv_link = _make_download_link(
+                            csv_data.encode("utf-8"),
+                            f"candidates_{analysis['created_at'][:10].replace('-', '')}.csv",
+                            "text/csv"
+                        )
+                        if csv_link:
+                            st.markdown(csv_link, unsafe_allow_html=True)
                         else:
-                            st.caption("Excel N/A")
-                    with col_json:
-                        json_data = generate_json_export(
-                            analysis_data,
-                            analysis['title'],
-                            analysis['location']
-                        )
-                        json_link = _make_download_link(
-                            json_data,
-                            f"analysis_{analysis['created_at'][:10].replace('-', '')}.json",
-                            "application/json"
-                        )
-                        if json_link:
-                            st.markdown(json_link, unsafe_allow_html=True)
-                else:
-                    st.caption("Export N/A")
-            
-            with col_actions5:
-                # Delete button
-                delete_key = f"delete_{analysis['report_id']}"
-                if delete_key not in st.session_state:
-                    st.session_state[delete_key] = False
+                            st.caption("CSV N/A")
                 
-                if st.button("Delete", key=f"del_btn_{analysis['report_id']}", use_container_width=True, type="secondary"):
-                    st.session_state[delete_key] = True
-                    st.rerun()
-                
-                if st.session_state.get(delete_key):
-                    st.warning(f"Delete '{analysis['title']}'?")
-                    col_confirm1, col_confirm2 = st.columns(2)
-                    with col_confirm1:
-                        if st.button("Confirm", key=f"confirm_del_{analysis['report_id']}"):
-                            if delete_analysis(analysis['report_id'], user_id):
-                                st.success("Analysis deleted successfully!")
-                                st.session_state.pop(delete_key, None)
-                                # Reset pagination if needed
-                                if page_num > 0 and len(filtered_analyses) <= page_num * items_per_page:
-                                    st.session_state["analysis_page"] = max(0, page_num - 1)
-                                st.rerun()
+                with col_actions4:
+                    # Excel and JSON downloads
+                    analysis_data = load_analysis_data(analysis['report_id'], user_id)
+                    if analysis_data and analysis_data.get('candidate_scores'):
+                        col_excel, col_json = st.columns(2)
+                        with col_excel:
+                            excel_data = generate_excel_export(
+                                analysis_data,
+                                analysis['title'],
+                                analysis['location']
+                            )
+                            if excel_data:
+                                excel_link = _make_download_link(
+                                    excel_data,
+                                    f"analysis_{analysis['created_at'][:10].replace('-', '')}.xlsx",
+                                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                                )
+                                if excel_link:
+                                    st.markdown(excel_link, unsafe_allow_html=True)
                             else:
-                                st.error("Failed to delete analysis.")
+                                st.caption("Excel N/A")
+                        with col_json:
+                            json_data = generate_json_export(
+                                analysis_data,
+                                analysis['title'],
+                                analysis['location']
+                            )
+                            json_link = _make_download_link(
+                                json_data,
+                                f"analysis_{analysis['created_at'][:10].replace('-', '')}.json",
+                                "application/json"
+                            )
+                            if json_link:
+                                st.markdown(json_link, unsafe_allow_html=True)
+                    else:
+                        st.caption("Export N/A")
+                
+                with col_actions5:
+                    # Delete button
+                    delete_key = f"delete_{analysis['report_id']}"
+                    if delete_key not in st.session_state:
+                        st.session_state[delete_key] = False
+                    
+                    if st.button("Delete", key=f"del_btn_{analysis['report_id']}", use_container_width=True, type="secondary"):
+                        st.session_state[delete_key] = True
+                        st.rerun()
+                    
+                    if st.session_state.get(delete_key):
+                        st.warning(f"Delete '{analysis['title']}'?")
+                        col_confirm1, col_confirm2 = st.columns(2)
+                        with col_confirm1:
+                            if st.button("Confirm", key=f"confirm_del_{analysis['report_id']}"):
+                                if delete_analysis(analysis['report_id'], user_id):
+                                    st.success("Analysis deleted successfully!")
+                                    st.session_state.pop(delete_key, None)
+                                    # Reset pagination if needed
+                                    if page_num > 0 and len(filtered_analyses) <= page_num * items_per_page:
+                                        st.session_state["analysis_page"] = max(0, page_num - 1)
+                                    st.rerun()
+                                else:
+                                    st.error("Failed to delete analysis.")
+                                    st.session_state.pop(delete_key, None)
+                        with col_confirm2:
+                            if st.button("Cancel", key=f"cancel_del_{analysis['report_id']}"):
                                 st.session_state.pop(delete_key, None)
-                    with col_confirm2:
-                        if st.button("Cancel", key=f"cancel_del_{analysis['report_id']}"):
-                            st.session_state.pop(delete_key, None)
-                            st.rerun()
-            
-            st.markdown("</div>", unsafe_allow_html=True)
-            
-            if idx < len(paginated_analyses) - 1:
-                st.markdown("<br>", unsafe_allow_html=True)
+                                st.rerun()
+                
+                st.markdown("</div>", unsafe_allow_html=True)
+                
+                if idx < len(paginated_analyses) - 1:
+                    st.markdown("<br>", unsafe_allow_html=True)
     
     except Exception as e:
         logger.error(f"Error in display_analysis_history for user {user_id}: {e}", exc_info=True)
@@ -1268,49 +1268,50 @@ def display_analysis_analytics(user_id: str):
         if not analyses:
             st.info("No analyses available for analytics. Run some analyses first!")
             return
-    
-    # Calculate statistics
-    total_analyses = len(analyses)
-    total_candidates = sum(a.get('num_candidates', 0) for a in analyses)
-    avg_candidates = total_candidates / total_analyses if total_analyses > 0 else 0
-    
-    # Date range
-    dates = []
-    for a in analyses:
-        try:
-            created_at_str = a.get('created_at', '')
-            if created_at_str.endswith('Z'):
-                dt = datetime.fromisoformat(created_at_str.replace('Z', '+00:00'))
-            else:
-                dt = datetime.fromisoformat(created_at_str)
-            dates.append(dt.date())
-        except:
-            pass
-    
-    first_date = min(dates) if dates else None
-    last_date = max(dates) if dates else None
-    
-    # Most common job title
-    job_titles = [a.get('title', '') for a in analyses if a.get('title')]
-    most_common_title = max(set(job_titles), key=job_titles.count) if job_titles else 'N/A'
-    
-    # Most common location
-    locations = [a.get('location', '') for a in analyses if a.get('location')]
-    most_common_location = max(set(locations), key=locations.count) if locations else 'N/A'
-    
-    # Display key metrics
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("Total Analyses", total_analyses)
-    with col2:
-        st.metric("Total Candidates", total_candidates)
-    with col3:
-        st.metric("Avg Candidates/Analysis", f"{avg_candidates:.1f}")
-    with col4:
-        st.metric("Date Range", f"{first_date} to {last_date}" if first_date and last_date else "N/A")
-    
-    st.markdown("---")
-    
+        
+        # Calculate statistics
+        total_analyses = len(analyses)
+        total_candidates = sum(a.get('num_candidates', 0) for a in analyses)
+        avg_candidates = total_candidates / total_analyses if total_analyses > 0 else 0
+        
+        # Date range
+        dates = []
+        for a in analyses:
+            try:
+                created_at_str = a.get('created_at', '')
+                if created_at_str.endswith('Z'):
+                    dt = datetime.fromisoformat(created_at_str.replace('Z', '+00:00'))
+                else:
+                    dt = datetime.fromisoformat(created_at_str)
+                dates.append(dt.date())
+            except Exception as e:
+                logger.debug(f"Error parsing date: {e}")
+                pass
+        
+        first_date = min(dates) if dates else None
+        last_date = max(dates) if dates else None
+        
+        # Most common job title
+        job_titles = [a.get('title', '') for a in analyses if a.get('title')]
+        most_common_title = max(set(job_titles), key=job_titles.count) if job_titles else 'N/A'
+        
+        # Most common location
+        locations = [a.get('location', '') for a in analyses if a.get('location')]
+        most_common_location = max(set(locations), key=locations.count) if locations else 'N/A'
+        
+        # Display key metrics
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Total Analyses", total_analyses)
+        with col2:
+            st.metric("Total Candidates", total_candidates)
+        with col3:
+            st.metric("Avg Candidates/Analysis", f"{avg_candidates:.1f}")
+        with col4:
+            st.metric("Date Range", f"{first_date} to {last_date}" if first_date and last_date else "N/A")
+        
+        st.markdown("---")
+        
         # Check if pandas is available
         try:
             import pandas as pd
@@ -1461,46 +1462,46 @@ def display_resume_database(user_id: str):
         
         # Search and Filter Section
         with st.expander("Search & Filter", expanded=True):
-        col1, col2 = st.columns([2, 1])
+            col1, col2 = st.columns([2, 1])
+            
+            with col1:
+                search_query = st.text_input(
+                    "Search by name, email, skills, or certifications",
+                    key="resume_search",
+                    placeholder="Enter search terms..."
+                )
+            
+            with col2:
+                experience_filter = st.selectbox(
+                    "Experience Level",
+                    ["All", "Junior", "Mid", "Senior"],
+                    key="resume_exp_filter"
+                )
+            
+            col3, col4 = st.columns(2)
+            with col3:
+                location_filter = st.text_input(
+                    "Location",
+                    key="resume_location_filter",
+                    placeholder="Filter by location..."
+                )
+            
+            with col4:
+                tag_filter = st.text_input(
+                    "Tags (comma-separated)",
+                    key="resume_tag_filter",
+                    placeholder="e.g., safety, certified, experienced"
+                )
         
-        with col1:
-            search_query = st.text_input(
-                "Search by name, email, skills, or certifications",
-                key="resume_search",
-                placeholder="Enter search terms..."
-            )
+        # Build filters
+        filters = {}
+        if experience_filter != "All":
+            filters['experience_level'] = experience_filter
+        if location_filter:
+            filters['location'] = location_filter
+        if tag_filter:
+            filters['tags'] = [t.strip() for t in tag_filter.split(',') if t.strip()]
         
-        with col2:
-            experience_filter = st.selectbox(
-                "Experience Level",
-                ["All", "Junior", "Mid", "Senior"],
-                key="resume_exp_filter"
-            )
-        
-        col3, col4 = st.columns(2)
-        with col3:
-            location_filter = st.text_input(
-                "Location",
-                key="resume_location_filter",
-                placeholder="Filter by location..."
-            )
-        
-        with col4:
-            tag_filter = st.text_input(
-                "Tags (comma-separated)",
-                key="resume_tag_filter",
-                placeholder="e.g., safety, certified, experienced"
-            )
-    
-    # Build filters
-    filters = {}
-    if experience_filter != "All":
-        filters['experience_level'] = experience_filter
-    if location_filter:
-        filters['location'] = location_filter
-    if tag_filter:
-        filters['tags'] = [t.strip() for t in tag_filter.split(',') if t.strip()]
-    
         # Search candidates with error handling
         try:
             candidates = search_candidates(user_id, query=search_query or "", filters=filters)
@@ -1592,126 +1593,126 @@ def display_resume_database(user_id: str):
     
         # Display candidates in a grid/list
         for idx, candidate in enumerate(candidates):
-        with st.container():
-            col1, col2, col3, col4 = st.columns([3, 2, 2, 2])
-            
-            with col1:
-                st.markdown(f"**{candidate['name'] or 'Unknown'}**")
-                if candidate['email']:
-                    st.caption(f"📧 {candidate['email']}")
-                if candidate['phone']:
-                    st.caption(f"📞 {candidate['phone']}")
-                if candidate['location']:
-                    st.caption(f"📍 {candidate['location']}")
-            
-            with col2:
-                parsed_data = candidate.get('parsed_data', {})
-                skills = parsed_data.get('skills', [])[:5]
-                if skills:
-                    st.markdown("**Skills:**")
-                    st.caption(", ".join(skills))
-                else:
-                    st.caption("No skills listed")
-            
-            with col3:
-                certs = parsed_data.get('certifications', [])[:3]
-                if certs:
-                    st.markdown("**Certifications:**")
-                    st.caption(", ".join(certs))
-                else:
-                    st.caption("No certifications")
+            with st.container():
+                col1, col2, col3, col4 = st.columns([3, 2, 2, 2])
                 
-                # Tags
-                tags = candidate.get('tags', [])
-                if tags:
-                    tag_text = " ".join([f"`{tag}`" for tag in tags])
-                    st.caption(f"Tags: {tag_text}")
-            
-            with col4:
-                # Actions
-                action_key = f"action_{candidate['id']}_{idx}"
-                action = st.selectbox(
-                    "Actions",
-                    ["Select...", "View", "Edit", "Delete", "Use in Analysis"],
-                    key=action_key
-                )
+                with col1:
+                    st.markdown(f"**{candidate['name'] or 'Unknown'}**")
+                    if candidate['email']:
+                        st.caption(f"📧 {candidate['email']}")
+                    if candidate['phone']:
+                        st.caption(f"📞 {candidate['phone']}")
+                    if candidate['location']:
+                        st.caption(f"📍 {candidate['location']}")
                 
-                if action == "View":
-                    if st.session_state.get(f"view_profile_{candidate['id']}") != True:
-                        st.session_state[f"view_profile_{candidate['id']}"] = True
-                        st.rerun()
-                
-                if action == "Delete":
-                    if st.button("Confirm Delete", key=f"delete_{candidate['id']}"):
-                        if delete_candidate_profile(candidate['id'], user_id):
-                            st.success("Candidate deleted!")
-                            st.rerun()
-                        else:
-                            st.error("Failed to delete candidate")
-                
-                if action == "Use in Analysis":
-                    # Store selected candidates in session state
-                    if 'selected_candidates' not in st.session_state:
-                        st.session_state['selected_candidates'] = []
-                    if candidate['id'] not in st.session_state['selected_candidates']:
-                        st.session_state['selected_candidates'].append(candidate['id'])
-                        st.success("Added to selection!")
-            
-            # View profile details if requested
-            if st.session_state.get(f"view_profile_{candidate['id']}"):
-                with st.expander(f"View Profile: {candidate['name']}", expanded=True):
-                    st.markdown(f"**Name:** {candidate['name']}")
-                    st.markdown(f"**Email:** {candidate['email']}")
-                    st.markdown(f"**Phone:** {candidate['phone']}")
-                    st.markdown(f"**Location:** {candidate['location']}")
-                    
+                with col2:
                     parsed_data = candidate.get('parsed_data', {})
-                    if parsed_data.get('skills'):
-                        st.markdown(f"**Skills:** {', '.join(parsed_data['skills'])}")
-                    if parsed_data.get('certifications'):
-                        st.markdown(f"**Certifications:** {', '.join(parsed_data['certifications'])}")
-                    if parsed_data.get('job_titles'):
-                        st.markdown(f"**Job Titles:** {', '.join(parsed_data['job_titles'])}")
-                    if parsed_data.get('years_of_experience'):
-                        st.markdown(f"**Years of Experience:** {parsed_data['years_of_experience']}")
+                    skills = parsed_data.get('skills', [])[:5]
+                    if skills:
+                        st.markdown("**Skills:**")
+                        st.caption(", ".join(skills))
+                    else:
+                        st.caption("No skills listed")
+                
+                with col3:
+                    certs = parsed_data.get('certifications', [])[:3]
+                    if certs:
+                        st.markdown("**Certifications:**")
+                        st.caption(", ".join(certs))
+                    else:
+                        st.caption("No certifications")
                     
-                    if candidate.get('notes'):
-                        st.markdown(f"**Notes:** {candidate['notes']}")
+                    # Tags
+                    tags = candidate.get('tags', [])
+                    if tags:
+                        tag_text = " ".join([f"`{tag}`" for tag in tags])
+                        st.caption(f"Tags: {tag_text}")
+                
+                with col4:
+                    # Actions
+                    action_key = f"action_{candidate['id']}_{idx}"
+                    action = st.selectbox(
+                        "Actions",
+                        ["Select...", "View", "Edit", "Delete", "Use in Analysis"],
+                        key=action_key
+                    )
                     
-                    # Edit form
-                    with st.form(f"edit_form_{candidate['id']}"):
-                        new_tags = st.text_input(
-                            "Tags (comma-separated)",
-                            value=", ".join(candidate.get('tags', [])),
-                            key=f"tags_{candidate['id']}"
-                        )
-                        new_notes = st.text_area(
-                            "Notes",
-                            value=candidate.get('notes', ''),
-                            key=f"notes_{candidate['id']}"
-                        )
+                    if action == "View":
+                        if st.session_state.get(f"view_profile_{candidate['id']}") != True:
+                            st.session_state[f"view_profile_{candidate['id']}"] = True
+                            st.rerun()
+                    
+                    if action == "Delete":
+                        if st.button("Confirm Delete", key=f"delete_{candidate['id']}"):
+                            if delete_candidate_profile(candidate['id'], user_id):
+                                st.success("Candidate deleted!")
+                                st.rerun()
+                            else:
+                                st.error("Failed to delete candidate")
+                    
+                    if action == "Use in Analysis":
+                        # Store selected candidates in session state
+                        if 'selected_candidates' not in st.session_state:
+                            st.session_state['selected_candidates'] = []
+                        if candidate['id'] not in st.session_state['selected_candidates']:
+                            st.session_state['selected_candidates'].append(candidate['id'])
+                            st.success("Added to selection!")
+                
+                # View profile details if requested
+                if st.session_state.get(f"view_profile_{candidate['id']}"):
+                    with st.expander(f"View Profile: {candidate['name']}", expanded=True):
+                        st.markdown(f"**Name:** {candidate['name']}")
+                        st.markdown(f"**Email:** {candidate['email']}")
+                        st.markdown(f"**Phone:** {candidate['phone']}")
+                        st.markdown(f"**Location:** {candidate['location']}")
                         
-                        if st.form_submit_button("Save Changes"):
-                            updates = {}
-                            if new_tags:
-                                updates['tags'] = [t.strip() for t in new_tags.split(',') if t.strip()]
-                            if new_notes is not None:
-                                updates['notes'] = new_notes
+                        parsed_data = candidate.get('parsed_data', {})
+                        if parsed_data.get('skills'):
+                            st.markdown(f"**Skills:** {', '.join(parsed_data['skills'])}")
+                        if parsed_data.get('certifications'):
+                            st.markdown(f"**Certifications:** {', '.join(parsed_data['certifications'])}")
+                        if parsed_data.get('job_titles'):
+                            st.markdown(f"**Job Titles:** {', '.join(parsed_data['job_titles'])}")
+                        if parsed_data.get('years_of_experience'):
+                            st.markdown(f"**Years of Experience:** {parsed_data['years_of_experience']}")
+                        
+                        if candidate.get('notes'):
+                            st.markdown(f"**Notes:** {candidate['notes']}")
+                        
+                        # Edit form
+                        with st.form(f"edit_form_{candidate['id']}"):
+                            new_tags = st.text_input(
+                                "Tags (comma-separated)",
+                                value=", ".join(candidate.get('tags', [])),
+                                key=f"tags_{candidate['id']}"
+                            )
+                            new_notes = st.text_area(
+                                "Notes",
+                                value=candidate.get('notes', ''),
+                                key=f"notes_{candidate['id']}"
+                            )
                             
-                            if updates:
-                                if update_candidate_profile(candidate['id'], user_id, updates):
-                                    st.success("Profile updated!")
-                                    st.session_state.pop(f"view_profile_{candidate['id']}", None)
-                                    st.rerun()
-                                else:
-                                    st.error("Failed to update profile")
-                    
-                    if st.button("Close", key=f"close_{candidate['id']}"):
-                        st.session_state.pop(f"view_profile_{candidate['id']}", None)
-                        st.rerun()
-            
-            if idx < len(candidates) - 1:
-                st.markdown("---")
+                            if st.form_submit_button("Save Changes"):
+                                updates = {}
+                                if new_tags:
+                                    updates['tags'] = [t.strip() for t in new_tags.split(',') if t.strip()]
+                                if new_notes is not None:
+                                    updates['notes'] = new_notes
+                                
+                                if updates:
+                                    if update_candidate_profile(candidate['id'], user_id, updates):
+                                        st.success("Profile updated!")
+                                        st.session_state.pop(f"view_profile_{candidate['id']}", None)
+                                        st.rerun()
+                                    else:
+                                        st.error("Failed to update profile")
+                        
+                        if st.button("Close", key=f"close_{candidate['id']}"):
+                            st.session_state.pop(f"view_profile_{candidate['id']}", None)
+                            st.rerun()
+                
+                if idx < len(candidates) - 1:
+                    st.markdown("---")
         
         # Upload new resume section at bottom
         st.markdown("---")
