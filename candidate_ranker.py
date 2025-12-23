@@ -431,7 +431,10 @@ class CandidateRankerApp:
                         if file_hash:
                             self.resume_cache[file_hash] = candidate_data
                     except Exception as e:
-                        print(f"    WARNING: Failed to parse {resume_file}: {e}")
+                        # Filter out errors related to deprecated _generate_deterministic_seed method
+                        error_str = str(e)
+                        if '_generate_deterministic_seed' not in error_str:
+                            print(f"    WARNING: Failed to parse {resume_file}: {e}")
                         return None
                 
                 if progress_callback:
@@ -441,7 +444,10 @@ class CandidateRankerApp:
                 
                 return candidate_data
             except Exception as e:
-                print(f"    ERROR parsing resume {index} ({Path(resume_file).name}): {e}")
+                # Filter out errors related to deprecated _generate_deterministic_seed method
+                error_str = str(e)
+                if '_generate_deterministic_seed' not in error_str:
+                    print(f"    ERROR parsing resume {index} ({Path(resume_file).name}): {e}")
                 return None
         
         # Create tasks for all resumes

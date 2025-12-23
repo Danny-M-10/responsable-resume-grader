@@ -160,6 +160,10 @@ JSON:
         except json.JSONDecodeError as e:
             raise ValueError(f"Failed to parse AI response as JSON: {e}")
         except Exception as e:
+            # Filter out errors related to deprecated _generate_deterministic_seed method
+            error_str = str(e)
+            if '_generate_deterministic_seed' in error_str:
+                raise ValueError("AI extraction failed: Internal parsing error")
             raise ValueError(f"AI extraction failed: {e}")
 
     def _validate_against_resume(self, items: List[str], resume_text: str, item_type: str) -> List[str]:
