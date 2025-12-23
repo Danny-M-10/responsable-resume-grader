@@ -2473,205 +2473,213 @@ def main():
                 )
 
                 if job_desc_file:
-                    # Ensure json module is accessible from global scope (prevent scoping issues)
-                    # Reference json explicitly to tell Python it's from global scope, not local
-                    _ = json
+                    # Validate file size (200MB limit)
+                    max_size_mb = 200
+                    max_size_bytes = max_size_mb * 1024 * 1024
+                    if job_desc_file.size > max_size_bytes:
+                        st.error(f"❌ **File too large**: '{job_desc_file.name}' is {job_desc_file.size / (1024*1024):.1f}MB. Maximum file size is {max_size_mb}MB. Please upload a smaller file.")
+                        job_desc_file = None
                     
-                    # Clear previous edited values when new file is uploaded
-                    if 'extracted_job_data' not in st.session_state or st.session_state.get('last_uploaded_file') != job_desc_file.name:
-                        # Clear edited values to start fresh
-                        st.session_state.pop('edited_job_title', None)
-                        st.session_state.pop('edited_location', None)
-                        st.session_state.pop('edited_certifications', None)
-                        st.session_state.pop('edited_job_description', None)
-                        st.session_state.pop('edited_required_skills', None)
-                        st.session_state.pop('edited_preferred_skills', None)
-                        st.session_state.pop('edited_experience_level', None)
-                        st.session_state.pop('edit_extracted_info', None)
-                        st.session_state['last_uploaded_file'] = job_desc_file.name
-                    
-                    with st.spinner("AI is analyzing job description..."):
-                        try:
-                            # Save to temp file for parser
-                            temp_dir = tempfile.mkdtemp()
-                            temp_path = os.path.join(temp_dir, job_desc_file.name)
-
+                    if job_desc_file:
+                        # Ensure json module is accessible from global scope (prevent scoping issues)
+                        # Reference json explicitly to tell Python it's from global scope, not local
+                        _ = json
+                        
+                        # Clear previous edited values when new file is uploaded
+                        if 'extracted_job_data' not in st.session_state or st.session_state.get('last_uploaded_file') != job_desc_file.name:
+                            # Clear edited values to start fresh
+                            st.session_state.pop('edited_job_title', None)
+                            st.session_state.pop('edited_location', None)
+                            st.session_state.pop('edited_certifications', None)
+                            st.session_state.pop('edited_job_description', None)
+                            st.session_state.pop('edited_required_skills', None)
+                            st.session_state.pop('edited_preferred_skills', None)
+                            st.session_state.pop('edited_experience_level', None)
+                            st.session_state.pop('edit_extracted_info', None)
+                            st.session_state['last_uploaded_file'] = job_desc_file.name
+                        
+                        with st.spinner("AI is analyzing job description..."):
                             try:
-                                with open(temp_path, 'wb') as f:
-                                    f.write(job_desc_file.getbuffer())
+                                # Save to temp file for parser
+                                temp_dir = tempfile.mkdtemp()
+                                temp_path = os.path.join(temp_dir, job_desc_file.name)
 
-                                # Parse the job description file using AI parser
-                                parser = AIJobParser()  # Uses AI if API key available
-                                job_data = parser.parse(temp_path)
-                            finally:
-                                # Cleanup temporary files
-                                import shutil
                                 try:
-                                    shutil.rmtree(temp_dir)
-                                except Exception as e:
-                                    logger.warning(f"Failed to cleanup temp directory {temp_dir}: {e}", exc_info=True)
-                                    # Continue - cleanup errors are non-critical
+                                    with open(temp_path, 'wb') as f:
+                                        f.write(job_desc_file.getbuffer())
 
-                            # Store extracted data in session state for editing
-                            st.session_state['extracted_job_data'] = job_data
-                            
-                            # Initialize edited values if not already set
-                            if 'edited_job_title' not in st.session_state:
-                                st.session_state['edited_job_title'] = job_data.get('job_title', '')
-                            if 'edited_location' not in st.session_state:
-                                st.session_state['edited_location'] = job_data.get('location', '')
-                            if 'edited_certifications' not in st.session_state:
-                                st.session_state['edited_certifications'] = job_data.get('certifications', [])
-                            if 'edited_job_description' not in st.session_state:
-                                st.session_state['edited_job_description'] = job_data.get('full_description', '')
-                            if 'edited_required_skills' not in st.session_state:
-                                st.session_state['edited_required_skills'] = job_data.get('required_skills', [])
-                            if 'edited_preferred_skills' not in st.session_state:
-                                st.session_state['edited_preferred_skills'] = job_data.get('preferred_skills', [])
-                            if 'edited_experience_level' not in st.session_state:
-                                st.session_state['edited_experience_level'] = job_data.get('experience_level', '')
+                                    # Parse the job description file using AI parser
+                                    parser = AIJobParser()  # Uses AI if API key available
+                                    job_data = parser.parse(temp_path)
+                                finally:
+                                    # Cleanup temporary files
+                                    import shutil
+                                    try:
+                                        shutil.rmtree(temp_dir)
+                                    except Exception as e:
+                                        logger.warning(f"Failed to cleanup temp directory {temp_dir}: {e}", exc_info=True)
+                                        # Continue - cleanup errors are non-critical
 
-                            # Show success with extracted info
-                            st.success(f"Successfully processed: {job_desc_file.name}")
+                                # Store extracted data in session state for editing
+                                st.session_state['extracted_job_data'] = job_data
+                                
+                                # Initialize edited values if not already set
+                                if 'edited_job_title' not in st.session_state:
+                                    st.session_state['edited_job_title'] = job_data.get('job_title', '')
+                                if 'edited_location' not in st.session_state:
+                                    st.session_state['edited_location'] = job_data.get('location', '')
+                                if 'edited_certifications' not in st.session_state:
+                                    st.session_state['edited_certifications'] = job_data.get('certifications', [])
+                                if 'edited_job_description' not in st.session_state:
+                                    st.session_state['edited_job_description'] = job_data.get('full_description', '')
+                                if 'edited_required_skills' not in st.session_state:
+                                    st.session_state['edited_required_skills'] = job_data.get('required_skills', [])
+                                if 'edited_preferred_skills' not in st.session_state:
+                                    st.session_state['edited_preferred_skills'] = job_data.get('preferred_skills', [])
+                                if 'edited_experience_level' not in st.session_state:
+                                    st.session_state['edited_experience_level'] = job_data.get('experience_level', '')
 
-                            # Check if we're in edit mode
-                            edit_mode = st.session_state.get("edit_extracted_info", False)
-                            
-                            if edit_mode:
-                                # EDIT MODE: Show editable form fields
-                                st.markdown("### Edit Extracted Information")
+                                # Show success with extracted info
+                                st.success(f"Successfully processed: {job_desc_file.name}")
+
+                                # Check if we're in edit mode
+                                edit_mode = st.session_state.get("edit_extracted_info", False)
                                 
-                                # Job Title
-                                edited_job_title = st.text_input(
-                                    "Job Title",
-                                    value=st.session_state.get('edited_job_title', job_data.get('job_title', '')),
-                                    key="edit_job_title",
-                                    help="Edit the job title"
-                                )
-                                
-                                # Location
-                                edited_location = st.text_input(
-                                    "Location",
-                                    value=st.session_state.get('edited_location', job_data.get('location', '')),
-                                    key="edit_location",
-                                    help="Edit the location"
-                                )
-                                
-                                # Experience Level
-                                exp_level = st.session_state.get('edited_experience_level', job_data.get('experience_level', ''))
-                                exp_options = ["", "Junior", "Mid", "Senior"]
-                                exp_index = exp_options.index(exp_level) if exp_level in exp_options else 0
-                                edited_experience_level = st.selectbox(
-                                    "Experience Level",
-                                    options=exp_options,
-                                    index=exp_index,
-                                    key="edit_experience_level",
-                                    help="Select experience level"
-                                )
-                                
-                                # Certifications - convert to editable text format
-                                current_certs = st.session_state.get('edited_certifications', job_data.get('certifications', []))
-                                cert_text_lines = []
-                                for cert in current_certs:
-                                    if cert.get('category') == 'must-have':
-                                        cert_text_lines.append(f"*{cert.get('name', '')}")
-                                    else:
-                                        cert_text_lines.append(cert.get('name', ''))
-                                cert_text_default = "\n".join(cert_text_lines)
-                                
-                                st.markdown("**Certifications** (one per line, prefix with `*` for required)")
-                                st.caption("Example: `*OSHA 30` (required) or `First Aid` (preferred)")
-                                
-                                edited_cert_text = st.text_area(
-                                    "Certifications",
-                                    value=cert_text_default,
-                                    height=100,
-                                    key="edit_certifications_text",
-                                    help="Enter one certification per line. Prefix with * for must-have/required certifications.",
-                                    label_visibility="collapsed"
-                                )
-                                
-                                # Parse certifications from text
-                                edited_certifications = []
-                                if edited_cert_text:
-                                    for line in edited_cert_text.strip().split('\n'):
-                                        line = line.strip()
-                                        if line:
-                                            if line.startswith('*'):
-                                                edited_certifications.append({
-                                                    "name": line[1:].strip(),
-                                                    "category": "must-have"
-                                                })
-                                            else:
-                                                edited_certifications.append({
-                                                    "name": line,
-                                                    "category": "bonus"
-                                                })
-                                
-                                if edited_certifications:
-                                    st.caption(f"Parsed: {len([c for c in edited_certifications if c['category'] == 'must-have'])} required, {len([c for c in edited_certifications if c['category'] == 'bonus'])} preferred")
-                                
-                                # Required Skills
-                                current_req_skills = st.session_state.get('edited_required_skills', job_data.get('required_skills', []))
-                                edited_required_skills_text = st.text_area(
-                                    "Required Skills",
-                                    value=", ".join(current_req_skills) if current_req_skills else "",
-                                    height=80,
-                                    key="edit_required_skills",
-                                    help="Comma-separated list of required skills"
-                                )
-                                edited_required_skills = [s.strip() for s in edited_required_skills_text.split(',') if s.strip()] if edited_required_skills_text else []
-                                
-                                # Preferred Skills
-                                current_pref_skills = st.session_state.get('edited_preferred_skills', job_data.get('preferred_skills', []))
-                                edited_preferred_skills_text = st.text_area(
-                                    "Preferred Skills",
-                                    value=", ".join(current_pref_skills) if current_pref_skills else "",
-                                    height=80,
-                                    key="edit_preferred_skills",
-                                    help="Comma-separated list of preferred skills"
-                                )
-                                edited_preferred_skills = [s.strip() for s in edited_preferred_skills_text.split(',') if s.strip()] if edited_preferred_skills_text else []
-                                
-                                # Job Description
-                                edited_job_description = st.text_area(
-                                    "Full Job Description",
-                                    value=st.session_state.get('edited_job_description', job_data.get('full_description', '')),
-                                    height=300,
-                                    key="edit_job_description",
-                                    help="Edit the full job description"
-                                )
-                                
-                                # Save/Cancel buttons
-                                col_save, col_cancel = st.columns([1, 1])
-                                with col_save:
-                                    if st.button("Save Changes", type="primary", key="save_edited_info", use_container_width=True):
-                                        # Store edited values
-                                        st.session_state['edited_job_title'] = edited_job_title
-                                        st.session_state['edited_location'] = edited_location
-                                        st.session_state['edited_certifications'] = edited_certifications
-                                        st.session_state['edited_job_description'] = edited_job_description
-                                        st.session_state['edited_required_skills'] = edited_required_skills
-                                        st.session_state['edited_preferred_skills'] = edited_preferred_skills
-                                        st.session_state['edited_experience_level'] = edited_experience_level
-                                        st.session_state["edit_extracted_info"] = False
-                                        st.success("Changes saved!")
-                                        st.rerun()
-                                
-                                with col_cancel:
-                                    if st.button("Cancel", key="cancel_edit", use_container_width=True):
-                                        st.session_state["edit_extracted_info"] = False
-                                        st.rerun()
-                            else:
-                                # VIEW MODE: Show read-only display
-                                st.markdown("### AI-Extracted Information")
-                                
-                                # Use edited values if they exist, otherwise use extracted values
-                                display_job_title = st.session_state.get('edited_job_title', job_data.get('job_title', ''))
-                                display_location = st.session_state.get('edited_location', job_data.get('location', ''))
-                                display_certifications = st.session_state.get('edited_certifications', job_data.get('certifications', []))
-                                display_job_description = st.session_state.get('edited_job_description', job_data.get('full_description', ''))
-                                display_experience_level = st.session_state.get('edited_experience_level', job_data.get('experience_level', ''))
+                                if edit_mode:
+                                    # EDIT MODE: Show editable form fields
+                                    st.markdown("### Edit Extracted Information")
+                                    
+                                    # Job Title
+                                    edited_job_title = st.text_input(
+                                        "Job Title",
+                                        value=st.session_state.get('edited_job_title', job_data.get('job_title', '')),
+                                        key="edit_job_title",
+                                        help="Edit the job title"
+                                    )
+                                    
+                                    # Location
+                                    edited_location = st.text_input(
+                                        "Location",
+                                        value=st.session_state.get('edited_location', job_data.get('location', '')),
+                                        key="edit_location",
+                                        help="Edit the location"
+                                    )
+                                    
+                                    # Experience Level
+                                    exp_level = st.session_state.get('edited_experience_level', job_data.get('experience_level', ''))
+                                    exp_options = ["", "Junior", "Mid", "Senior"]
+                                    exp_index = exp_options.index(exp_level) if exp_level in exp_options else 0
+                                    edited_experience_level = st.selectbox(
+                                        "Experience Level",
+                                        options=exp_options,
+                                        index=exp_index,
+                                        key="edit_experience_level",
+                                        help="Select experience level"
+                                    )
+                                    
+                                    # Certifications - convert to editable text format
+                                    current_certs = st.session_state.get('edited_certifications', job_data.get('certifications', []))
+                                    cert_text_lines = []
+                                    for cert in current_certs:
+                                        if cert.get('category') == 'must-have':
+                                            cert_text_lines.append(f"*{cert.get('name', '')}")
+                                        else:
+                                            cert_text_lines.append(cert.get('name', ''))
+                                    cert_text_default = "\n".join(cert_text_lines)
+                                    
+                                    st.markdown("**Certifications** (one per line, prefix with `*` for required)")
+                                    st.caption("Example: `*OSHA 30` (required) or `First Aid` (preferred)")
+                                    
+                                    edited_cert_text = st.text_area(
+                                        "Certifications",
+                                        value=cert_text_default,
+                                        height=100,
+                                        key="edit_certifications_text",
+                                        help="Enter one certification per line. Prefix with * for must-have/required certifications.",
+                                        label_visibility="collapsed"
+                                    )
+                                    
+                                    # Parse certifications from text
+                                    edited_certifications = []
+                                    if edited_cert_text:
+                                        for line in edited_cert_text.strip().split('\n'):
+                                            line = line.strip()
+                                            if line:
+                                                if line.startswith('*'):
+                                                    edited_certifications.append({
+                                                        "name": line[1:].strip(),
+                                                        "category": "must-have"
+                                                    })
+                                                else:
+                                                    edited_certifications.append({
+                                                        "name": line,
+                                                        "category": "bonus"
+                                                    })
+                                    
+                                    if edited_certifications:
+                                        st.caption(f"Parsed: {len([c for c in edited_certifications if c['category'] == 'must-have'])} required, {len([c for c in edited_certifications if c['category'] == 'bonus'])} preferred")
+                                    
+                                    # Required Skills
+                                    current_req_skills = st.session_state.get('edited_required_skills', job_data.get('required_skills', []))
+                                    edited_required_skills_text = st.text_area(
+                                        "Required Skills",
+                                        value=", ".join(current_req_skills) if current_req_skills else "",
+                                        height=80,
+                                        key="edit_required_skills",
+                                        help="Comma-separated list of required skills"
+                                    )
+                                    edited_required_skills = [s.strip() for s in edited_required_skills_text.split(',') if s.strip()] if edited_required_skills_text else []
+                                    
+                                    # Preferred Skills
+                                    current_pref_skills = st.session_state.get('edited_preferred_skills', job_data.get('preferred_skills', []))
+                                    edited_preferred_skills_text = st.text_area(
+                                        "Preferred Skills",
+                                        value=", ".join(current_pref_skills) if current_pref_skills else "",
+                                        height=80,
+                                        key="edit_preferred_skills",
+                                        help="Comma-separated list of preferred skills"
+                                    )
+                                    edited_preferred_skills = [s.strip() for s in edited_preferred_skills_text.split(',') if s.strip()] if edited_preferred_skills_text else []
+                                    
+                                    # Job Description
+                                    edited_job_description = st.text_area(
+                                        "Full Job Description",
+                                        value=st.session_state.get('edited_job_description', job_data.get('full_description', '')),
+                                        height=300,
+                                        key="edit_job_description",
+                                        help="Edit the full job description"
+                                    )
+                                    
+                                    # Save/Cancel buttons
+                                    col_save, col_cancel = st.columns([1, 1])
+                                    with col_save:
+                                        if st.button("Save Changes", type="primary", key="save_edited_info", use_container_width=True):
+                                            # Store edited values
+                                            st.session_state['edited_job_title'] = edited_job_title
+                                            st.session_state['edited_location'] = edited_location
+                                            st.session_state['edited_certifications'] = edited_certifications
+                                            st.session_state['edited_job_description'] = edited_job_description
+                                            st.session_state['edited_required_skills'] = edited_required_skills
+                                            st.session_state['edited_preferred_skills'] = edited_preferred_skills
+                                            st.session_state['edited_experience_level'] = edited_experience_level
+                                            st.session_state["edit_extracted_info"] = False
+                                            st.success("Changes saved!")
+                                            st.rerun()
+                                    
+                                    with col_cancel:
+                                        if st.button("Cancel", key="cancel_edit", use_container_width=True):
+                                            st.session_state["edit_extracted_info"] = False
+                                            st.rerun()
+                                else:
+                                    # VIEW MODE: Show read-only display
+                                    st.markdown("### AI-Extracted Information")
+                                    
+                                    # Use edited values if they exist, otherwise use extracted values
+                                    display_job_title = st.session_state.get('edited_job_title', job_data.get('job_title', ''))
+                                    display_location = st.session_state.get('edited_location', job_data.get('location', ''))
+                                    display_certifications = st.session_state.get('edited_certifications', job_data.get('certifications', []))
+                                    display_job_description = st.session_state.get('edited_job_description', job_data.get('full_description', ''))
+                                    display_experience_level = st.session_state.get('edited_experience_level', job_data.get('experience_level', ''))
 
                                 col1, col2 = st.columns(2)
                                 with col1:
@@ -2694,48 +2702,72 @@ def main():
                                 with st.expander("View Full Job Description"):
                                     st.text_area("Content", display_job_description, height=300, disabled=True, key="jd_preview")
                                 
-                                # Edit button
-                                if st.button("Edit Extracted Information", key="edit_extracted_btn"):
-                                    st.session_state["edit_extracted_info"] = True
-                                    st.rerun()
-                            
-                            # Use edited values for processing (will be used later)
-                            # These will be used when the process button is clicked
-                            if 'edited_job_title' in st.session_state:
-                                job_title = st.session_state.get('edited_job_title', job_data.get('job_title', ''))
-                            else:
-                                job_title = job_data.get('job_title', '')
-                            
-                            if 'edited_location' in st.session_state:
-                                location = st.session_state.get('edited_location', job_data.get('location', ''))
-                            else:
-                                location = job_data.get('location', '')
-                            
-                            if 'edited_certifications' in st.session_state:
-                                certifications = st.session_state.get('edited_certifications', job_data.get('certifications', []))
-                            else:
-                                certifications = job_data.get('certifications', [])
-                            
-                            if 'edited_job_description' in st.session_state:
-                                job_description = st.session_state.get('edited_job_description', job_data.get('full_description', ''))
-                            else:
-                                job_description = job_data.get('full_description', '')
-                            
-                            # Store edited skills for later use
-                            if 'edited_required_skills' in st.session_state:
-                                st.session_state['current_required_skills'] = st.session_state.get('edited_required_skills', job_data.get('required_skills', []))
-                            else:
-                                st.session_state['current_required_skills'] = job_data.get('required_skills', [])
-                            
-                            if 'edited_preferred_skills' in st.session_state:
-                                st.session_state['current_preferred_skills'] = st.session_state.get('edited_preferred_skills', job_data.get('preferred_skills', []))
-                            else:
-                                st.session_state['current_preferred_skills'] = job_data.get('preferred_skills', [])
+                                    # Edit button
+                                    if st.button("Edit Extracted Information", key="edit_extracted_btn"):
+                                        st.session_state["edit_extracted_info"] = True
+                                        st.rerun()
+                                
+                                # Use edited values for processing (will be used later)
+                                # These will be used when the process button is clicked
+                                if 'edited_job_title' in st.session_state:
+                                    job_title = st.session_state.get('edited_job_title', job_data.get('job_title', ''))
+                                else:
+                                    job_title = job_data.get('job_title', '')
+                                
+                                if 'edited_location' in st.session_state:
+                                    location = st.session_state.get('edited_location', job_data.get('location', ''))
+                                else:
+                                    location = job_data.get('location', '')
+                                
+                                if 'edited_certifications' in st.session_state:
+                                    certifications = st.session_state.get('edited_certifications', job_data.get('certifications', []))
+                                else:
+                                    certifications = job_data.get('certifications', [])
+                                
+                                if 'edited_job_description' in st.session_state:
+                                    job_description = st.session_state.get('edited_job_description', job_data.get('full_description', ''))
+                                else:
+                                    job_description = job_data.get('full_description', '')
+                                
+                                # Store edited skills for later use
+                                if 'edited_required_skills' in st.session_state:
+                                    st.session_state['current_required_skills'] = st.session_state.get('edited_required_skills', job_data.get('required_skills', []))
+                                else:
+                                    st.session_state['current_required_skills'] = job_data.get('required_skills', [])
+                                
+                                if 'edited_preferred_skills' in st.session_state:
+                                    st.session_state['current_preferred_skills'] = st.session_state.get('edited_preferred_skills', job_data.get('preferred_skills', []))
+                                else:
+                                    st.session_state['current_preferred_skills'] = job_data.get('preferred_skills', [])
 
-                        except Exception as e:
-                            logger.error(f"Error processing job description file: {e}", exc_info=True)
-                            st.error(f"Error processing file: {e}")
-                            job_description = ""
+                            except Exception as e:
+                                logger.error(f"Error processing job description file: {e}", exc_info=True)
+                                
+                                # Provide more helpful error messages
+                                error_msg = str(e)
+                                if "400" in error_msg or "Bad Request" in error_msg:
+                                    st.error(f"❌ **File Processing Error**: The file '{job_desc_file.name}' could not be processed. This may be due to:\n\n"
+                                            "- File format issue (corrupted or unsupported format)\n"
+                                            "- File is too large or contains invalid content\n"
+                                            "- PDF is image-based (scanned) rather than text-based\n\n"
+                                            "**Please try:**\n"
+                                            "- Converting the PDF to text format\n"
+                                            "- Using a different file format (DOCX or TXT)\n"
+                                            "- Ensuring the file is not corrupted")
+                                elif "API" in error_msg or "OpenAI" in error_msg or "key" in error_msg.lower():
+                                    st.error(f"❌ **API Error**: {error_msg}\n\n"
+                                            "Please check your OpenAI API key configuration.")
+                                elif "read" in error_msg.lower() or "parse" in error_msg.lower() or "encrypted" in error_msg.lower():
+                                    st.error(f"❌ **File Reading Error**: Could not read the file '{job_desc_file.name}'. "
+                                            "The file may be corrupted, encrypted, or in an unsupported format. Please try a different file.")
+                                else:
+                                    st.error(f"❌ **Error processing file**: {error_msg}\n\n"
+                                            f"If this problem persists, please try uploading a different file format (TXT, DOCX, or text-based PDF).")
+                                job_description = ""
+                                # Clear the file from session state on error so user can retry
+                                if 'last_uploaded_file' in st.session_state:
+                                    st.session_state.pop('last_uploaded_file', None)
+                                    st.session_state.pop('extracted_job_data', None)
 
             # MODE 2: Manual Entry
             else:

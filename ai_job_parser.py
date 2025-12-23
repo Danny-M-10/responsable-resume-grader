@@ -78,16 +78,29 @@ class AIJobParser:
         text = ""
         try:
             with open(file_path, 'rb') as file:
-                pdf_reader = PyPDF2.PdfReader(file)
-                for page in pdf_reader.pages:
-                    page_text = page.extract_text()
-                    text += page_text + "\n"
-                # Debug: Check if we got meaningful content
-                if len(text.strip()) < 50:
-                    print(f"WARNING: PDF extraction resulted in very short text ({len(text)} chars)")
-                    print(f"First 200 chars: {text[:200]}")
+                try:
+                    pdf_reader = PyPDF2.PdfReader(file)
+                    # Check if PDF is encrypted
+                    if pdf_reader.is_encrypted:
+                        raise ValueError("PDF file is encrypted/password-protected. Please provide an unencrypted version.")
+                    
+                    for page in pdf_reader.pages:
+                        page_text = page.extract_text()
+                        text += page_text + "\n"
+                    
+                    # Debug: Check if we got meaningful content
+                    if len(text.strip()) < 50:
+                        print(f"WARNING: PDF extraction resulted in very short text ({len(text)} chars)")
+                        print(f"First 200 chars: {text[:200]}")
+                        print("This may be a scanned/image-based PDF that requires OCR.")
+                except PyPDF2.errors.PdfReadError as e:
+                    raise ValueError(f"PDF file appears to be corrupted or invalid: {e}")
+        except FileNotFoundError:
+            raise ValueError(f"PDF file not found: {file_path}")
+        except PermissionError:
+            raise ValueError(f"Permission denied reading PDF file: {file_path}")
         except Exception as e:
-            raise Exception(f"Error reading PDF: {e}")
+            raise ValueError(f"Error reading PDF file: {e}")
         return text
 
     def _read_docx(self, file_path: str) -> str:
@@ -248,14 +261,31 @@ JSON:
 """
 
         try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                max_tokens=3000,
-                temperature=0.1,  # Low temperature for consistent extraction
-                messages=[
-                    {"role": "user", "content": prompt}
-                ]
-            )
+            from openai import APIError, APIConnectionError, RateLimitError
+            
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    max_tokens=3000,
+                    temperature=0.1,  # Low temperature for consistent extraction
+                    messages=[
+                        {"role": "user", "content": prompt}
+                    ]
+                )
+            except RateLimitError as e:
+                raise ValueError(f"OpenAI API rate limit exceeded. Please try again in a moment. Error: {e}")
+            except APIConnectionError as e:
+                raise ValueError(f"Failed to connect to OpenAI API. Please check your internet connection. Error: {e}")
+            except APIError as e:
+                error_msg = str(e)
+                if "400" in error_msg or "Bad Request" in error_msg:
+                    raise ValueError(f"OpenAI API returned a 400 Bad Request error. This may indicate:\n"
+                                    "- The prompt is too long or malformed\n"
+                                    "- Invalid API key or configuration\n"
+                                    "- File content issue\n"
+                                    f"Original error: {e}")
+                else:
+                    raise ValueError(f"OpenAI API error: {e}")
 
             # Extract JSON from response
             if not response.choices or len(response.choices) == 0:
