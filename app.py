@@ -502,6 +502,8 @@ def init_session_state():
         st.session_state.results = None
     if 'processing' not in st.session_state:
         st.session_state.processing = False
+    if 'show_results_page' not in st.session_state:
+        st.session_state.show_results_page = False
     if 'last_job_title' not in st.session_state:
         st.session_state.last_job_title = ""
     if 'show_history_list' not in st.session_state:
@@ -512,6 +514,7 @@ def clear_results():
     """Clear stored results to start fresh"""
     st.session_state.results = None
     st.session_state.processing = False
+    st.session_state.show_results_page = False
 
 
 def generate_csv_export(candidate_scores, job_title, location):
@@ -1853,7 +1856,7 @@ def display_results(results):
             st.session_state.pop("viewing_previous_analysis", None)
             st.rerun()
     with col3:
-        if st.button("New Analysis", type="secondary", help="Start a new analysis"):
+        if st.button("Start New Analysis", type="secondary", help="Start a new analysis"):
             clear_results()
             st.session_state.pop("viewing_previous_analysis", None)
             st.rerun()
@@ -1879,6 +1882,56 @@ def display_results(results):
     with col4:
         if processing_time > 0:
             st.metric("Processing Time", f"{processing_time:.1f}s")
+
+    # Ranking Visualization
+    if viable_candidates:
+        st.markdown("### Ranking Visualization")
+        
+        # Sort candidates by score (highest to lowest) for visualization
+        sorted_for_viz = sorted(viable_candidates, key=lambda x: x.fit_score, reverse=True)
+        
+        try:
+            import pandas as pd
+            
+            # Create DataFrame for bar chart
+            chart_data = pd.DataFrame({
+                'Candidate': [c.name[:30] + ('...' if len(c.name) > 30 else '') for c in sorted_for_viz],
+                'Score': [c.fit_score for c in sorted_for_viz]
+            })
+            
+            # Create color mapping based on score
+            colors = []
+            for score in chart_data['Score']:
+                if score >= 7.5:
+                    colors.append('#27ae60')  # Green - Excellent
+                elif score >= 5.5:
+                    colors.append('#f39c12')  # Yellow/Orange - Good
+                else:
+                    colors.append('#e74c3c')  # Red - Needs improvement
+            
+            # Display horizontal bar chart
+            st.bar_chart(chart_data.set_index('Candidate'), height=400, use_container_width=True)
+            
+            # Add legend
+            st.caption("Score ranges: Green (≥7.5) = Excellent | Yellow (5.5-7.4) = Good | Red (5.0-5.4) = Needs Improvement")
+            
+        except ImportError:
+            # Fallback if pandas not available
+            st.info("Chart visualization requires pandas. Install with: `pip install pandas`")
+            # Show simple text-based ranking instead
+            st.markdown("**Top Candidates by Score:**")
+            for i, candidate in enumerate(sorted_for_viz[:10], 1):
+                score_color = get_score_color(candidate.fit_score)
+                st.markdown(f"{i}. **{candidate.name}** - <span style='color: {score_color}; font-weight: bold;'>{candidate.fit_score:.2f}/10</span>", unsafe_allow_html=True)
+        except Exception as e:
+            logger.error(f"Error creating visualization: {e}", exc_info=True)
+            st.warning("Could not generate visualization. Showing rankings in list format instead.")
+            st.markdown("**Top Candidates by Score:**")
+            for i, candidate in enumerate(sorted_for_viz[:10], 1):
+                score_color = get_score_color(candidate.fit_score)
+                st.markdown(f"{i}. **{candidate.name}** - <span style='color: {score_color}; font-weight: bold;'>{candidate.fit_score:.2f}/10</span>", unsafe_allow_html=True)
+        
+        st.markdown("---")
 
     # Sorting and filtering controls
     st.markdown("### Candidate Rankings")
@@ -2360,6 +2413,30 @@ def main():
             font-style: italic;
         }
         
+        /* Full-page loading overlay */
+        .full-page-loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(255, 255, 255, 0.98);
+            backdrop-filter: blur(2px);
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+        
+        /* Hide scrollbars during loading */
+        body:has(.full-page-loading-overlay) {
+            overflow: hidden;
+        }
+        
         /* Responsive adjustments */
         @media (max-width: 768px) {
             .logo-container img {
@@ -2442,8 +2519,62 @@ def main():
         tab_new, tab_history, tab_database, tab_analytics = st.tabs(["New Analysis", "Previous Analyses", "Resume Database", "Analytics"])
         
         with tab_new:
-            # If we have stored results from a new analysis (not viewing previous), show them
-            if st.session_state.results is not None and not st.session_state.get("viewing_previous_analysis", False):
+            # Check if processing is in progress - show full-page loading screen
+            if st.session_state.get('processing', False):
+                # Full-page loading screen - read progress from session state
+                loading_placeholder = st.empty()
+                with loading_placeholder.container():
+                    # Get current progress from session state
+                    progress_info = st.session_state.get('loading_progress', {
+                        'step': 'analyzing',
+                        'progress': 0.0,
+                        'current': 0,
+                        'total': 0
+                    })
+                    
+                    # Use full viewport styling
+                    st.markdown("""
+                        <style>
+                        .full-page-loading-overlay {
+                            position: fixed;
+                            top: 0;
+                            left: 0;
+                            width: 100vw;
+                            height: 100vh;
+                            background: rgba(255, 255, 255, 0.98);
+                            backdrop-filter: blur(2px);
+                            z-index: 9999;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            flex-direction: column;
+                            margin: 0;
+                            padding: 0;
+                            overflow: hidden;
+                        }
+                        </style>
+                    """, unsafe_allow_html=True)
+                    st.markdown('<div class="full-page-loading-overlay">', unsafe_allow_html=True)
+                    from loading_components import show_full_workflow_loading
+                    show_full_workflow_loading(
+                        progress_info['step'],
+                        progress_info['progress'],
+                        progress_info['current'],
+                        progress_info['total']
+                    )
+                    st.markdown('</div>', unsafe_allow_html=True)
+            # Check if we should show results page (after processing completes)
+            elif st.session_state.get('show_results_page', False) and st.session_state.results is not None:
+                display_results(st.session_state.results)
+                
+                # Footer
+                st.markdown("---")
+                st.markdown(
+                    '<div style="text-align: center; color: var(--text-muted); padding: var(--spacing-sm);">ResponsAble Safety Staffing | Recruitment Candidate Ranker</div>',
+                    unsafe_allow_html=True
+                )
+            # If we have stored results from viewing previous analysis, show them
+            elif st.session_state.results is not None and not st.session_state.get("viewing_previous_analysis", False):
                 display_results(st.session_state.results)
                 
                 # Footer
@@ -2969,34 +3100,26 @@ The AI will analyze this to extract skills and requirements.""",
                     for error in errors:
                         st.error(error)
                 else:
+                    # Set processing flag and show full-page loading
+                    st.session_state['processing'] = True
+                    st.session_state['show_results_page'] = False
+                    
+                    # Create full-page loading placeholder
+                    loading_placeholder = st.empty()
+                    
+                    # Progress callback function for full-page loading
+                    def update_progress(step, progress, current, total):
+                        # Store progress in session state so tab_new section can read it
+                        # Note: UI updates will happen on next rerun (after processing completes)
+                        st.session_state['loading_progress'] = {
+                            'step': step,
+                            'progress': progress,
+                            'current': current,
+                            'total': total
+                        }
+                    
                     # Process the candidates with progress tracking
                     start_time = datetime.now()
-
-                    # Create progress UI elements
-                    progress_container = st.container()
-
-                    with progress_container:
-                        st.markdown("### Processing Candidates")
-                        progress_bar = st.progress(0)
-                        status_text = st.empty()
-                        step_info = st.empty()
-
-                    # Progress callback function
-                    def update_progress(step, progress, current, total):
-                        progress_bar.progress(min(progress, 1.0))
-                        message = get_cycling_message(step, progress, current, total)
-
-                        step_titles = {
-                            "analyzing": "Step 1/6: Analyzing Job Requirements",
-                            "researching": "Step 2/6: Researching Equivalents",
-                            "parsing": f"Step 3/6: Parsing Resumes ({current}/{total})",
-                            "scoring": f"Step 4/6: Scoring Candidates ({current}/{total})",
-                            "ranking": "Step 5/6: Ranking Candidates",
-                            "generating": "Step 6/6: Generating PDF Report"
-                        }
-
-                        step_info.markdown(f"**{step_titles.get(step, 'Processing...')}**")
-                        status_text.markdown(f"*{message}*")
 
                     try:
                         # Save uploaded files temporarily and persist copies
@@ -3171,17 +3294,20 @@ The AI will analyze this to extract skills and requirements.""",
                             'timestamp': datetime.now()
                         }
 
-                        # Update progress to complete
-                        progress_bar.progress(1.0)
-                        if saved_count > 0:
-                            status_text.markdown(f"*Processing complete! {saved_count} resume(s) automatically saved to database.*")
-                        else:
-                            status_text.markdown("*Processing complete!*")
+                        # Clear processing flag and set results page flag
+                        st.session_state['processing'] = False
+                        st.session_state['show_results_page'] = True
+                        # Clear loading progress
+                        st.session_state.pop('loading_progress', None)
 
-                        # Rerun to show results
+                        # Rerun to show results page
                         st.rerun()
 
                     except Exception as e:
+                        # Clear processing flag on error
+                        st.session_state['processing'] = False
+                        st.session_state['show_results_page'] = False
+                        st.session_state.pop('loading_progress', None)
                         logger.error(f"Error processing candidates: {e}", exc_info=True)
                         st.error(f"An error occurred: {str(e)}")
                         st.exception(e)
