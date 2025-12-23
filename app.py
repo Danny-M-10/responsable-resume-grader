@@ -470,6 +470,8 @@ def init_session_state():
         st.session_state.processing = False
     if 'last_job_title' not in st.session_state:
         st.session_state.last_job_title = ""
+    if 'show_history_list' not in st.session_state:
+        st.session_state.show_history_list = False
 
 
 def clear_results():
@@ -1708,7 +1710,7 @@ def display_results(results):
         st.markdown(f"**Job:** {job_details['title']} | **Location:** {job_details['location']}")
     with col2:
         if st.button("Back to Analyses", type="secondary", help="Return to Previous Analyses list"):
-            clear_results()
+            st.session_state["show_history_list"] = True
             st.session_state.pop("viewing_previous_analysis", None)
             st.rerun()
     with col3:
@@ -1835,88 +1837,10 @@ def display_results(results):
             st.markdown("**AI Assessment:**")
             st.markdown(f"<div style='background-color: #f8f9fa; padding: 1rem; border-radius: 0.5rem; font-size: 0.9rem;'>{candidate.rationale}</div>", unsafe_allow_html=True)
 
-    # Offer to save new resumes to database
-    if st.session_state.get('new_resumes_to_save'):
-        save_data = st.session_state['new_resumes_to_save']
-        st.markdown('<div class="section-header">Save Resumes to Database</div>', unsafe_allow_html=True)
-        st.info(f"You have {len(save_data['resumes'])} new resume(s) that can be saved to your database.")
-        
-        for idx, resume_info in enumerate(save_data['resumes']):
-            with st.expander(f"Save: {resume_info['original_name']}", expanded=False):
-                parsed = resume_info['parsed_data']
-                st.markdown(f"**Name:** {parsed.get('name', 'Unknown')}")
-                st.markdown(f"**Email:** {parsed.get('email', 'N/A')}")
-                
-                tags_input = st.text_input(
-                    "Tags (comma-separated)",
-                    key=f"save_tags_{idx}",
-                    placeholder="e.g., safety, certified"
-                )
-                notes_input = st.text_area(
-                    "Notes",
-                    key=f"save_notes_{idx}",
-                    placeholder="Optional notes about this candidate"
-                )
-                
-                if st.button("Save to Database", key=f"save_btn_{idx}"):
-                    try:
-                        user_id = st.session_state.get("user_id")
-                        if not user_id:
-                            st.error("User not authenticated")
-                            return
-                        
-                        # Save to file_assets
-                        from db import get_db, utcnow_str
-                        import uuid
-                        asset_id = str(uuid.uuid4())
-                        
-                        with get_db() as conn:
-                            cur = conn.cursor()
-                            query = prepare_query(conn, """
-                                INSERT INTO file_assets 
-                                (id, user_id, kind, original_name, stored_path, created_at)
-                                VALUES (?, ?, ?, ?, ?, ?)
-                            """)
-                            cur.execute(query, (
-                                asset_id,
-                                user_id,
-                                'resume',
-                                resume_info['original_name'],
-                                resume_info['stored_path'],
-                                utcnow_str()
-                            ))
-                            conn.commit()
-                        
-                        # Parse tags
-                        tags = [t.strip() for t in tags_input.split(',') if t.strip()] if tags_input else []
-                        
-                        # Save to candidate profiles
-                        profile_id = save_candidate_profile(
-                            user_id=user_id,
-                            resume_data=parsed,
-                            resume_file_id=asset_id,
-                            tags=tags,
-                            notes=notes_input or ""
-                        )
-                        
-                        # Link to report if available
-                        if save_data.get('report_id'):
-                            link_candidate_to_analysis(profile_id, save_data['report_id'])
-                        
-                        st.success(f"Resume saved to database!")
-                        
-                        # Remove from list
-                        save_data['resumes'].pop(idx)
-                        if not save_data['resumes']:
-                            st.session_state.pop('new_resumes_to_save', None)
-                        st.rerun()
-                    except Exception as e:
-                        logger.error(f"Error saving resume to database: {e}", exc_info=True)
-                        st.error(f"Error saving resume: {str(e)}")
-        
-        if st.button("Skip Saving", key="skip_saving"):
-            st.session_state.pop('new_resumes_to_save', None)
-            st.rerun()
+    # Show auto-save success notification if resumes were automatically saved
+    if st.session_state.get('resumes_auto_saved'):
+        saved_count = st.session_state.pop('resumes_auto_saved')
+        st.success(f"✓ {saved_count} resume(s) automatically saved to your database and linked to this analysis.")
         
         st.markdown("---")
     
@@ -2626,55 +2550,55 @@ The AI will analyze this to extract skills and requirements.""",
 
             # Resume Upload
             st.markdown('<div class="section-header">Candidate Resumes</div>', unsafe_allow_html=True)
-            
-            resume_source = st.radio(
-                "Resume Source:",
-                ["Upload New Resumes", "Select from Database"],
-                horizontal=True,
-                key="resume_source"
-            )
+            st.caption("You can select candidates from your database and/or upload additional resumes.")
             
             uploaded_files = []
             selected_candidate_ids = []
             
-            if resume_source == "Upload New Resumes":
-                uploaded_files = st.file_uploader(
-                    "Upload Resume Files",
-                    type=["pdf", "docx", "txt"],
-                    accept_multiple_files=True,
-                    help="Upload candidate resumes in PDF, DOCX, or TXT format"
+            # Section 1: Select from Database
+            st.markdown("**Select candidates from your resume database:**")
+            all_candidates = search_candidates(user_id, query="", filters={})
+            
+            if all_candidates:
+                candidate_options = {f"{c['name']} ({c['email']})": c['id'] for c in all_candidates}
+                selected_names = st.multiselect(
+                    "Choose candidates",
+                    options=list(candidate_options.keys()),
+                    key="selected_candidate_names",
+                    help="Select one or more candidates from your database"
                 )
-
-                if uploaded_files:
-                    st.success(f"Uploaded {len(uploaded_files)} resume(s)")
-                    with st.expander("View uploaded files"):
-                        for file in uploaded_files:
-                            size_kb = file.size / 1024
-                            st.write(f"- {file.name} ({size_kb:.1f} KB)")
+                selected_candidate_ids = [candidate_options[name] for name in selected_names]
+                
+                if selected_candidate_ids:
+                    st.success(f"Selected {len(selected_candidate_ids)} candidate(s) from database")
+                    with st.expander("View selected candidates", expanded=False):
+                        selected_profiles = get_candidates_for_analysis(user_id, selected_candidate_ids)
+                        for profile in selected_profiles:
+                            st.write(f"- {profile['name']} ({profile['email']})")
             else:
-                # Select from database
-                st.markdown("**Select candidates from your resume database:**")
-                
-                # Get all candidates for selection
-                all_candidates = search_candidates(user_id, query="", filters={})
-                
-                if all_candidates:
-                    candidate_options = {f"{c['name']} ({c['email']})": c['id'] for c in all_candidates}
-                    selected_names = st.multiselect(
-                        "Choose candidates",
-                        options=list(candidate_options.keys()),
-                        key="selected_candidate_names"
-                    )
-                    selected_candidate_ids = [candidate_options[name] for name in selected_names]
-                    
-                    if selected_candidate_ids:
-                        st.success(f"Selected {len(selected_candidate_ids)} candidate(s) from database")
-                        with st.expander("View selected candidates"):
-                            selected_profiles = get_candidates_for_analysis(user_id, selected_candidate_ids)
-                            for profile in selected_profiles:
-                                st.write(f"- {profile['name']} ({profile['email']})")
-                else:
-                    st.info("No candidates in database. Upload resumes first or switch to 'Upload New Resumes'.")
+                st.info("No candidates in database. Upload resumes below to add them.")
+            
+            # Section 2: Upload Additional Resumes
+            st.markdown("**Upload additional resume files:**")
+            uploaded_files = st.file_uploader(
+                "Upload Resume Files",
+                type=["pdf", "docx", "txt"],
+                accept_multiple_files=True,
+                help="Upload candidate resumes in PDF, DOCX, or TXT format. These will be automatically saved to your database after analysis.",
+                key="resume_uploader"
+            )
+
+            if uploaded_files:
+                st.success(f"Uploaded {len(uploaded_files)} resume(s)")
+                with st.expander("View uploaded files", expanded=False):
+                    for file in uploaded_files:
+                        size_kb = file.size / 1024
+                        st.write(f"- {file.name} ({size_kb:.1f} KB)")
+            
+            # Show combined total
+            total_candidates = len(selected_candidate_ids) + len(uploaded_files) if uploaded_files else len(selected_candidate_ids)
+            if total_candidates > 0:
+                st.info(f"📊 **Total candidates for analysis: {total_candidates}** ({len(selected_candidate_ids)} from database, {len(uploaded_files) if uploaded_files else 0} uploaded)")
 
             # Process Button
             st.markdown('<div class="section-header"></div>', unsafe_allow_html=True)
@@ -2702,7 +2626,7 @@ The AI will analyze this to extract skills and requirements.""",
                 if not job_description:
                     errors.append("Job description is required")
                 if not uploaded_files and not selected_candidate_ids:
-                    errors.append("At least one resume file or candidate from database is required")
+                    errors.append("At least one resume file or candidate from database is required. You can select from your database and/or upload additional resumes.")
 
                 if errors:
                     for error in errors:
@@ -2825,12 +2749,52 @@ The AI will analyze this to extract skills and requirements.""",
                                 for candidate_id in selected_candidate_ids:
                                     link_candidate_to_analysis(candidate_id, report_id)
                             
-                            # Offer to save new resumes to database
+                            # Automatically save new resumes to database
+                            saved_count = 0
                             if new_resume_data and report_id:
-                                st.session_state['new_resumes_to_save'] = {
-                                    'resumes': new_resume_data,
-                                    'report_id': report_id
-                                }
+                                from db import get_db, utcnow_str
+                                import uuid
+                                
+                                for resume_info in new_resume_data:
+                                    try:
+                                        # Save to file_assets
+                                        asset_id = str(uuid.uuid4())
+                                        with get_db() as conn:
+                                            cur = conn.cursor()
+                                            query = prepare_query(conn, """
+                                                INSERT INTO file_assets 
+                                                (id, user_id, kind, original_name, stored_path, created_at)
+                                                VALUES (?, ?, ?, ?, ?, ?)
+                                            """)
+                                            cur.execute(query, (
+                                                asset_id,
+                                                user_id,
+                                                'resume',
+                                                resume_info['original_name'],
+                                                resume_info['stored_path'],
+                                                utcnow_str()
+                                            ))
+                                            conn.commit()
+                                        
+                                        # Save to candidate profiles
+                                        profile_id = save_candidate_profile(
+                                            user_id=user_id,
+                                            resume_data=resume_info['parsed_data'],
+                                            resume_file_id=asset_id,
+                                            tags=[],
+                                            notes=""
+                                        )
+                                        
+                                        # Link to report
+                                        link_candidate_to_analysis(profile_id, report_id)
+                                        saved_count += 1
+                                    except Exception as e:
+                                        logger.error(f"Error auto-saving resume {resume_info['original_name']}: {e}", exc_info=True)
+                                        # Continue with other resumes even if one fails
+                                
+                                # Store success message in session state for display
+                                if saved_count > 0:
+                                    st.session_state['resumes_auto_saved'] = saved_count
 
                             # Read PDF data before cleanup
                             with open(pdf_path, "rb") as f:
@@ -2865,7 +2829,10 @@ The AI will analyze this to extract skills and requirements.""",
 
                         # Update progress to complete
                         progress_bar.progress(1.0)
-                        status_text.markdown("*Processing complete!*")
+                        if saved_count > 0:
+                            status_text.markdown(f"*Processing complete! {saved_count} resume(s) automatically saved to database.*")
+                        else:
+                            status_text.markdown("*Processing complete!*")
 
                         # Rerun to show results
                         st.rerun()
@@ -2883,8 +2850,13 @@ The AI will analyze this to extract skills and requirements.""",
             )
         
         with tab_history:
+            # Check if user wants to return to history list
+            if st.session_state.get("show_history_list", False):
+                st.session_state.pop("show_history_list", None)
+                st.session_state.pop("viewing_previous_analysis", None)
+                display_analysis_history(user_id)
             # Check if user wants to view a previous analysis
-            if st.session_state.get("view_report_id"):
+            elif st.session_state.get("view_report_id"):
                 try:
                     analysis_data = load_analysis_data(st.session_state["view_report_id"], user_id)
                     if analysis_data:
