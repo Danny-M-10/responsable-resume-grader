@@ -5,7 +5,6 @@ Uses OpenAI GPT-4 Turbo for intelligent candidate evaluation
 
 import os
 import asyncio
-import hashlib
 from typing import Dict, Any, List, Tuple
 from openai import OpenAI, AsyncOpenAI
 from models import JobDetails, CandidateScore
@@ -34,35 +33,6 @@ class AIScoringEngine:
         self.client = OpenAI(api_key=self.api_key)
         self.async_client = AsyncOpenAI(api_key=self.api_key)
         self.model = OpenAIConfig.get_model()
-    
-    def _generate_deterministic_seed(self, candidate: Dict[str, Any], job_details: JobDetails) -> int:
-        """
-        Generate a deterministic seed from job and candidate data.
-        Same candidate + same job = same seed = same AI response.
-        
-        Args:
-            candidate: Parsed candidate data
-            job_details: Structured job requirements
-            
-        Returns:
-            Integer seed value (0-2^31-1)
-        """
-        # Create a deterministic string from key identifying information
-        seed_string = (
-            f"{job_details.job_title}|"
-            f"{job_details.location}|"
-            f"{candidate.get('email', '')}|"
-            f"{candidate.get('name', '')}|"
-            f"{','.join(sorted(job_details.required_skills))}|"
-            f"{','.join(sorted([c.name for c in job_details.certifications]))}"
-        )
-        
-        # Generate hash and convert to integer seed
-        seed_hash = hashlib.sha256(seed_string.encode('utf-8')).hexdigest()
-        # Use first 8 hex digits to create a 32-bit integer seed
-        seed_int = int(seed_hash[:8], 16) % (2**31 - 1)
-        
-        return seed_int
 
     def score_candidate(self, candidate: Dict[str, Any],
                        job_details: JobDetails) -> CandidateScore:
@@ -80,16 +50,12 @@ class AIScoringEngine:
         # Build the evaluation prompt
         prompt = self._build_evaluation_prompt(candidate, job_details)
 
-        # Generate deterministic seed for true determinism
-        seed = self._generate_deterministic_seed(candidate, job_details)
-
         # Call OpenAI API for evaluation
-        # Use temperature=0.0 and seed for maximum determinism and consistency
+        # Use temperature=0.0 for maximum determinism and consistency
         response = self.client.chat.completions.create(
             model=self.model,
             max_tokens=4000,
             temperature=0.0,  # Zero temperature for deterministic, consistent evaluations
-            seed=seed,  # Deterministic seed ensures same candidate + same job = same response
             messages=[
                 {
                     "role": "user",
@@ -204,15 +170,11 @@ class AIScoringEngine:
         # Build the evaluation prompt (same as sync version)
         prompt = self._build_evaluation_prompt(candidate, job_details)
         
-        # Generate deterministic seed for true determinism
-        seed = self._generate_deterministic_seed(candidate, job_details)
-        
         # Call OpenAI API asynchronously
         response = await self.async_client.chat.completions.create(
             model=self.model,
             max_tokens=4000,
             temperature=0.0,  # Zero temperature for deterministic, consistent evaluations
-            seed=seed,  # Deterministic seed ensures same candidate + same job = same response
             messages=[
                 {
                     "role": "user",
@@ -434,13 +396,6 @@ SCORING RUBRIC (each component scored 0-10):
    - 4-6: Different but reasonable distance
    - 0-3: Very different location
 
-CRITICAL CONSISTENCY AND DETERMINISM REQUIREMENTS:
-- **ABSOLUTE DETERMINISM**: Re-evaluating the EXACT same candidate against the EXACT same job requirements MUST produce IDENTICAL component scores and final score. Use the same scoring logic every time.
-- **COMPONENT SCORE CONSISTENCY**: For identical candidate qualifications, assign the EXACT same component scores. Do not vary scores based on interpretation - use objective, repeatable criteria.
-- **CROSS-VALIDATION**: Component scores must align with each other and with the final weighted score. If all components are high, final score must be high. If critical components are low, final score must reflect this.
-- **EVIDENCE-BASED**: Base scores ONLY on explicitly stated information in the resume. Do not infer or assume qualifications not explicitly mentioned.
-- **REPEATABILITY**: When you see the same candidate data and job requirements, apply the same scoring algorithm. Same inputs = same outputs.
-- **COMPONENT SCORE ALIGNMENT**: If candidate has all must-have certs, that component MUST be 8-10. If missing ALL must-have certs, that component MUST be 0-1.
 - **FINAL SCORE CALCULATION**: The final score MUST equal the weighted sum of component scores when all 7 components are provided. Ensure mathematical consistency.
 
 EVALUATION STRUCTURE:
@@ -509,12 +464,6 @@ Final Score = Sum of all weighted components
 Provide final weighted score in this exact format:
 FINAL_SCORE: X.X/10
 
-**CRITICAL REMINDER - DETERMINISM AND CONSISTENCY**:
-- Re-evaluating the EXACT same candidate against the EXACT same job requirements MUST produce IDENTICAL component scores and final score
-- Use the same scoring criteria every time - do not vary based on interpretation
-- Ensure component scores mathematically align with the final weighted score
-- Same inputs (candidate data + job requirements) = same outputs (component scores + final score)
-
 12. **RECOMMENDATIONS**:
    - Should this candidate be interviewed?
    - What questions to focus on?
@@ -568,57 +517,21 @@ Format your response with clear headers. Be specific and cite evidence from the 
         
         if component_section:
             component_text = component_section.group(0)
-            # Extract each component score from summary section with enhanced patterns
+            # Extract each component score from summary section
             patterns = {
-                'must_have_certs': [
-                    r'(?:Must-have certifications|must-have certifications|must have certifications):\s*(\d+\.?\d*)/10',
-                    r'(?:Must-have certifications|must-have certifications|must have certifications):\s*(\d+\.?\d*)',
-                    r'must[- ]?have.*?cert.*?:\s*(\d+\.?\d*)/10',
-                ],
-                'bonus_certs': [
-                    r'(?:Bonus certifications|bonus certifications):\s*(\d+\.?\d*)/10',
-                    r'(?:Bonus certifications|bonus certifications):\s*(\d+\.?\d*)',
-                    r'bonus.*?cert.*?:\s*(\d+\.?\d*)/10',
-                ],
-                'required_skills': [
-                    r'(?:Required skills|required skills):\s*(\d+\.?\d*)/10',
-                    r'(?:Required skills|required skills):\s*(\d+\.?\d*)',
-                    r'required.*?skill.*?:\s*(\d+\.?\d*)/10',
-                ],
-                'preferred_skills': [
-                    r'(?:Preferred skills|preferred skills):\s*(\d+\.?\d*)/10',
-                    r'(?:Preferred skills|preferred skills):\s*(\d+\.?\d*)',
-                    r'preferred.*?skill.*?:\s*(\d+\.?\d*)/10',
-                ],
-                'experience_level': [
-                    r'(?:Experience level|experience level|experience):\s*(\d+\.?\d*)/10',
-                    r'(?:Experience level|experience level|experience):\s*(\d+\.?\d*)',
-                    r'experience.*?level.*?:\s*(\d+\.?\d*)/10',
-                ],
-                'job_title_match': [
-                    r'(?:Job title match|job title match|job title):\s*(\d+\.?\d*)/10',
-                    r'(?:Job title match|job title match|job title):\s*(\d+\.?\d*)',
-                    r'job.*?title.*?match.*?:\s*(\d+\.?\d*)/10',
-                ],
-                'location': [
-                    r'(?:Location|location):\s*(\d+\.?\d*)/10',
-                    r'(?:Location|location):\s*(\d+\.?\d*)',
-                    r'location.*?:\s*(\d+\.?\d*)/10',
-                ]
+                'must_have_certs': r'(?:Must-have certifications|must-have certifications):\s*(\d+\.?\d*)/10',
+                'bonus_certs': r'(?:Bonus certifications|bonus certifications):\s*(\d+\.?\d*)/10',
+                'required_skills': r'(?:Required skills|required skills):\s*(\d+\.?\d*)/10',
+                'preferred_skills': r'(?:Preferred skills|preferred skills):\s*(\d+\.?\d*)/10',
+                'experience_level': r'(?:Experience level|experience level):\s*(\d+\.?\d*)/10',
+                'job_title_match': r'(?:Job title match|job title match):\s*(\d+\.?\d*)/10',
+                'location': r'(?:Location|location):\s*(\d+\.?\d*)/10'
             }
             
-            for key, pattern_list in patterns.items():
-                for pattern in pattern_list:
-                    match = re.search(pattern, component_text, re.IGNORECASE)
-                    if match:
-                        try:
-                            score_val = float(match.group(1))
-                            # Validate score is in valid range
-                            if 0.0 <= score_val <= 10.0:
-                                component_scores[key] = score_val
-                                break  # Found valid score, move to next component
-                        except (ValueError, IndexError):
-                            continue
+            for key, pattern in patterns.items():
+                match = re.search(pattern, component_text, re.IGNORECASE)
+                if match:
+                    component_scores[key] = float(match.group(1))
         else:
             # Fallback: Extract inline component scores from individual sections
             # Look for patterns like "Component score (0-10): X.X" or "Component score (0-10): X.X/10"
@@ -684,20 +597,13 @@ Format your response with clear headers. Be specific and cite evidence from the 
             # If no explicit score found, use calculated score or default
             ai_score = calculated_score if calculated_score is not None else 5.0
         
-        # ALWAYS prefer calculated_score when all component scores are available
-        # This ensures consistency - same component scores = same final score
+        # Use calculated score if available and close to AI score (within 1.0), otherwise use AI score
+        # This ensures we're using the weighted calculation when component scores are available
         if calculated_score is not None:
-            # All component scores extracted - use calculated score as source of truth
+            # Prefer calculated score if component scores were extracted
             final_score = calculated_score
-            
-            # Validate calculated_score matches ai_score within tolerance (0.5 points)
-            if abs(calculated_score - ai_score) > 0.5:
-                print(f"  WARNING: Calculated score ({calculated_score:.2f}) differs from AI score ({ai_score:.2f}) by >0.5")
-                print(f"  Using calculated_score as source of truth for consistency")
         else:
-            # Component extraction failed - use AI score but log warning
             final_score = ai_score
-            print(f"  WARNING: Component score extraction incomplete, using AI score: {ai_score:.2f}")
 
         # Extract only the evaluation content, removing any prompt text that might have been repeated
         # Look for the start of actual evaluation (after any prompt-like headers)
@@ -850,39 +756,14 @@ Format your response with clear headers. Be specific and cite evidence from the 
             Validated (and potentially adjusted) score
         """
         # Ensure score is in valid range
-        validated_score = max(0.0, min(10.0, score))
+        validated_score = max(1.0, min(10.0, score))
         
-        # Validate component scores are in range and consistent
+        # Validate component scores are in range
         if component_scores:
-            # Validate each component score is in valid range
             for key, comp_score in component_scores.items():
                 if comp_score < 0.0 or comp_score > 10.0:
                     print(f"  WARNING: Component score '{key}' out of range: {comp_score}, clamping to 0-10")
                     component_scores[key] = max(0.0, min(10.0, comp_score))
-            
-            # Cross-validate: Recalculate score from components if all are present
-            weights = {
-                'must_have_certs': 0.30,
-                'bonus_certs': 0.10,
-                'required_skills': 0.25,
-                'preferred_skills': 0.10,
-                'experience_level': 0.10,
-                'job_title_match': 0.10,
-                'location': 0.05
-            }
-            
-            if len(component_scores) == len(weights):
-                # All components present - recalculate to ensure consistency
-                recalculated = sum(
-                    component_scores.get(key, 5.0) * weight
-                    for key, weight in weights.items()
-                )
-                recalculated = max(0.0, min(10.0, recalculated))
-                
-                # If recalculated differs significantly from validated_score, use recalculated
-                if abs(recalculated - validated_score) > 0.1:
-                    print(f"  CORRECTING: Score inconsistency detected. Original: {validated_score:.2f}, Recalculated from components: {recalculated:.2f}")
-                    validated_score = recalculated
         
         # Cross-validate: Check if must-have certs match aligns with cert component score
         has_must_have = self._check_must_have_certs(candidate, job_details)
