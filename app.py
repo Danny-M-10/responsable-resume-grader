@@ -2577,7 +2577,6 @@ def main():
             # Check if processing is in progress - show full-page loading screen
             if st.session_state.get('processing', False):
                 # #region agent log
-                import json
                 with open('/Users/danny/Documents/Cursor/Projects/crossroads_Candidate_Ranking_Application/.cursor/debug.log', 'a') as f:
                     f.write(json.dumps({
                         'id': f'log_{int(__import__("time").time())}_tab_check',
@@ -2795,10 +2794,6 @@ def main():
                         job_desc_file = None
                     
                     if job_desc_file:
-                        # Ensure json module is accessible from global scope (prevent scoping issues)
-                        # Reference json explicitly to tell Python it's from global scope, not local
-                        _ = json
-                        
                         # Clear previous edited values when new file is uploaded
                         if 'extracted_job_data' not in st.session_state or st.session_state.get('last_uploaded_file') != job_desc_file.name:
                             # Clear edited values to start fresh

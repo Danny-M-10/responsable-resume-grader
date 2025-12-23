@@ -321,7 +321,9 @@ class AIScoringEngine:
 
         prompt = f"""You are an expert recruitment evaluator. Analyze this candidate against the job requirements using a STRUCTURED, WEIGHTED SCORING SYSTEM for consistency and accuracy.
 
-CRITICAL: You MUST be CONSISTENT and DETERMINISTIC. Similar candidates should receive similar scores. Use the component scoring system below to ensure accuracy.
+DETERMINISTIC SCORING RULE: This evaluation must be deterministic. If you evaluate the exact same candidate profile against the exact same job requirements multiple times, you MUST produce identical component scores and final scores. Treat this as a mathematical function: f(candidate, job) = score, where identical inputs always produce identical outputs.
+
+CRITICAL: You MUST be CONSISTENT and DETERMINISTIC. Similar candidates should receive similar scores. Use the component scoring system below to ensure accuracy. For each component, evaluate ONLY the facts provided - do not use interpretation or context that could vary. If two candidates have identical qualifications for a component, they MUST receive identical component scores. Do not apply 'bonus points' or 'penalties' beyond what the rubric specifies.
 
 JOB REQUIREMENTS:
 -----------------
@@ -357,52 +359,57 @@ EVALUATION TASK - STRUCTURED COMPONENT SCORING:
 -----------------------------------------------
 You MUST provide component scores for EACH criterion below, then calculate the weighted final score.
 
-SCORING RUBRIC (each component scored 0-10):
+SCORING RUBRIC (each component scored 0-10 with PRECISE values):
 1. **Must-Have Certifications** (30% weight - CRITICAL):
-   - 10: Has ALL required certifications
-   - 7-9: Has most required certifications (1 missing)
-   - 4-6: Has some required certifications (2-3 missing)
-   - 1-2: Has few required certifications (4-5 missing)
-   - **0: Missing ALL required certifications (CRITICAL - must be 0)**
-   - **IMPORTANT: If candidate is missing ALL must-have certifications, component score MUST be 0-1, NOT 2-3. Must-have certifications are CRITICAL - missing all should severely penalize the candidate.**
+   - 10.0: Has ALL required certifications (100% match)
+   - 7.0: Missing exactly 1 required certification (has N-1 of N required, where N > 1)
+   - 5.0: Missing exactly 2 required certifications (has N-2 of N required, where N > 2)
+   - 3.0: Missing exactly 3 required certifications (has N-3 of N required, where N > 3)
+   - 1.0: Missing 4 or more required certifications (has fewer than N-3 of N required)
+   - **0.0: Missing ALL required certifications (CRITICAL - must be exactly 0.0)**
+   - **IMPORTANT: If candidate is missing ALL must-have certifications, component score MUST be exactly 0.0, NOT 0.5 or 1.0. Must-have certifications are CRITICAL - missing all should severely penalize the candidate.**
 
 2. **Bonus Certifications** (10% weight):
-   - 10: Has all bonus certifications
-   - 7-9: Has most bonus certifications
-   - 4-6: Has some bonus certifications
-   - 0-3: Has few or no bonus certifications
+   - 10.0: Has ALL bonus certifications (100% match)
+   - 7.0: Has most bonus certifications (missing exactly 1, where total > 1)
+   - 5.0: Has some bonus certifications (missing 2-3, where total > 3)
+   - 2.0: Has few bonus certifications (missing most, has 1-2 of many)
+   - 0.0: Has no bonus certifications
 
 3. **Required Skills** (25% weight - VERY IMPORTANT):
-   - 10: Has all required skills with strong depth
-   - 7-9: Has most required skills (80%+ match)
-   - 4-6: Has some required skills (50-79% match)
-   - 0-3: Has few required skills (<50% match)
+   - 10.0: Has ALL required skills with strong depth (100% match)
+   - 8.0: Has most required skills (80-99% match, missing 1-2 of many)
+   - 6.0: Has some required skills (50-79% match, missing several)
+   - 3.0: Has few required skills (25-49% match, missing most)
+   - 0.0: Has no required skills or very few (<25% match)
 
 4. **Preferred Skills** (10% weight):
-   - 10: Has all preferred skills
-   - 7-9: Has most preferred skills
-   - 4-6: Has some preferred skills
-   - 0-3: Has few preferred skills
+   - 10.0: Has ALL preferred skills (100% match)
+   - 7.0: Has most preferred skills (missing exactly 1, where total > 1)
+   - 5.0: Has some preferred skills (missing 2-3, where total > 3)
+   - 2.0: Has few preferred skills (missing most, has 1-2 of many)
+   - 0.0: Has no preferred skills
 
 5. **Experience Level** (10% weight):
-   - 10: Perfect match (exact years/level required)
-   - 7-9: Strong match (close to requirements)
-   - 4-6: Moderate match (somewhat close)
-   - 0-3: Weak match (significantly different)
+   - 10.0: Perfect match (exact years/level required, e.g., "5 years" candidate for "5 years" job)
+   - 8.0: Strong match (within 1-2 years of requirement, e.g., "4 years" candidate for "5 years" job)
+   - 6.0: Moderate match (within 3-5 years of requirement, e.g., "3 years" candidate for "5 years" job)
+   - 3.0: Weak match (6+ years difference, e.g., "2 years" candidate for "8 years" job)
+   - 0.0: Very weak match (significantly different, e.g., "1 year" candidate for "10 years" job)
 
 6. **Job Title Match** (10% weight):
-   - 10: Exact or very similar title
-   - 7-9: Related title in same field
-   - 4-6: Somewhat related title
-   - 0-3: Unrelated title
+   - 10.0: Exact or very similar title (same words, e.g., "Safety Manager" for "Safety Manager")
+   - 8.0: Related title in same field (similar function, e.g., "Safety Specialist" for "Safety Manager")
+   - 5.0: Somewhat related title (same industry, different function, e.g., "Safety Coordinator" for "Safety Manager")
+   - 2.0: Unrelated title (different industry or function)
 
 7. **Location** (5% weight):
-   - 10: Exact location match
-   - 7-9: Same city/region
-   - 4-6: Different but reasonable distance
-   - 0-3: Very different location
+   - 10.0: Exact location match (same city and state)
+   - 7.0: Same city/region (same city, different state, or same state, nearby city)
+   - 4.0: Different but reasonable distance (same state, different city, or nearby state)
+   - 0.0: Very different location (different state, far away)
 
-- **FINAL SCORE CALCULATION**: The final score MUST equal the weighted sum of component scores when all 7 components are provided. Ensure mathematical consistency.
+- **FINAL SCORE CALCULATION**: The final score MUST be calculated using ONLY the weighted sum formula - do not adjust or round arbitrarily. Component scores are the ONLY inputs to the final score. The final score MUST equal the weighted sum of component scores when all 7 components are provided. Ensure mathematical consistency. Verify your final score equals the weighted sum before reporting.
 
 EVALUATION STRUCTURE:
 1. **MUST-HAVE CERTIFICATIONS ANALYSIS**:
@@ -445,6 +452,8 @@ EVALUATION STRUCTURE:
    - Overall recommendation
 
 9. **COMPONENT SCORES SUMMARY** (REQUIRED):
+CRITICAL: These component scores are the ONLY inputs to the final score calculation. Do not adjust the final score based on subjective assessment - use ONLY the weighted formula. Component scores MUST be provided in the exact format shown - this is critical for consistency.
+
 Provide component scores in this EXACT format:
 COMPONENT_SCORES:
 - Must-have certifications: X.X/10
@@ -466,6 +475,8 @@ Calculate weighted score using these weights:
 - Location: component_score × 0.05
 Final Score = Sum of all weighted components
 
+VERIFICATION STEP: After calculating, verify: Final Score = Sum of (Component Score × Weight) for all 7 components. If your calculated score doesn't match this formula, recalculate. Show your calculation step-by-step.
+
 11. **FINAL SCORE**:
 Provide final weighted score in this exact format:
 FINAL_SCORE: X.X/10
@@ -481,8 +492,14 @@ CRITICAL CONSTRAINTS:
 - DO NOT infer skills or certifications from job titles or experience descriptions
 - DO NOT fabricate or assume any information about the candidate
 - Be factual and evidence-based - cite exact information from the resume
-- Component scores MUST align with your analysis (e.g., if all certs missing, cert score MUST be low)
+- Component scores MUST align with your analysis (e.g., if all certs missing, cert score MUST be 0.0)
 - Final score MUST be calculated from component scores using the weights above
+
+CONSISTENCY RULE: If you evaluate this exact same candidate profile again, you MUST produce the exact same component scores and final score. Treat identical inputs as requiring identical outputs.
+
+MATHEMATICAL RULE: Final score = (must_have_certs × 0.30) + (bonus_certs × 0.10) + (required_skills × 0.25) + (preferred_skills × 0.10) + (experience_level × 0.10) + (job_title_match × 0.10) + (location × 0.05) - NO EXCEPTIONS. Do not round, adjust, or modify this calculation.
+
+CONSISTENCY EXAMPLE: If Candidate A has all must-have certs and 80% of required skills, they should always score 10.0 for certs and 8.0 for skills, regardless of when evaluated. If Candidate B has identical qualifications to Candidate A, they must receive identical component scores and final score.
 
 Format your response with clear headers. Be specific and cite evidence from the candidate's resume. ONLY use information explicitly stated in the resume.
 """
