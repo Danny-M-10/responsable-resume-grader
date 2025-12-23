@@ -883,16 +883,18 @@ def display_analysis_history(user_id: str):
             st.session_state["analysis_search"] = search_query
         
         with col_date1:
+            # Use session state default to avoid modification after widget instantiation
             date_from = st.date_input(
                 "From Date",
-                value=None,
+                value=st.session_state.get("filter_date_from", None),
                 key="filter_date_from"
             )
         
         with col_date2:
+            # Use session state default to avoid modification after widget instantiation
             date_to = st.date_input(
                 "To Date",
-                value=None,
+                value=st.session_state.get("filter_date_to", None),
                 key="filter_date_to"
             )
         
@@ -928,12 +930,9 @@ def display_analysis_history(user_id: str):
         col_clear, col_sort = st.columns([1, 2])
         with col_clear:
             if st.button("Clear Filters", key="clear_filters"):
-                st.session_state["analysis_search"] = ""
-                st.session_state["filter_date_from"] = None
-                st.session_state["filter_date_to"] = None
-                st.session_state["filter_location"] = "All"
-                st.session_state["filter_min_candidates"] = 0
-                st.session_state["filter_max_candidates"] = 1000
+                # Clear filters by rerunning with cleared query params
+                # Don't modify session state directly for widgets
+                st.query_params.clear()
                 st.rerun()
         
         with col_sort:
@@ -1123,7 +1122,7 @@ def display_analysis_history(user_id: str):
                 col_actions1, col_actions2, col_actions3, col_actions4, col_actions5 = st.columns([1, 1, 1, 1, 1])
                 
                 with col_actions1:
-                    if st.button("View", key=f"view_{analysis['report_id']}", use_container_width=True):
+                    if st.button("View", key=f"view_{analysis['report_id']}", width='stretch'):
                         st.session_state["view_report_id"] = analysis['report_id']
                         st.session_state["viewing_previous_analysis"] = True
                         st.rerun()
@@ -1214,7 +1213,7 @@ def display_analysis_history(user_id: str):
                     if delete_key not in st.session_state:
                         st.session_state[delete_key] = False
                     
-                    if st.button("Delete", key=f"del_btn_{analysis['report_id']}", use_container_width=True, type="secondary"):
+                    if st.button("Delete", key=f"del_btn_{analysis['report_id']}", width='stretch', type="secondary"):
                         st.session_state[delete_key] = True
                         st.rerun()
                     
@@ -2653,7 +2652,7 @@ def main():
                                     # Save/Cancel buttons
                                     col_save, col_cancel = st.columns([1, 1])
                                     with col_save:
-                                        if st.button("Save Changes", type="primary", key="save_edited_info", use_container_width=True):
+                                        if st.button("Save Changes", type="primary", key="save_edited_info", width='stretch'):
                                             # Store edited values
                                             st.session_state['edited_job_title'] = edited_job_title
                                             st.session_state['edited_location'] = edited_location
@@ -2667,7 +2666,7 @@ def main():
                                             st.rerun()
                                     
                                     with col_cancel:
-                                        if st.button("Cancel", key="cancel_edit", use_container_width=True):
+                                        if st.button("Cancel", key="cancel_edit", width='stretch'):
                                             st.session_state["edit_extracted_info"] = False
                                             st.rerun()
                                 else:
@@ -2902,7 +2901,7 @@ The AI will analyze this to extract skills and requirements.""",
                 # Use a custom styled button with brand green
                 process_button = st.button(
                     "Process Candidates",
-                    use_container_width=True,
+                    width='stretch',
                     type="primary",
                     key="process_btn"
                 )
@@ -2973,7 +2972,8 @@ The AI will analyze this to extract skills and requirements.""",
                                 resume_assets.append({
                                     "original_name": uploaded_file.name,
                                     "stored_path": stored_path,
-                                    "file_hash": file_hash
+                                    "file_hash": file_hash,
+                                    "file_asset_id": None  # Will be set when file is saved to file_assets
                                 })
                                 
                                 # Parse resume for potential database saving
@@ -3045,12 +3045,13 @@ The AI will analyze this to extract skills and requirements.""",
                             saved_count = 0
                             if new_resume_data and report_id:
                                 import uuid
+                                from db import get_db as db_get_db  # Import with alias to avoid scoping issues
                                 
                                 for resume_info in new_resume_data:
                                     try:
                                         # Save to file_assets
                                         asset_id = str(uuid.uuid4())
-                                        with get_db() as conn:
+                                        with db_get_db() as conn:
                                             cur = conn.cursor()
                                             query = prepare_query(conn, """
                                                 INSERT INTO file_assets 
@@ -3066,6 +3067,12 @@ The AI will analyze this to extract skills and requirements.""",
                                                 utcnow_str()
                                             ))
                                             conn.commit()
+                                        
+                                        # Update resume_assets with file_asset_id for future reference
+                                        for asset in resume_assets:
+                                            if asset.get('original_name') == resume_info['original_name']:
+                                                asset['file_asset_id'] = asset_id
+                                                break
                                         
                                         # Save to candidate profiles
                                         profile_id = save_candidate_profile(

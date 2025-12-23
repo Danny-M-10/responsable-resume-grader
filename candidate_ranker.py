@@ -876,6 +876,9 @@ class CandidateRankerApp:
             if resume_assets:
                 for asset in resume_assets:
                     resume_id = str(uuid.uuid4())
+                    # source_asset_id must be a valid file_assets.id (UUID), not a hash
+                    # If asset has a file_asset_id, use it; otherwise set to NULL
+                    source_asset_id = asset.get("file_asset_id")  # Expect actual file_assets.id UUID
                     _exec(
                         conn,
                         """
@@ -888,7 +891,7 @@ class CandidateRankerApp:
                             asset.get("original_name"),
                             asset.get("stored_path"),
                             None,
-                            asset.get("file_hash"),  # storing hash in source_asset_id for traceability
+                            source_asset_id,  # Use actual file_assets.id or None
                             now,
                         ),
                     )

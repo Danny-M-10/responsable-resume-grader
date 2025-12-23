@@ -29,7 +29,7 @@ def is_safe_path(path: str, base_dir: str = None) -> bool:
     
     Args:
         path: File path to validate
-        base_dir: Base directory that path must be within (optional)
+        base_dir: Base directory that path must be within (optional, defaults to /app for containerized environments)
         
     Returns:
         True if path is safe, False otherwise
@@ -41,6 +41,20 @@ def is_safe_path(path: str, base_dir: str = None) -> bool:
         # Resolve to absolute path
         real_path = os.path.realpath(path)
         
+        # Default base_dir to /app for containerized environments (AWS ECS)
+        if not base_dir:
+            # Check if we're in a containerized environment
+            if os.path.exists('/app') and real_path.startswith('/app'):
+                base_dir = '/app'
+            elif os.path.exists(os.getcwd()):
+                base_dir = os.getcwd()
+            else:
+                # If no base_dir and path is absolute, allow /app paths (containerized)
+                if real_path.startswith('/app'):
+                    return True
+                # Otherwise reject absolute paths without base_dir
+                return False
+        
         # If base_dir is provided, ensure path is within it
         if base_dir:
             real_base = os.path.realpath(base_dir)
@@ -48,10 +62,8 @@ def is_safe_path(path: str, base_dir: str = None) -> bool:
                 return False
         
         # Check for path traversal attempts
-        if '..' in path or path.startswith('/') and not base_dir:
-            # If no base_dir specified, reject absolute paths
-            if not base_dir:
-                return False
+        if '..' in path:
+            return False
         
         return True
     except (OSError, ValueError):
