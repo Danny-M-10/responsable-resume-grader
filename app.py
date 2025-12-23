@@ -1068,9 +1068,9 @@ def display_analysis_history(user_id: str):
                     <div style="
                         border: 2px solid {border_color};
                         border-radius: 0.5rem;
-                        padding: 1rem;
-                        margin-bottom: 1rem;
-                        background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+                        padding: var(--spacing-sm);
+                        margin-bottom: var(--spacing-sm);
+                        background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
                         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
                     ">
                     """,
@@ -1325,7 +1325,7 @@ def display_analysis_analytics(user_id: str):
         col_chart1, col_chart2 = st.columns(2)
         
         with col_chart1:
-            st.subheader("Analyses Over Time")
+            st.markdown(f"<h3 style='font-size: var(--font-size-xl); font-weight: 600; margin-bottom: var(--spacing-sm);'>Analyses Over Time</h3>", unsafe_allow_html=True)
             # Group by month
             monthly_counts = {}
             for a in analyses:
@@ -1362,7 +1362,7 @@ def display_analysis_analytics(user_id: str):
                         st.text(f"{month}: {count} analyses")
         
         with col_chart2:
-            st.subheader("Job Titles Distribution")
+            st.markdown(f"<h3 style='font-size: var(--font-size-xl); font-weight: 600; margin-bottom: var(--spacing-sm);'>Job Titles Distribution</h3>", unsafe_allow_html=True)
             # Count job titles
             title_counts = {}
             for title in job_titles:
@@ -1392,7 +1392,7 @@ def display_analysis_analytics(user_id: str):
         
         # Additional statistics
         st.markdown("---")
-        st.subheader("Summary Statistics")
+        st.markdown(f"<h3 style='font-size: var(--font-size-xl); font-weight: 600; margin-bottom: var(--spacing-sm);'>Summary Statistics</h3>", unsafe_allow_html=True)
         
         col_stat1, col_stat2 = st.columns(2)
         with col_stat1:
@@ -1405,7 +1405,7 @@ def display_analysis_analytics(user_id: str):
         # Candidate count trend
         if len(analyses) > 1:
             st.markdown("---")
-            st.subheader("Candidate Count Trend")
+            st.markdown(f"<h3 style='font-size: var(--font-size-xl); font-weight: 600; margin-bottom: var(--spacing-sm);'>Candidate Count Trend</h3>", unsafe_allow_html=True)
             candidate_trend = []
             for a in sorted(analyses, key=lambda x: x.get('created_at', '')):
                 try:
@@ -1810,14 +1810,14 @@ def display_results(results):
             display: inline-block;
             padding: 0.75rem 1rem;
             border-radius: 0.5rem;
-            background: #0066CC;
-            color: #fff !important;
+            background: var(--brand-blue);
+            color: white !important;
             text-decoration: none;
             font-weight: 600;
             width: 100%;
             text-align: center;
         }
-        a.download-link:hover { background: #0052a6; }
+        a.download-link:hover { background: var(--info-border); }
         </style>
     """, unsafe_allow_html=True)
 
@@ -1959,7 +1959,7 @@ def display_results(results):
             # Rationale with better formatting
             st.markdown("---")
             st.markdown("**AI Assessment:**")
-            st.markdown(f"<div style='background-color: #f8f9fa; padding: 1rem; border-radius: 0.5rem; font-size: 0.9rem;'>{candidate.rationale}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='background-color: var(--bg-secondary); padding: var(--spacing-sm); border-radius: 0.5rem; font-size: var(--font-size-sm);'>{candidate.rationale}</div>", unsafe_allow_html=True)
 
     # Show auto-save success notification if resumes were automatically saved
     if st.session_state.get('resumes_auto_saved'):
@@ -2032,14 +2032,50 @@ def main():
     # Custom CSS with logo branding colors and enhanced styling
     st.markdown("""
         <style>
-        /* Logo branding colors */
+        /* Logo branding colors and design system */
         :root {
+            /* Brand colors */
             --brand-blue: #0066CC;
             --brand-green: #00A651;
             --brand-dark-gray: #4A4A4A;
             --score-excellent: #27ae60;
             --score-good: #f39c12;
             --score-poor: #e74c3c;
+            
+            /* Spacing scale */
+            --spacing-xs: 0.5rem;
+            --spacing-sm: 1rem;
+            --spacing-md: 1.5rem;
+            --spacing-lg: 2rem;
+            --spacing-xl: 3rem;
+            
+            /* Typography scale */
+            --font-size-xs: 0.75rem;
+            --font-size-sm: 0.875rem;
+            --font-size-base: 1rem;
+            --font-size-lg: 1.125rem;
+            --font-size-xl: 1.25rem;
+            --font-size-2xl: 1.5rem;
+            --font-size-3xl: 1.875rem;
+            
+            /* Semantic colors */
+            --text-primary: #1a1a1a;
+            --text-secondary: #4A4A4A;
+            --text-muted: #6c757d;
+            --bg-primary: #ffffff;
+            --bg-secondary: #f8f9fa;
+            --border-color: #dee2e6;
+            --border-color-hover: var(--brand-green);
+            
+            /* Status colors */
+            --success-bg: #E8F5E9;
+            --success-border: var(--brand-green);
+            --info-bg: #E3F2FD;
+            --info-border: var(--brand-blue);
+            --warning-bg: #FFF3CD;
+            --warning-border: #ffc107;
+            --error-bg: #F8D7DA;
+            --error-border: #DC3545;
         }
 
         .header-container {
@@ -2052,7 +2088,9 @@ def main():
         }
 
         .logo-container {
-            flex-shrink: 0;
+            max-width: 500px;
+            margin: 0 auto 1rem auto;
+            text-align: center;
         }
 
         .header-text {
@@ -2077,13 +2115,61 @@ def main():
         }
 
         .section-header {
-            font-size: 1.5rem;
+            font-size: var(--font-size-2xl);
             color: var(--brand-blue);
-            font-weight: bold;
-            margin-top: 2rem;
-            margin-bottom: 1rem;
+            font-weight: 600;
+            line-height: 1.3;
+            margin-top: var(--spacing-lg);
+            margin-bottom: var(--spacing-md);
             border-bottom: 2px solid var(--brand-green);
-            padding-bottom: 0.5rem;
+            padding-bottom: var(--spacing-xs);
+        }
+        
+        /* Typography improvements */
+        .stMarkdown p {
+            font-size: var(--font-size-base);
+            line-height: 1.6;
+        }
+        
+        .stCaption {
+            font-size: var(--font-size-sm);
+            color: var(--text-secondary);
+        }
+        
+        /* Form field spacing */
+        .stTextInput, .stTextArea, .stSelectbox {
+            margin-bottom: var(--spacing-sm);
+        }
+        
+        /* Card spacing */
+        .stContainer {
+            padding: var(--spacing-md);
+            margin-bottom: var(--spacing-md);
+        }
+        
+        /* Form section grouping */
+        .form-section {
+            background: var(--bg-secondary);
+            padding: var(--spacing-md);
+            border-radius: 0.5rem;
+            margin-bottom: var(--spacing-md);
+            border-left: 3px solid var(--brand-blue);
+        }
+        
+        /* Required field indicator */
+        .required-field::after {
+            content: " *";
+            color: var(--error-border);
+            font-weight: bold;
+        }
+        
+        /* Enhanced validation messages */
+        .stError {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-xs);
+            padding: var(--spacing-sm);
+            border-radius: 0.25rem;
         }
 
         /* Style the Process Candidates button with brand green */
@@ -2120,8 +2206,8 @@ def main():
 
         div[data-testid="stDownloadButton"] > button:hover,
         .stDownloadButton > button:hover {
-            background-color: #0052A3 !important;
-            background: #0052A3 !important;
+            background-color: var(--info-border) !important;
+            background: var(--info-border) !important;
         }
 
         /* Additional Streamlit button styling */
@@ -2132,18 +2218,26 @@ def main():
 
         /* Update success messages to use brand green */
         .stSuccess {
-            background-color: #E8F5E9 !important;
-            border-left: 4px solid var(--brand-green) !important;
+            background-color: var(--success-bg) !important;
+            border-left: 4px solid var(--success-border) !important;
         }
 
         /* Update info boxes to use brand blue */
         .stInfo {
-            border-left: 4px solid var(--brand-blue) !important;
+            background-color: var(--info-bg) !important;
+            border-left: 4px solid var(--info-border) !important;
         }
 
         /* Update error boxes */
         .stError {
-            border-left: 4px solid #DC3545 !important;
+            background-color: var(--error-bg) !important;
+            border-left: 4px solid var(--error-border) !important;
+        }
+        
+        /* Warning boxes */
+        .stWarning {
+            background-color: var(--warning-bg) !important;
+            border-left: 4px solid var(--warning-border) !important;
         }
 
         /* Style file uploaders with brand colors */
@@ -2189,7 +2283,24 @@ def main():
 
         /* Overall page styling */
         .main .block-container {
-            padding-top: 2rem;
+            padding-top: var(--spacing-lg);
+            padding-bottom: var(--spacing-lg);
+        }
+        
+        /* Improved table styling */
+        .stDataFrame {
+            margin-bottom: var(--spacing-md);
+        }
+        
+        /* Better metric card spacing */
+        [data-testid="stMetricContainer"] {
+            padding: var(--spacing-sm);
+            margin-bottom: var(--spacing-sm);
+        }
+        
+        /* Improved button spacing */
+        div[data-testid="stButton"] {
+            margin-bottom: var(--spacing-sm);
         }
 
         /* Score badge styling */
@@ -2207,22 +2318,38 @@ def main():
 
         /* Processing status styling */
         .processing-status {
-            background-color: #f0f7ff;
+            background-color: var(--info-bg);
             border: 1px solid var(--brand-blue);
             border-radius: 0.5rem;
-            padding: 1rem;
-            margin: 1rem 0;
+            padding: var(--spacing-md);
+            margin: var(--spacing-md) 0;
         }
 
         .processing-step {
             font-weight: bold;
             color: var(--brand-blue);
-            margin-bottom: 0.5rem;
+            margin-bottom: var(--spacing-xs);
         }
 
         .processing-message {
-            color: var(--brand-dark-gray);
+            color: var(--text-secondary);
             font-style: italic;
+        }
+        
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .logo-container img {
+                max-width: 300px;
+            }
+            
+            .form-columns {
+                flex-direction: column;
+            }
+            
+            .section-header {
+                font-size: var(--font-size-xl);
+                margin-top: var(--spacing-md);
+            }
         }
         </style>
     """, unsafe_allow_html=True)
@@ -2230,12 +2357,14 @@ def main():
     # Header with logo
     logo_path = Path(__file__).parent / "responsableLOGO-color-2048px.jpg"
 
-    # Display full-width logo if it exists, otherwise show text header
+    # Display logo with fixed width to maintain aspect ratio while reducing size
     if logo_path.exists():
-        st.image(str(logo_path), use_container_width=True)
+        st.markdown('<div class="logo-container">', unsafe_allow_html=True)
+        st.image(str(logo_path), width=400)
+        st.markdown("</div>", unsafe_allow_html=True)
         st.markdown("""
-            <div style="text-align: center; margin-top: -1rem; margin-bottom: 1rem;">
-                <div style="font-size: 1.2rem; color: #4A4A4A; font-weight: 500;">
+            <div style="text-align: center; margin-top: 0.5rem; margin-bottom: 1rem;">
+                <div style="font-size: var(--font-size-lg); color: var(--text-secondary); font-weight: 500;">
                     AI-Powered Candidate Screening and Ranking System
                 </div>
             </div>
@@ -2246,7 +2375,7 @@ def main():
 
         with col1:
             st.markdown("""
-                <div style="font-size: 1.5rem; font-weight: bold; color: #0066CC;">
+                <div style="font-size: var(--font-size-2xl); font-weight: bold; color: var(--brand-blue);">
                     RA
                 </div>
             """, unsafe_allow_html=True)
@@ -2255,8 +2384,8 @@ def main():
             st.markdown("""
                 <div class="header-text">
                     <div class="main-header">
-                        <span style="color: #0066CC;">RESPONS</span><span class="green-text">ABLE</span>
-                        <span style="color: #4A4A4A; font-size: 1.8rem;">Safety Staffing</span>
+                        <span style="color: var(--brand-blue);">RESPONS</span><span class="green-text">ABLE</span>
+                        <span style="color: var(--text-secondary); font-size: var(--font-size-3xl);">Safety Staffing</span>
                     </div>
                     <div class="sub-header">AI-Powered Candidate Screening and Ranking System</div>
                 </div>
@@ -2275,7 +2404,7 @@ def main():
                 # Footer
                 st.markdown("---")
                 st.markdown(
-                    '<div style="text-align: center; color: #7f8c8d; padding: 1rem;">ResponsAble Safety Staffing | Recruitment Candidate Ranker</div>',
+                    '<div style="text-align: center; color: var(--text-muted); padding: var(--spacing-sm);">ResponsAble Safety Staffing | Recruitment Candidate Ranker</div>',
                     unsafe_allow_html=True
                 )
             else:
@@ -2630,7 +2759,7 @@ def main():
                     )
 
                 # Simplified Certifications Entry
-                st.markdown("**Certifications** (one per line, prefix with `*` for required)")
+                st.markdown(f"<div style='margin-top: var(--spacing-md); margin-bottom: var(--spacing-xs);'><strong>Certifications</strong> (one per line, prefix with <code>*</code> for required)</div>", unsafe_allow_html=True)
                 st.caption("Example: `*OSHA 30` (required) or `First Aid` (preferred)")
 
                 cert_text = st.text_area(
