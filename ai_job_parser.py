@@ -263,8 +263,7 @@ JSON:
             response_text = response.choices[0].message.content.strip()
 
             # Try to parse JSON
-            import json
-            import re
+            # Note: json and re are already imported at module level, no need to import locally
 
             # Debug: Print AI response
             print(f"DEBUG: AI response (first 500 chars): {response_text[:500]}")

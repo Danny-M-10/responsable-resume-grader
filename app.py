@@ -2217,7 +2217,8 @@ def main():
                 )
 
                 if job_desc_file:
-                    # Ensure json module is accessible (prevent scoping issues)
+                    # Ensure json module is accessible from global scope (prevent scoping issues)
+                    # Reference json explicitly to tell Python it's from global scope, not local
                     _ = json
                     
                     # Clear previous edited values when new file is uploaded
