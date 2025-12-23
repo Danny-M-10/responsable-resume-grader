@@ -27,7 +27,7 @@ from candidate_ranker import CandidateRankerApp
 from config import OpenAIConfig
 from ai_job_parser import AIJobParser
 from loading_components import get_cycling_message
-from db import init_db, get_db
+from db import init_db, get_db, utcnow_str
 from auth import (
     create_user, authenticate, get_user_by_session, destroy_session, update_session_activity,
     request_password_reset, reset_password_with_code, reset_password_with_token
@@ -1430,7 +1430,6 @@ def display_resume_database(user_id: str):
                         stored_path, file_hash = save_bytes(file_bytes, uploaded_file.name)
                         
                         # Save to file_assets
-                        from db import get_db, utcnow_str
                         import uuid
                         asset_id = str(uuid.uuid4())
                         
@@ -1630,7 +1629,6 @@ def display_resume_database(user_id: str):
                     stored_path, file_hash = save_bytes(file_bytes, uploaded_file.name)
                     
                     # Save to file_assets
-                    from db import get_db, utcnow_str
                     import uuid
                     asset_id = str(uuid.uuid4())
                     
@@ -2752,7 +2750,6 @@ The AI will analyze this to extract skills and requirements.""",
                             # Automatically save new resumes to database
                             saved_count = 0
                             if new_resume_data and report_id:
-                                from db import get_db, utcnow_str
                                 import uuid
                                 
                                 for resume_info in new_resume_data:
