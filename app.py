@@ -434,7 +434,23 @@ def load_analysis_data(report_id: str, user_id: str) -> Optional[Dict]:
                         logger.warning(f"Failed to load PDF from {pdf_path}: {e}", exc_info=True)
                         # Continue without PDF data - don't fail the entire load
                 else:
-                    logger.warning(f"PDF file not found at path: {pdf_path}")
+                    # Only log warning if PDF is recent (within last 24 hours) to avoid spam from old deleted PDFs
+                    try:
+                        # Try to extract timestamp from filename
+                        import re
+                        match = re.search(r'(\d{8}_\d{6})', pdf_path)
+                        if match:
+                            pdf_timestamp_str = match.group(1)
+                            pdf_date = datetime.strptime(pdf_timestamp_str, "%Y%m%d_%H%M%S")
+                            hours_old = (datetime.now() - pdf_date).total_seconds() / 3600
+                            if hours_old < 24:
+                                logger.warning(f"PDF file not found at path: {pdf_path}")
+                        else:
+                            # If we can't parse timestamp, log it (might be important)
+                            logger.warning(f"PDF file not found at path: {pdf_path}")
+                    except Exception:
+                        # If parsing fails, don't log - likely an old file
+                        pass
                     # Continue without PDF data - file might have been moved/deleted
             
             # Parse job details
@@ -2367,10 +2383,30 @@ def main():
 
     # Display logo with fixed width to maintain aspect ratio while reducing size, centered
     if logo_path.exists():
-        # Use columns to center the logo
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            st.image(str(logo_path), width=400)
+        try:
+            # Read logo as bytes and encode to base64 to avoid Streamlit media file storage issues
+            import base64
+            with open(logo_path, "rb") as f:
+                logo_bytes = f.read()
+                logo_base64 = base64.b64encode(logo_bytes).decode()
+            
+            # Use columns to center the logo
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+                # Embed logo directly in HTML to avoid media file storage issues
+                st.markdown(
+                    f'<div style="text-align: center;"><img src="data:image/jpeg;base64,{logo_base64}" style="max-width: 400px; height: auto;" /></div>',
+                    unsafe_allow_html=True
+                )
+        except Exception as e:
+            logger.warning(f"Failed to load logo: {e}")
+            # Fallback: try using st.image with error handling
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+                try:
+                    st.image(str(logo_path), width=400)
+                except Exception:
+                    pass  # Silently fail if logo can't be displayed
         st.markdown("""
             <div style="text-align: center; margin-top: 0.5rem; margin-bottom: 1rem;">
                 <div style="font-size: var(--font-size-lg); color: var(--text-secondary); font-weight: 500;">

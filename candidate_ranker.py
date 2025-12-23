@@ -879,12 +879,18 @@ class CandidateRankerApp:
             )
 
             # Resumes (optional, if provided)
+            # Only persist resumes that have a valid file_asset_id (saved to file_assets table)
+            # Resumes without file_asset_id will be saved later in the auto-save section
             if resume_assets:
                 for asset in resume_assets:
-                    resume_id = str(uuid.uuid4())
                     # source_asset_id must be a valid file_assets.id (UUID), not a hash
-                    # If asset has a file_asset_id, use it; otherwise set to NULL
-                    source_asset_id = asset.get("file_asset_id")  # Expect actual file_assets.id UUID
+                    # Skip resumes that don't have file_asset_id set yet (they'll be saved later)
+                    source_asset_id = asset.get("file_asset_id")
+                    if not source_asset_id:
+                        # Skip this resume - it will be saved later when file_asset_id is available
+                        continue
+                    
+                    resume_id = str(uuid.uuid4())
                     _exec(
                         conn,
                         """
@@ -897,7 +903,7 @@ class CandidateRankerApp:
                             asset.get("original_name"),
                             asset.get("stored_path"),
                             None,
-                            source_asset_id,  # Use actual file_assets.id or None
+                            source_asset_id,  # Use actual file_assets.id
                             now,
                         ),
                     )
