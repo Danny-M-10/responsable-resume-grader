@@ -343,123 +343,123 @@ def load_analysis_data(report_id: str, user_id: str) -> Optional[Dict]:
     
     try:
         with get_db() as conn:
-        cur = conn.cursor()
-        
-        # Get report and job description
-        query = _prepare_query_wrapper(conn, """
-            SELECT r.id, r.created_at, r.pdf_path, r.summary_json,
-                   j.id as job_id, j.title, j.location, j.certifications_json,
-                   j.required_skills_json, j.preferred_skills_json, j.full_description
-            FROM reports r
-            JOIN job_descriptions j ON r.job_description_id = j.id
-            WHERE r.id = ? AND r.user_id = ?
-        """)
-        cur.execute(query, (report_id, user_id))
-        row = cur.fetchone()
-        
-        if not row:
-            return None
-        
-        (report_id_db, created_at, pdf_path, summary_json, job_id, title, location,
-         certs_json, req_skills_json, pref_skills_json, full_desc) = row
-        
-        # Get candidate scores
-        query = _prepare_query_wrapper(conn, """
-            SELECT candidate_name, email, phone, fit_score, rationale, raw_json
-            FROM candidate_scores
-            WHERE report_id = ?
-            ORDER BY fit_score DESC
-        """)
-        cur.execute(query, (report_id,))
-        score_rows = cur.fetchall()
-        
-        # Reconstruct CandidateScore objects
-        candidate_scores = []
-        for score_row in score_rows:
-            name, email, phone, fit_score, rationale, raw_json = score_row
-            if raw_json:
-                try:
-                    cand_data = json.loads(raw_json)
-                    # Reconstruct CandidateScore from stored data
-                    candidate_scores.append(CandidateScore(
-                        name=cand_data.get('name', name),
-                        phone=cand_data.get('phone', phone or ''),
-                        email=cand_data.get('email', email or ''),
-                        certifications=cand_data.get('certifications', []),
-                        fit_score=float(fit_score),
-                        chain_of_thought=cand_data.get('chain_of_thought', ''),
-                        rationale=rationale or cand_data.get('rationale', ''),
-                        experience_match=cand_data.get('experience_match', {}),
-                        certification_match=cand_data.get('certification_match', {}),
-                        skills_match=cand_data.get('skills_match', {}),
-                        location_match=cand_data.get('location_match', False),
-                        component_scores=cand_data.get('component_scores', {}),
-                        calibration_applied=cand_data.get('calibration_applied', False),
-                        calibration_factor=cand_data.get('calibration_factor', 1.0),
-                    ))
-                except (json.JSONDecodeError, KeyError, ValueError):
-                    # Fallback to basic data if JSON parsing fails
-                    candidate_scores.append(CandidateScore(
-                        name=name or 'Unknown',
-                        phone=phone or '',
-                        email=email or '',
-                        certifications=[],
-                        fit_score=float(fit_score),
-                        chain_of_thought='',
-                        rationale=rationale or '',
-                        experience_match={},
-                        certification_match={},
-                        skills_match={},
-                        location_match=False,
-                    ))
-        
-        # Load PDF data if file exists (with size and path validation)
-        # Note: PDF loading failures should not prevent the analysis from being displayed
-        pdf_data = None
-        if pdf_path:
-            if os.path.exists(pdf_path):
-                try:
-                    # Validate path safety
-                    if is_safe_path(pdf_path):
-                        # Check file size
-                        file_size = os.path.getsize(pdf_path)
-                        if file_size <= MAX_PDF_SIZE:
-                            with open(pdf_path, 'rb') as f:
-                                pdf_data = f.read()
+            cur = conn.cursor()
+            
+            # Get report and job description
+            query = _prepare_query_wrapper(conn, """
+                SELECT r.id, r.created_at, r.pdf_path, r.summary_json,
+                       j.id as job_id, j.title, j.location, j.certifications_json,
+                       j.required_skills_json, j.preferred_skills_json, j.full_description
+                FROM reports r
+                JOIN job_descriptions j ON r.job_description_id = j.id
+                WHERE r.id = ? AND r.user_id = ?
+            """)
+            cur.execute(query, (report_id, user_id))
+            row = cur.fetchone()
+            
+            if not row:
+                return None
+            
+            (report_id_db, created_at, pdf_path, summary_json, job_id, title, location,
+             certs_json, req_skills_json, pref_skills_json, full_desc) = row
+            
+            # Get candidate scores
+            query = _prepare_query_wrapper(conn, """
+                SELECT candidate_name, email, phone, fit_score, rationale, raw_json
+                FROM candidate_scores
+                WHERE report_id = ?
+                ORDER BY fit_score DESC
+            """)
+            cur.execute(query, (report_id,))
+            score_rows = cur.fetchall()
+            
+            # Reconstruct CandidateScore objects
+            candidate_scores = []
+            for score_row in score_rows:
+                name, email, phone, fit_score, rationale, raw_json = score_row
+                if raw_json:
+                    try:
+                        cand_data = json.loads(raw_json)
+                        # Reconstruct CandidateScore from stored data
+                        candidate_scores.append(CandidateScore(
+                            name=cand_data.get('name', name),
+                            phone=cand_data.get('phone', phone or ''),
+                            email=cand_data.get('email', email or ''),
+                            certifications=cand_data.get('certifications', []),
+                            fit_score=float(fit_score),
+                            chain_of_thought=cand_data.get('chain_of_thought', ''),
+                            rationale=rationale or cand_data.get('rationale', ''),
+                            experience_match=cand_data.get('experience_match', {}),
+                            certification_match=cand_data.get('certification_match', {}),
+                            skills_match=cand_data.get('skills_match', {}),
+                            location_match=cand_data.get('location_match', False),
+                            component_scores=cand_data.get('component_scores', {}),
+                            calibration_applied=cand_data.get('calibration_applied', False),
+                            calibration_factor=cand_data.get('calibration_factor', 1.0),
+                        ))
+                    except (json.JSONDecodeError, KeyError, ValueError):
+                        # Fallback to basic data if JSON parsing fails
+                        candidate_scores.append(CandidateScore(
+                            name=name or 'Unknown',
+                            phone=phone or '',
+                            email=email or '',
+                            certifications=[],
+                            fit_score=float(fit_score),
+                            chain_of_thought='',
+                            rationale=rationale or '',
+                            experience_match={},
+                            certification_match={},
+                            skills_match={},
+                            location_match=False,
+                        ))
+            
+            # Load PDF data if file exists (with size and path validation)
+            # Note: PDF loading failures should not prevent the analysis from being displayed
+            pdf_data = None
+            if pdf_path:
+                if os.path.exists(pdf_path):
+                    try:
+                        # Validate path safety
+                        if is_safe_path(pdf_path):
+                            # Check file size
+                            file_size = os.path.getsize(pdf_path)
+                            if file_size <= MAX_PDF_SIZE:
+                                with open(pdf_path, 'rb') as f:
+                                    pdf_data = f.read()
+                            else:
+                                logger.warning(f"PDF file too large: {file_size} bytes (max: {MAX_PDF_SIZE})")
                         else:
-                            logger.warning(f"PDF file too large: {file_size} bytes (max: {MAX_PDF_SIZE})")
-                    else:
-                        logger.warning(f"Unsafe PDF path detected: {pdf_path}")
-                except Exception as e:
-                    logger.warning(f"Failed to load PDF from {pdf_path}: {e}", exc_info=True)
-                    # Continue without PDF data - don't fail the entire load
-            else:
-                logger.warning(f"PDF file not found at path: {pdf_path}")
-                # Continue without PDF data - file might have been moved/deleted
-        
-        # Parse job details
-        certifications = []
-        if certs_json:
-            try:
-                certs_data = json.loads(certs_json)
-                certifications = [c for c in certs_data if isinstance(c, dict)]
-            except json.JSONDecodeError:
-                pass
-        
-        required_skills = []
-        if req_skills_json:
-            try:
-                required_skills = json.loads(req_skills_json)
-            except json.JSONDecodeError:
-                pass
-        
-        preferred_skills = []
-        if pref_skills_json:
-            try:
-                preferred_skills = json.loads(pref_skills_json)
-            except json.JSONDecodeError:
-                pass
-        
+                            logger.warning(f"Unsafe PDF path detected: {pdf_path}")
+                    except Exception as e:
+                        logger.warning(f"Failed to load PDF from {pdf_path}: {e}", exc_info=True)
+                        # Continue without PDF data - don't fail the entire load
+                else:
+                    logger.warning(f"PDF file not found at path: {pdf_path}")
+                    # Continue without PDF data - file might have been moved/deleted
+            
+            # Parse job details
+            certifications = []
+            if certs_json:
+                try:
+                    certs_data = json.loads(certs_json)
+                    certifications = [c for c in certs_data if isinstance(c, dict)]
+                except json.JSONDecodeError:
+                    pass
+            
+            required_skills = []
+            if req_skills_json:
+                try:
+                    required_skills = json.loads(req_skills_json)
+                except json.JSONDecodeError:
+                    pass
+            
+            preferred_skills = []
+            if pref_skills_json:
+                try:
+                    preferred_skills = json.loads(pref_skills_json)
+                except json.JSONDecodeError:
+                    pass
+            
             return {
                 'report_id': report_id_db,
                 'created_at': created_at,
