@@ -18,6 +18,24 @@ def show_loading_screen(title: str, message: str, progress: float = 0.0):
         message: Current status message (with cycling text and jokes)
         progress: Progress percentage (0.0 to 1.0)
     """
+    # #region agent log
+    import json
+    import time
+    try:
+        with open('/Users/danny/Documents/Cursor/Projects/crossroads_Candidate_Ranking_Application/.cursor/debug.log', 'a') as f:
+            f.write(json.dumps({
+                'id': f'log_{int(time.time())}_show_loading_entry',
+                'timestamp': int(time.time() * 1000),
+                'location': 'loading_components.py:12',
+                'message': 'show_loading_screen called',
+                'data': {'title': title, 'message': message[:50], 'progress': progress},
+                'sessionId': 'debug-session',
+                'runId': 'run1',
+                'hypothesisId': 'A'
+            }) + '\n')
+    except Exception:
+        pass
+    # #endregion
     st.markdown(f"""
     <div class="loading-container">
         <div class="loading-spinner"></div>
@@ -28,6 +46,22 @@ def show_loading_screen(title: str, message: str, progress: float = 0.0):
         </div>
     </div>
     """, unsafe_allow_html=True)
+    # #region agent log
+    try:
+        with open('/Users/danny/Documents/Cursor/Projects/crossroads_Candidate_Ranking_Application/.cursor/debug.log', 'a') as f:
+            f.write(json.dumps({
+                'id': f'log_{int(time.time())}_show_loading_exit',
+                'timestamp': int(time.time() * 1000),
+                'location': 'loading_components.py:30',
+                'message': 'show_loading_screen HTML rendered',
+                'data': {},
+                'sessionId': 'debug-session',
+                'runId': 'run1',
+                'hypothesisId': 'A'
+            }) + '\n')
+    except Exception:
+        pass
+    # #endregion
 
 
 def get_cycling_message(step: str, progress: float, current: int = 0, total: int = 0) -> str:

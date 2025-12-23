@@ -2437,6 +2437,61 @@ def main():
             overflow: hidden;
         }
         
+        /* Loading screen component styles */
+        .loading-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 1.5rem;
+            padding: 2rem;
+            text-align: center;
+        }
+        
+        .loading-spinner {
+            width: 60px;
+            height: 60px;
+            border: 4px solid rgba(0, 166, 81, 0.2);
+            border-top-color: var(--brand-green);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .loading-title {
+            font-size: var(--font-size-2xl);
+            font-weight: 600;
+            color: var(--brand-blue);
+            margin: 0;
+        }
+        
+        .loading-message {
+            font-size: var(--font-size-base);
+            color: var(--text-secondary);
+            margin: 0;
+            max-width: 600px;
+        }
+        
+        .loading-progress-bar {
+            width: 100%;
+            max-width: 400px;
+            height: 8px;
+            background-color: rgba(0, 166, 81, 0.1);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 0.5rem;
+        }
+        
+        .loading-progress-fill {
+            height: 100%;
+            background-color: var(--brand-green);
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+        
         /* Responsive adjustments */
         @media (max-width: 768px) {
             .logo-container img {
@@ -2521,6 +2576,23 @@ def main():
         with tab_new:
             # Check if processing is in progress - show full-page loading screen
             if st.session_state.get('processing', False):
+                # #region agent log
+                import json
+                with open('/Users/danny/Documents/Cursor/Projects/crossroads_Candidate_Ranking_Application/.cursor/debug.log', 'a') as f:
+                    f.write(json.dumps({
+                        'id': f'log_{int(__import__("time").time())}_tab_check',
+                        'timestamp': int(__import__("time").time() * 1000),
+                        'location': 'app.py:2523',
+                        'message': 'Processing flag check',
+                        'data': {
+                            'processing': st.session_state.get('processing', False),
+                            'has_loading_progress': 'loading_progress' in st.session_state
+                        },
+                        'sessionId': 'debug-session',
+                        'runId': 'run1',
+                        'hypothesisId': 'C'
+                    }) + '\n')
+                # #endregion
                 # Full-page loading screen - read progress from session state
                 loading_placeholder = st.empty()
                 with loading_placeholder.container():
@@ -2531,6 +2603,19 @@ def main():
                         'current': 0,
                         'total': 0
                     })
+                    # #region agent log
+                    with open('/Users/danny/Documents/Cursor/Projects/crossroads_Candidate_Ranking_Application/.cursor/debug.log', 'a') as f:
+                        f.write(json.dumps({
+                            'id': f'log_{int(__import__("time").time())}_progress_info',
+                            'timestamp': int(__import__("time").time() * 1000),
+                            'location': 'app.py:2533',
+                            'message': 'Progress info retrieved',
+                            'data': progress_info,
+                            'sessionId': 'debug-session',
+                            'runId': 'run1',
+                            'hypothesisId': 'E'
+                        }) + '\n')
+                    # #endregion
                     
                     # Use full viewport styling
                     st.markdown("""
@@ -2555,13 +2640,66 @@ def main():
                         </style>
                     """, unsafe_allow_html=True)
                     st.markdown('<div class="full-page-loading-overlay">', unsafe_allow_html=True)
+                    # #region agent log
+                    try:
+                        from loading_components import show_full_workflow_loading
+                        with open('/Users/danny/Documents/Cursor/Projects/crossroads_Candidate_Ranking_Application/.cursor/debug.log', 'a') as f:
+                            f.write(json.dumps({
+                                'id': f'log_{int(__import__("time").time())}_import_success',
+                                'timestamp': int(__import__("time").time() * 1000),
+                                'location': 'app.py:2558',
+                                'message': 'Import successful',
+                                'data': {'function_exists': callable(show_full_workflow_loading)},
+                                'sessionId': 'debug-session',
+                                'runId': 'run1',
+                                'hypothesisId': 'B'
+                            }) + '\n')
+                    except Exception as e:
+                        with open('/Users/danny/Documents/Cursor/Projects/crossroads_Candidate_Ranking_Application/.cursor/debug.log', 'a') as f:
+                            f.write(json.dumps({
+                                'id': f'log_{int(__import__("time").time())}_import_error',
+                                'timestamp': int(__import__("time").time() * 1000),
+                                'location': 'app.py:2558',
+                                'message': 'Import failed',
+                                'data': {'error': str(e)},
+                                'sessionId': 'debug-session',
+                                'runId': 'run1',
+                                'hypothesisId': 'B'
+                            }) + '\n')
+                    # #endregion
                     from loading_components import show_full_workflow_loading
+                    # #region agent log
+                    with open('/Users/danny/Documents/Cursor/Projects/crossroads_Candidate_Ranking_Application/.cursor/debug.log', 'a') as f:
+                        f.write(json.dumps({
+                            'id': f'log_{int(__import__("time").time())}_before_show',
+                            'timestamp': int(__import__("time").time() * 1000),
+                            'location': 'app.py:2559',
+                            'message': 'Before show_full_workflow_loading call',
+                            'data': {'step': progress_info['step'], 'progress': progress_info['progress']},
+                            'sessionId': 'debug-session',
+                            'runId': 'run1',
+                            'hypothesisId': 'A'
+                        }) + '\n')
+                    # #endregion
                     show_full_workflow_loading(
                         progress_info['step'],
                         progress_info['progress'],
                         progress_info['current'],
                         progress_info['total']
                     )
+                    # #region agent log
+                    with open('/Users/danny/Documents/Cursor/Projects/crossroads_Candidate_Ranking_Application/.cursor/debug.log', 'a') as f:
+                        f.write(json.dumps({
+                            'id': f'log_{int(__import__("time").time())}_after_show',
+                            'timestamp': int(__import__("time").time() * 1000),
+                            'location': 'app.py:2565',
+                            'message': 'After show_full_workflow_loading call',
+                            'data': {},
+                            'sessionId': 'debug-session',
+                            'runId': 'run1',
+                            'hypothesisId': 'A'
+                        }) + '\n')
+                    # #endregion
                     st.markdown('</div>', unsafe_allow_html=True)
             # Check if we should show results page (after processing completes)
             elif st.session_state.get('show_results_page', False) and st.session_state.results is not None:
