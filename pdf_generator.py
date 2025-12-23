@@ -397,21 +397,7 @@ class PDFGenerator:
         elements.append(Spacer(1, 0.05*inch))
 
         # Rationale - clean and format properly
-        # #region agent log
-        import json
-        try:
-            with open('/Users/danny/Documents/Cursor/Projects/crossroads_Candidate_Ranking_Application/.cursor/debug.log', 'a') as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"pdf_generator.py:400","message":"Before _clean_rationale_text","data":{"candidate_name":candidate.name,"rationale_length":len(candidate.rationale) if candidate.rationale else 0,"rationale_is_none":candidate.rationale is None,"rationale_preview":candidate.rationale[:200] if candidate.rationale else None},"timestamp":int(__import__('time').time()*1000)}) + '\n')
-        except: pass
-        # #endregion
         cleaned_rationale = self._clean_rationale_text(candidate.rationale)
-
-        # #region agent log
-        try:
-            with open('/Users/danny/Documents/Cursor/Projects/crossroads_Candidate_Ranking_Application/.cursor/debug.log', 'a') as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"pdf_generator.py:400","message":"After _clean_rationale_text","data":{"candidate_name":candidate.name,"cleaned_rationale_length":len(cleaned_rationale) if cleaned_rationale else 0,"cleaned_rationale_is_empty":not cleaned_rationale,"cleaned_rationale_preview":cleaned_rationale[:200] if cleaned_rationale else None},"timestamp":int(__import__('time').time()*1000)}) + '\n')
-        except: pass
-        # #endregion
 
         # Truncate very long rationale text (allow 4-5 sentences, ~1500 chars)
         # Ensure truncation happens at sentence boundaries

@@ -69,23 +69,8 @@ class AIScoringEngine:
             raise ValueError("OpenAI response was empty")
         evaluation_text = response.choices[0].message.content
 
-        # #region agent log
-        import json
-        try:
-            with open('/Users/danny/Documents/Cursor/Projects/crossroads_Candidate_Ranking_Application/.cursor/debug.log', 'a') as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"E","location":"ai_scoring_engine.py:70","message":"OpenAI API response received","data":{"evaluation_text_length":len(evaluation_text) if evaluation_text else 0,"evaluation_text_preview":evaluation_text[:200] if evaluation_text else None,"candidate_name":candidate.get('name','Unknown')},"timestamp":int(__import__('time').time()*1000)}) + '\n')
-        except: pass
-        # #endregion
-
         # Parse the AI response to extract score, reasoning, and component scores
         score, reasoning, component_scores = self._parse_ai_response(evaluation_text)
-
-        # #region agent log
-        try:
-            with open('/Users/danny/Documents/Cursor/Projects/crossroads_Candidate_Ranking_Application/.cursor/debug.log', 'a') as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"ai_scoring_engine.py:74","message":"After _parse_ai_response","data":{"score":score,"reasoning_length":len(reasoning) if reasoning else 0,"reasoning_preview":reasoning[:200] if reasoning else None,"has_component_scores":bool(component_scores),"candidate_name":candidate.get('name','Unknown')},"timestamp":int(__import__('time').time()*1000)}) + '\n')
-        except: pass
-        # #endregion
         
         # Post-processing: Check if candidate is missing ALL must-have certs and adjust
         has_must_have = self._check_must_have_certs(candidate, job_details)
@@ -141,14 +126,6 @@ class AIScoringEngine:
         # Generate a concise (4-5 sentences) rationale from the AI output
         input_for_rationale = reasoning or evaluation_text
         concise_rationale = self._extract_concise_rationale(input_for_rationale)
-
-        # #region agent log
-        import json
-        try:
-            with open('/Users/danny/Documents/Cursor/Projects/crossroads_Candidate_Ranking_Application/.cursor/debug.log', 'a') as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"ai_scoring_engine.py:142","message":"After _extract_concise_rationale (sync)","data":{"input_length":len(input_for_rationale) if input_for_rationale else 0,"concise_rationale_length":len(concise_rationale) if concise_rationale else 0,"concise_rationale_preview":concise_rationale[:200] if concise_rationale else None,"candidate_name":candidate.get('name','Unknown')},"timestamp":int(__import__('time').time()*1000)}) + '\n')
-        except: pass
-        # #endregion
         
         result = CandidateScore(
             name=candidate.get('name', 'Unknown'),
@@ -178,13 +155,6 @@ class AIScoringEngine:
             calibration_applied=False,  # Will be set during calibration phase
             calibration_factor=1.0
         )
-
-        # #region agent log
-        try:
-            with open('/Users/danny/Documents/Cursor/Projects/crossroads_Candidate_Ranking_Application/.cursor/debug.log', 'a') as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"ai_scoring_engine.py:187","message":"CandidateScore created (sync)","data":{"rationale_length":len(concise_rationale) if concise_rationale else 0,"rationale_is_empty":not concise_rationale,"candidate_name":candidate.get('name','Unknown')},"timestamp":int(__import__('time').time()*1000)}) + '\n')
-        except: pass
-        # #endregion
 
         return result
     
@@ -278,14 +248,6 @@ class AIScoringEngine:
         # Generate a concise (4-5 sentences) rationale from the AI output
         input_for_rationale = reasoning or evaluation_text
         concise_rationale = self._extract_concise_rationale(input_for_rationale)
-
-        # #region agent log
-        import json
-        try:
-            with open('/Users/danny/Documents/Cursor/Projects/crossroads_Candidate_Ranking_Application/.cursor/debug.log', 'a') as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"ai_scoring_engine.py:261","message":"After _extract_concise_rationale (async)","data":{"input_length":len(input_for_rationale) if input_for_rationale else 0,"concise_rationale_length":len(concise_rationale) if concise_rationale else 0,"concise_rationale_preview":concise_rationale[:200] if concise_rationale else None,"candidate_name":candidate.get('name','Unknown')},"timestamp":int(__import__('time').time()*1000)}) + '\n')
-        except: pass
-        # #endregion
         
         result = CandidateScore(
             name=candidate.get('name', 'Unknown'),
@@ -313,13 +275,6 @@ class AIScoringEngine:
             location_match=self._check_location_match(candidate, job_details),
             component_scores=component_scores or {}
         )
-
-        # #region agent log
-        try:
-            with open('/Users/danny/Documents/Cursor/Projects/crossroads_Candidate_Ranking_Application/.cursor/debug.log', 'a') as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"ai_scoring_engine.py:322","message":"CandidateScore created (async)","data":{"rationale_length":len(concise_rationale) if concise_rationale else 0,"rationale_is_empty":not concise_rationale,"candidate_name":candidate.get('name','Unknown')},"timestamp":int(__import__('time').time()*1000)}) + '\n')
-        except: pass
-        # #endregion
 
         return result
 
@@ -731,14 +686,6 @@ Format your response with clear headers. Be specific and cite evidence from the 
                 cleaned_reasoning_lines.append(line_cleaned)
         
         reasoning = '\n'.join(cleaned_reasoning_lines).strip()
-
-        # #region agent log
-        import json
-        try:
-            with open('/Users/danny/Documents/Cursor/Projects/crossroads_Candidate_Ranking_Application/.cursor/debug.log', 'a') as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"ai_scoring_engine.py:684","message":"_parse_ai_response returning","data":{"final_score":final_score,"reasoning_length":len(reasoning) if reasoning else 0,"reasoning_preview":reasoning[:300] if reasoning else None,"has_component_scores":bool(component_scores)},"timestamp":int(__import__('time').time()*1000)}) + '\n')
-        except: pass
-        # #endregion
         
         return final_score, reasoning, component_scores
 
