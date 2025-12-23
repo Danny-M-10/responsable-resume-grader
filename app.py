@@ -2311,6 +2311,7 @@ def main():
                 help="File upload uses AI to automatically extract all job details",
                 key="input_mode_radio"
             )
+            st.caption("💡 **Note:** Job details are required. Candidate resumes are optional - you can add them later or upload them now.")
             
             # Clear edited values when switching modes
             if 'last_input_mode' in st.session_state and st.session_state['last_input_mode'] != input_mode:
@@ -2610,21 +2611,22 @@ def main():
             # MODE 2: Manual Entry
             else:
                 st.markdown('<div class="section-header">Job Details</div>', unsafe_allow_html=True)
+                st.caption("Fields marked with * are required.")
 
                 col1, col2 = st.columns(2)
 
                 with col1:
                     job_title = st.text_input(
-                        "Job Title",
+                        "Job Title *",
                         placeholder="e.g., Safety Specialist",
-                        help="Enter the exact job title"
+                        help="Required: Enter the exact job title"
                     )
 
                 with col2:
                     location = st.text_input(
-                        "Location",
+                        "Location *",
                         placeholder="e.g., Houston, TX or Remote",
-                        help="Enter the job location"
+                        help="Required: Enter the job location"
                     )
 
                 # Simplified Certifications Entry
@@ -2663,7 +2665,7 @@ def main():
                 st.markdown('<div class="section-header">Job Description</div>', unsafe_allow_html=True)
 
                 job_description = st.text_area(
-                    "Full Job Description",
+                    "Full Job Description *",
                     height=300,
                     placeholder="""Paste the complete job description including:
 - Required skills and experience
@@ -2673,18 +2675,18 @@ def main():
 - Any other relevant details
 
 The AI will analyze this to extract skills and requirements.""",
-                    help="Provide as much detail as possible for accurate matching"
+                    help="Required: Provide as much detail as possible for accurate matching"
                 )
 
-            # Resume Upload
-            st.markdown('<div class="section-header">Candidate Resumes</div>', unsafe_allow_html=True)
-            st.caption("You can select candidates from your database and/or upload additional resumes.")
+            # Resume Upload (Optional)
+            st.markdown('<div class="section-header">Candidate Resumes (Optional)</div>', unsafe_allow_html=True)
+            st.caption("You can optionally select candidates from your database and/or upload additional resumes. If no resumes are provided, the analysis will be created with just the job requirements.")
             
             uploaded_files = []
             selected_candidate_ids = []
             
-            # Section 1: Select from Database
-            st.markdown("**Select candidates from your resume database:**")
+            # Section 1: Select from Database (Optional)
+            st.markdown("**Select candidates from your resume database (optional):**")
             all_candidates = search_candidates(user_id, query="", filters={})
             
             if all_candidates:
@@ -2693,7 +2695,7 @@ The AI will analyze this to extract skills and requirements.""",
                     "Choose candidates",
                     options=list(candidate_options.keys()),
                     key="selected_candidate_names",
-                    help="Select one or more candidates from your database"
+                    help="Optional: Select one or more candidates from your database"
                 )
                 selected_candidate_ids = [candidate_options[name] for name in selected_names]
                 
@@ -2706,13 +2708,13 @@ The AI will analyze this to extract skills and requirements.""",
             else:
                 st.info("No candidates in database. Upload resumes below to add them.")
             
-            # Section 2: Upload Additional Resumes
-            st.markdown("**Upload additional resume files:**")
+            # Section 2: Upload Additional Resumes (Optional)
+            st.markdown("**Upload additional resume files (optional):**")
             uploaded_files = st.file_uploader(
                 "Upload Resume Files",
                 type=["pdf", "docx", "txt"],
                 accept_multiple_files=True,
-                help="Upload candidate resumes in PDF, DOCX, or TXT format. These will be automatically saved to your database after analysis.",
+                help="Optional: Upload candidate resumes in PDF, DOCX, or TXT format. These will be automatically saved to your database after analysis.",
                 key="resume_uploader"
             )
 
@@ -2727,6 +2729,8 @@ The AI will analyze this to extract skills and requirements.""",
             total_candidates = len(selected_candidate_ids) + len(uploaded_files) if uploaded_files else len(selected_candidate_ids)
             if total_candidates > 0:
                 st.info(f"📊 **Total candidates for analysis: {total_candidates}** ({len(selected_candidate_ids)} from database, {len(uploaded_files) if uploaded_files else 0} uploaded)")
+            else:
+                st.info("ℹ️ **No resumes selected.** The analysis will be created with job requirements only. You can add candidates later or upload resumes now.")
 
             # Process Button
             st.markdown('<div class="section-header"></div>', unsafe_allow_html=True)
@@ -2753,8 +2757,7 @@ The AI will analyze this to extract skills and requirements.""",
                     errors.append("Location is required")
                 if not job_description:
                     errors.append("Job description is required")
-                if not uploaded_files and not selected_candidate_ids:
-                    errors.append("At least one resume file or candidate from database is required. You can select from your database and/or upload additional resumes.")
+                # Note: Resumes are now optional - removed validation for them
 
                 if errors:
                     for error in errors:
