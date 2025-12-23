@@ -2217,6 +2217,9 @@ def main():
                 )
 
                 if job_desc_file:
+                    # Ensure json module is accessible (prevent scoping issues)
+                    _ = json
+                    
                     # Clear previous edited values when new file is uploaded
                     if 'extracted_job_data' not in st.session_state or st.session_state.get('last_uploaded_file') != job_desc_file.name:
                         # Clear edited values to start fresh
