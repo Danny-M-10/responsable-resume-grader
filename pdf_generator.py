@@ -397,7 +397,21 @@ class PDFGenerator:
         elements.append(Spacer(1, 0.05*inch))
 
         # Rationale - clean and format properly
+        # #region agent log
+        import json
+        try:
+            with open('/Users/danny/Documents/Cursor/Projects/crossroads_Candidate_Ranking_Application/.cursor/debug.log', 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"pdf_generator.py:400","message":"Before _clean_rationale_text","data":{"candidate_name":candidate.name,"rationale_length":len(candidate.rationale) if candidate.rationale else 0,"rationale_is_none":candidate.rationale is None,"rationale_preview":candidate.rationale[:200] if candidate.rationale else None},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+        except: pass
+        # #endregion
         cleaned_rationale = self._clean_rationale_text(candidate.rationale)
+
+        # #region agent log
+        try:
+            with open('/Users/danny/Documents/Cursor/Projects/crossroads_Candidate_Ranking_Application/.cursor/debug.log', 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"pdf_generator.py:400","message":"After _clean_rationale_text","data":{"candidate_name":candidate.name,"cleaned_rationale_length":len(cleaned_rationale) if cleaned_rationale else 0,"cleaned_rationale_is_empty":not cleaned_rationale,"cleaned_rationale_preview":cleaned_rationale[:200] if cleaned_rationale else None},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+        except: pass
+        # #endregion
 
         # Truncate very long rationale text (allow 4-5 sentences, ~1500 chars)
         # Ensure truncation happens at sentence boundaries
@@ -483,6 +497,7 @@ class PDFGenerator:
         lines = rationale.split('\n')
         cleaned_lines = []
         skip_until_content = False
+        content_found = False  # Track if we've found any actual content
         
         for line in lines:
             line_stripped = line.strip()
@@ -620,16 +635,21 @@ class PDFGenerator:
             if skip_until_content:
                 # Look for lines with substantial content (more than just a few words)
                 # Exclude question/instruction formats
-                if (len(line_stripped) > 20 and 
+                # Made less restrictive: reduced from 20 to 10 chars, allow colons if line is longer
+                if (len(line_stripped) > 10 and 
                     not any(line_stripped.startswith(word) for word in question_starters) and
-                    not re.search(r'^\d+\.', line_stripped) and  # Not a numbered list item that's a header
-                    ':' not in line_stripped[:30]):  # Not a label: value format that's a prompt
+                    not re.search(r'^\d+\.\s*[A-Z\s]+ANALYSIS', line_stripped, re.IGNORECASE) and  # Not a numbered analysis header
+                    not (':' in line_stripped[:20] and len(line_stripped) < 50)):  # Not a short label: value format
                     skip_until_content = False
+                    content_found = True
                     cleaned_lines.append(line)
                 continue
             
             # Include the line if it has content
             if line_stripped:
+                # Mark that we've found content
+                if len(line_stripped) > 10:
+                    content_found = True
                 cleaned_lines.append(line)
         
         cleaned_text = '\n'.join(cleaned_lines).strip()
@@ -666,6 +686,23 @@ class PDFGenerator:
             cleaned_final.append(line)
         
         cleaned_text = '\n'.join(cleaned_final).strip()
+        
+        # SAFEGUARD: If cleaning removed everything, return original rationale
+        # (but still remove FINAL_SCORE line and obvious prompt headers)
+        if not cleaned_text or (not content_found and len(cleaned_text) < 50):
+            # Fallback: return original but remove only the most obvious prompt elements
+            fallback = rationale
+            # Remove FINAL_SCORE line
+            fallback = re.sub(r'FINAL_SCORE:\s*\d+\.?\d*/10.*', '', fallback, flags=re.IGNORECASE | re.MULTILINE)
+            # Remove COMPONENT_SCORES section
+            fallback = re.sub(r'COMPONENT_SCORES:.*?(?=WEIGHTED CALCULATION|FINAL_SCORE|\Z)', '', fallback, flags=re.DOTALL | re.IGNORECASE)
+            # Remove WEIGHTED CALCULATION section
+            fallback = re.sub(r'WEIGHTED CALCULATION:.*?(?=FINAL_SCORE|\Z)', '', fallback, flags=re.DOTALL | re.IGNORECASE)
+            # Remove obvious section headers (all caps lines ending with colon)
+            fallback = re.sub(r'^[A-Z\s]{15,}:\s*$', '', fallback, flags=re.MULTILINE)
+            # Clean up multiple blank lines
+            fallback = re.sub(r'\n{3,}', '\n\n', fallback)
+            cleaned_text = fallback.strip()
         
         return cleaned_text.strip()
 

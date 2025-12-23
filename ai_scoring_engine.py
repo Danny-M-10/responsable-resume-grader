@@ -69,8 +69,23 @@ class AIScoringEngine:
             raise ValueError("OpenAI response was empty")
         evaluation_text = response.choices[0].message.content
 
+        # #region agent log
+        import json
+        try:
+            with open('/Users/danny/Documents/Cursor/Projects/crossroads_Candidate_Ranking_Application/.cursor/debug.log', 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"E","location":"ai_scoring_engine.py:70","message":"OpenAI API response received","data":{"evaluation_text_length":len(evaluation_text) if evaluation_text else 0,"evaluation_text_preview":evaluation_text[:200] if evaluation_text else None,"candidate_name":candidate.get('name','Unknown')},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+        except: pass
+        # #endregion
+
         # Parse the AI response to extract score, reasoning, and component scores
         score, reasoning, component_scores = self._parse_ai_response(evaluation_text)
+
+        # #region agent log
+        try:
+            with open('/Users/danny/Documents/Cursor/Projects/crossroads_Candidate_Ranking_Application/.cursor/debug.log', 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"ai_scoring_engine.py:74","message":"After _parse_ai_response","data":{"score":score,"reasoning_length":len(reasoning) if reasoning else 0,"reasoning_preview":reasoning[:200] if reasoning else None,"has_component_scores":bool(component_scores),"candidate_name":candidate.get('name','Unknown')},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+        except: pass
+        # #endregion
         
         # Post-processing: Check if candidate is missing ALL must-have certs and adjust
         has_must_have = self._check_must_have_certs(candidate, job_details)
@@ -124,9 +139,18 @@ class AIScoringEngine:
         explicit_certifications = candidate.get('certifications', [])
 
         # Generate a concise (4-5 sentences) rationale from the AI output
-        concise_rationale = self._extract_concise_rationale(reasoning or evaluation_text)
+        input_for_rationale = reasoning or evaluation_text
+        concise_rationale = self._extract_concise_rationale(input_for_rationale)
+
+        # #region agent log
+        import json
+        try:
+            with open('/Users/danny/Documents/Cursor/Projects/crossroads_Candidate_Ranking_Application/.cursor/debug.log', 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"ai_scoring_engine.py:142","message":"After _extract_concise_rationale (sync)","data":{"input_length":len(input_for_rationale) if input_for_rationale else 0,"concise_rationale_length":len(concise_rationale) if concise_rationale else 0,"concise_rationale_preview":concise_rationale[:200] if concise_rationale else None,"candidate_name":candidate.get('name','Unknown')},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+        except: pass
+        # #endregion
         
-        return CandidateScore(
+        result = CandidateScore(
             name=candidate.get('name', 'Unknown'),
             phone=candidate.get('phone', ''),
             email=candidate.get('email', ''),
@@ -154,6 +178,15 @@ class AIScoringEngine:
             calibration_applied=False,  # Will be set during calibration phase
             calibration_factor=1.0
         )
+
+        # #region agent log
+        try:
+            with open('/Users/danny/Documents/Cursor/Projects/crossroads_Candidate_Ranking_Application/.cursor/debug.log', 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"ai_scoring_engine.py:187","message":"CandidateScore created (sync)","data":{"rationale_length":len(concise_rationale) if concise_rationale else 0,"rationale_is_empty":not concise_rationale,"candidate_name":candidate.get('name','Unknown')},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+        except: pass
+        # #endregion
+
+        return result
     
     async def score_candidate_async(self, candidate: Dict[str, Any],
                                    job_details: JobDetails) -> CandidateScore:
@@ -243,9 +276,18 @@ class AIScoringEngine:
         explicit_certifications = candidate.get('certifications', [])
         
         # Generate a concise (4-5 sentences) rationale from the AI output
-        concise_rationale = self._extract_concise_rationale(reasoning or evaluation_text)
+        input_for_rationale = reasoning or evaluation_text
+        concise_rationale = self._extract_concise_rationale(input_for_rationale)
+
+        # #region agent log
+        import json
+        try:
+            with open('/Users/danny/Documents/Cursor/Projects/crossroads_Candidate_Ranking_Application/.cursor/debug.log', 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"ai_scoring_engine.py:261","message":"After _extract_concise_rationale (async)","data":{"input_length":len(input_for_rationale) if input_for_rationale else 0,"concise_rationale_length":len(concise_rationale) if concise_rationale else 0,"concise_rationale_preview":concise_rationale[:200] if concise_rationale else None,"candidate_name":candidate.get('name','Unknown')},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+        except: pass
+        # #endregion
         
-        return CandidateScore(
+        result = CandidateScore(
             name=candidate.get('name', 'Unknown'),
             phone=candidate.get('phone', ''),
             email=candidate.get('email', ''),
@@ -271,6 +313,15 @@ class AIScoringEngine:
             location_match=self._check_location_match(candidate, job_details),
             component_scores=component_scores or {}
         )
+
+        # #region agent log
+        try:
+            with open('/Users/danny/Documents/Cursor/Projects/crossroads_Candidate_Ranking_Application/.cursor/debug.log', 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"ai_scoring_engine.py:322","message":"CandidateScore created (async)","data":{"rationale_length":len(concise_rationale) if concise_rationale else 0,"rationale_is_empty":not concise_rationale,"candidate_name":candidate.get('name','Unknown')},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+        except: pass
+        # #endregion
+
+        return result
 
     def _check_must_have_certs(self, candidate: Dict[str, Any], job_details: JobDetails) -> bool:
         """Check if candidate has must-have certifications (including equivalents)"""
@@ -680,6 +731,14 @@ Format your response with clear headers. Be specific and cite evidence from the 
                 cleaned_reasoning_lines.append(line_cleaned)
         
         reasoning = '\n'.join(cleaned_reasoning_lines).strip()
+
+        # #region agent log
+        import json
+        try:
+            with open('/Users/danny/Documents/Cursor/Projects/crossroads_Candidate_Ranking_Application/.cursor/debug.log', 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"ai_scoring_engine.py:684","message":"_parse_ai_response returning","data":{"final_score":final_score,"reasoning_length":len(reasoning) if reasoning else 0,"reasoning_preview":reasoning[:300] if reasoning else None,"has_component_scores":bool(component_scores)},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+        except: pass
+        # #endregion
         
         return final_score, reasoning, component_scores
 
@@ -727,7 +786,26 @@ Format your response with clear headers. Be specific and cite evidence from the 
                     candidate_summary = truncated[:last_sentence_end + 1]
             return candidate_summary
 
-        # Fallback: return first 1500 chars but try to end at sentence boundary
+        # Fallback: If no sentence boundaries found, split on newlines or use first meaningful chunk
+        # This handles cases where text doesn't have proper sentence punctuation
+        if '\n' in text:
+            # Try splitting on double newlines (paragraphs) first
+            paragraphs = text.split('\n\n')
+            if paragraphs:
+                # Take first 1-2 paragraphs, up to 1500 chars
+                fallback_text = '\n\n'.join(paragraphs[:2])
+                if len(fallback_text) > 1500:
+                    fallback_text = fallback_text[:1500]
+                    # Try to end at sentence boundary
+                    last_period = fallback_text.rfind('.')
+                    last_exclamation = fallback_text.rfind('!')
+                    last_question = fallback_text.rfind('?')
+                    last_sentence_end = max(last_period, last_exclamation, last_question)
+                    if last_sentence_end > 1000:
+                        fallback_text = fallback_text[:last_sentence_end + 1]
+                return fallback_text.strip()
+        
+        # Final fallback: return first 1500 chars but try to end at sentence boundary
         if len(text) > 1500:
             truncated = text[:1500]
             last_period = truncated.rfind('.')
@@ -735,8 +813,8 @@ Format your response with clear headers. Be specific and cite evidence from the 
             last_question = truncated.rfind('?')
             last_sentence_end = max(last_period, last_exclamation, last_question)
             if last_sentence_end > 1000:
-                return text[:last_sentence_end + 1]
-        return text[:1500]
+                return text[:last_sentence_end + 1].strip()
+        return text[:1500].strip()
 
     def _validate_score_consistency(self, score: float, reasoning: str, 
                                    component_scores: Dict[str, float],
