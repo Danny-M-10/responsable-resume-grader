@@ -2090,6 +2090,15 @@ def main():
             max-width: 500px;
             margin: 0 auto 1rem auto;
             text-align: center;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+        }
+        
+        .logo-container img {
+            display: block;
+            margin: 0 auto;
         }
 
         .header-text {
@@ -2356,11 +2365,12 @@ def main():
     # Header with logo
     logo_path = Path(__file__).parent / "responsableLOGO-color-2048px.jpg"
 
-    # Display logo with fixed width to maintain aspect ratio while reducing size
+    # Display logo with fixed width to maintain aspect ratio while reducing size, centered
     if logo_path.exists():
-        st.markdown('<div class="logo-container">', unsafe_allow_html=True)
-        st.image(str(logo_path), width=400)
-        st.markdown("</div>", unsafe_allow_html=True)
+        # Use columns to center the logo
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            st.image(str(logo_path), width=400)
         st.markdown("""
             <div style="text-align: center; margin-top: 0.5rem; margin-bottom: 1rem;">
                 <div style="font-size: var(--font-size-lg); color: var(--text-secondary); font-weight: 500;">
