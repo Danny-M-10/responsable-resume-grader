@@ -2843,9 +2843,14 @@ def main():
                     st.markdown("""
                     This application analyzes job requirements and candidate resumes to provide intelligent rankings:
 
-                    1. **Job Analysis**: Extracts requirements from job description
+                    **Input Methods**:
+                    - **Job Sources**: Upload job description file (AI auto-extracts everything), pull from Avionté, or enter manually
+                    - **Candidate Sources**: Upload resume files, pull from Avionté, or select from your saved database
+
+                    **Processing Steps**:
+                    1. **Job Analysis**: Extracts requirements from job description (automatically if uploaded file)
                     2. **Research**: Identifies equivalent skills and job titles
-                    3. **Resume Parsing**: Extracts structured data from resumes
+                    3. **Resume Parsing**: Extracts structured data from resumes (or uses pre-parsed Avionté data)
                     4. **Scoring**: Evaluates candidates with chain-of-thought reasoning
                     5. **Ranking**: Selects top 4-10 candidates
                     6. **Report**: Generates professional PDF with visualizations
