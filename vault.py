@@ -41,7 +41,12 @@ def save_asset(user_id: str, kind: str, original_name: str, content: bytes, meta
                 now,
             ),
         )
-        conn.commit()
+        try:
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Failed to save asset: {e}", exc_info=True)
+            raise
 
     return asset_id
 
@@ -61,7 +66,7 @@ def list_assets(user_id: str, kind: str) -> List[Dict[str, Any]]:
                     "id": row[0],
                     "original_name": row[1],
                     "stored_path": row[2],
-                    "metadata": json.loads(row[3]) if row[3] else {},
+                    "metadata": _safe_json_loads(row[3]),
                     "created_at": row[4],
                 }
             )
@@ -82,7 +87,7 @@ def get_asset(asset_id: str) -> Dict[str, Any]:
             "id": row[0],
             "original_name": row[1],
             "stored_path": row[2],
-            "metadata": json.loads(row[3]) if row[3] else {},
+            "metadata": _safe_json_loads(row[3]),
             "created_at": row[4],
             "user_id": row[5],
             "kind": row[6],

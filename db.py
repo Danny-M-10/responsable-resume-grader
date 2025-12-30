@@ -117,7 +117,9 @@ def _create_tables_sql() -> list:
             preferred_skills_json TEXT,
             full_description TEXT,
             source_asset_id TEXT REFERENCES file_assets(id) ON DELETE SET NULL,
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL,
+            avionte_job_id TEXT,
+            avionte_sync_at TEXT
         );
         """,
         # Resumes uploaded for runs
@@ -180,7 +182,9 @@ def _create_tables_sql() -> list:
             tags_json TEXT,
             notes TEXT,
             created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
+            updated_at TEXT NOT NULL,
+            avionte_talent_id TEXT,
+            avionte_sync_at TEXT
         );
         """,
         # Resume analyses junction table (many-to-many)
@@ -231,6 +235,54 @@ def init_db() -> None:
             logger.debug(f"Migration check for last_activity_at: {e}")
             pass
         
+        # Migration: Add Avionté columns to candidate_profiles if they don't exist
+        try:
+            if conn.__class__.__module__.startswith("psycopg2"):
+                # PostgreSQL
+                for column in ['avionte_talent_id', 'avionte_sync_at']:
+                    cur.execute("""
+                        SELECT column_name 
+                        FROM information_schema.columns 
+                        WHERE table_name='candidate_profiles' AND column_name=%s
+                    """, (column,))
+                    if not cur.fetchone():
+                        cur.execute(f"ALTER TABLE candidate_profiles ADD COLUMN {column} TEXT")
+            else:
+                # SQLite
+                cur.execute("PRAGMA table_info(candidate_profiles)")
+                columns = [row[1] for row in cur.fetchall()]
+                if 'avionte_talent_id' not in columns:
+                    cur.execute("ALTER TABLE candidate_profiles ADD COLUMN avionte_talent_id TEXT")
+                if 'avionte_sync_at' not in columns:
+                    cur.execute("ALTER TABLE candidate_profiles ADD COLUMN avionte_sync_at TEXT")
+        except Exception as e:
+            logger.debug(f"Migration check for candidate_profiles Avionté columns: {e}")
+            pass
+        
+        # Migration: Add Avionté columns to job_descriptions if they don't exist
+        try:
+            if conn.__class__.__module__.startswith("psycopg2"):
+                # PostgreSQL
+                for column in ['avionte_job_id', 'avionte_sync_at']:
+                    cur.execute("""
+                        SELECT column_name 
+                        FROM information_schema.columns 
+                        WHERE table_name='job_descriptions' AND column_name=%s
+                    """, (column,))
+                    if not cur.fetchone():
+                        cur.execute(f"ALTER TABLE job_descriptions ADD COLUMN {column} TEXT")
+            else:
+                # SQLite
+                cur.execute("PRAGMA table_info(job_descriptions)")
+                columns = [row[1] for row in cur.fetchall()]
+                if 'avionte_job_id' not in columns:
+                    cur.execute("ALTER TABLE job_descriptions ADD COLUMN avionte_job_id TEXT")
+                if 'avionte_sync_at' not in columns:
+                    cur.execute("ALTER TABLE job_descriptions ADD COLUMN avionte_sync_at TEXT")
+        except Exception as e:
+            logger.debug(f"Migration check for job_descriptions Avionté columns: {e}")
+            pass
+        
         # Create indexes for performance
         indexes = [
             "CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);",
@@ -251,6 +303,8 @@ def init_db() -> None:
             "CREATE INDEX IF NOT EXISTS idx_candidate_profiles_user_id_created_at ON candidate_profiles(user_id, created_at);",
             "CREATE INDEX IF NOT EXISTS idx_resume_analyses_candidate_profile_id ON resume_analyses(candidate_profile_id);",
             "CREATE INDEX IF NOT EXISTS idx_resume_analyses_report_id ON resume_analyses(report_id);",
+            "CREATE INDEX IF NOT EXISTS idx_candidate_profiles_avionte_talent_id ON candidate_profiles(avionte_talent_id);",
+            "CREATE INDEX IF NOT EXISTS idx_job_descriptions_avionte_job_id ON job_descriptions(avionte_job_id);",
         ]
         
         for index_stmt in indexes:

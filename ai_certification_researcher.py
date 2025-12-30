@@ -6,9 +6,12 @@ Uses OpenAI GPT-4 Turbo to research equivalent certifications when job descripti
 import os
 import json
 import re
+import logging
 from typing import List, Dict
 from openai import OpenAI
 from config import OpenAIConfig
+
+logger = logging.getLogger(__name__)
 
 
 class AICertificationResearcher:

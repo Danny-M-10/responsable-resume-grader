@@ -37,6 +37,12 @@ def create_user(email: str, password: str) -> str:
     email = (email or "").strip().lower()
     if not email or not password:
         raise ValueError("Email and password are required.")
+    
+    # Validate email format
+    import re
+    email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    if not re.match(email_pattern, email):
+        raise ValueError("Invalid email format.")
 
     user_id = str(uuid.uuid4())
     password_hash = _hash_password(password)
@@ -61,6 +67,12 @@ def create_user(email: str, password: str) -> str:
 
 
 def authenticate(email: str, password: str) -> Tuple[str, str]:
+    # Validate email format
+    import re
+    email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    email = (email or "").strip().lower()
+    if not re.match(email_pattern, email):
+        raise ValueError("Invalid email format.")
     """
     Returns (session_token, user_id) if successful.
     """
@@ -204,6 +216,12 @@ def destroy_session(token: str) -> None:
 
 
 def request_password_reset(email: str) -> Tuple[str, str]:
+    # Validate email format
+    import re
+    email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    email = (email or "").strip().lower()
+    if not re.match(email_pattern, email):
+        raise ValueError("Invalid email format.")
     """
     Request password reset. Generates a reset token and stores it in DB.
     Returns (token, user_id) if user exists, raises ValueError if not.

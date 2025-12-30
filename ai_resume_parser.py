@@ -6,10 +6,13 @@ Uses OpenAI GPT-4 Turbo to intelligently extract skills and certifications with 
 import os
 import re
 import json
+import logging
 from typing import Dict, List, Any
 from openai import OpenAI
 from resume_parser import ResumeParser
 from config import OpenAIConfig
+
+logger = logging.getLogger(__name__)
 
 
 class AIResumeParser:
@@ -137,7 +140,11 @@ JSON:
             json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
             if json_match:
                 json_str = json_match.group(0)
-                candidate_data = json.loads(json_str)
+                try:
+                    candidate_data = json.loads(json_str)
+                except (json.JSONDecodeError, TypeError) as e:
+                    logger.error(f"Failed to parse AI response as JSON: {e}")
+                    raise ValueError(f"Failed to parse AI response as JSON: {e}")
 
                 # Validate extracted items against raw text to prevent fabrication
                 extracted_skills = self._validate_against_resume(

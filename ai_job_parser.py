@@ -6,11 +6,14 @@ Uses OpenAI GPT-4 Turbo for intelligent extraction of job details
 import os
 import json
 import re
+import logging
 from typing import Dict, List, Any
 from pathlib import Path
 from openai import OpenAI
 import PyPDF2
 import docx
+
+logger = logging.getLogger(__name__)
 
 
 class AIJobParser:
@@ -304,12 +307,8 @@ JSON:
                 json_str = json_match.group(0)
                 try:
                     job_data = json.loads(json_str)
-                    
-                    print(f"DEBUG: Parsed job_data keys: {job_data.keys()}")
-                    print(f"DEBUG: Extracted job_title: '{job_data.get('job_title', 'MISSING')}'")
-                except json.JSONDecodeError as e:
-                    print(f"DEBUG: JSON parse error: {e}")
-                    print(f"DEBUG: JSON string: {json_str[:500]}")
+                except (json.JSONDecodeError, TypeError) as e:
+                    logger.error(f"Failed to parse AI response as JSON: {e}")
                     raise ValueError(f"Failed to parse AI response as JSON: {e}")
 
                 # Validate and fix job title - ensure it's a proper job title

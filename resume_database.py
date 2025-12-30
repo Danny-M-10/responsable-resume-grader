@@ -5,10 +5,13 @@ Manages candidate profiles stored in the database for reuse across analyses
 
 import json
 import uuid
+import logging
 from typing import List, Dict, Optional, Any
 from datetime import datetime
 from db import get_db, utcnow_str
 from utils import prepare_query
+
+logger = logging.getLogger(__name__)
 
 
 def save_candidate_profile(
@@ -16,7 +19,8 @@ def save_candidate_profile(
     resume_data: Dict[str, Any],
     resume_file_id: Optional[str] = None,
     tags: List[str] = None,
-    notes: str = None
+    notes: str = None,
+    avionte_talent_id: Optional[str] = None
 ) -> str:
     """
     Save a parsed resume to the candidate profiles database
@@ -27,6 +31,7 @@ def save_candidate_profile(
         resume_file_id: Optional file_assets ID for the resume file
         tags: Optional list of tags for organization
         notes: Optional user notes about the candidate
+        avionte_talent_id: Optional Avionté talent ID for syncing
     
     Returns:
         Profile ID
@@ -34,14 +39,21 @@ def save_candidate_profile(
     profile_id = str(uuid.uuid4())
     now = utcnow_str()
     
+    # Extract avionte_talent_id from resume_data if not provided directly
+    if not avionte_talent_id:
+        avionte_talent_id = resume_data.get('avionte_talent_id')
+    
     with get_db() as conn:
         cur = conn.cursor()
         query = prepare_query(conn, """
             INSERT INTO candidate_profiles 
             (id, user_id, name, email, phone, location, resume_file_id, 
-             parsed_data_json, tags_json, notes, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             parsed_data_json, tags_json, notes, created_at, updated_at,
+             avionte_talent_id, avionte_sync_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """)
+        
+        avionte_sync_at = now if avionte_talent_id else None
         
         cur.execute(query, (
             profile_id,
@@ -55,9 +67,16 @@ def save_candidate_profile(
             json.dumps(tags or []),
             notes or '',
             now,
-            now
+            now,
+            avionte_talent_id,
+            avionte_sync_at
         ))
-        conn.commit()
+        try:
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Failed to save candidate profile: {e}", exc_info=True)
+            raise
     
     return profile_id
 
@@ -173,13 +192,14 @@ def search_candidates(
             params.append(filters['date_to'])
         
         where_clause = " AND ".join(conditions)
-        sql = prepare_query(conn, f"""
+        base_query = """
             SELECT id, user_id, name, email, phone, location, resume_file_id,
                    parsed_data_json, tags_json, notes, created_at, updated_at
             FROM candidate_profiles
-            WHERE {where_clause}
+            WHERE {}
             ORDER BY created_at DESC
-        """)
+        """
+        sql = prepare_query(conn, base_query.format(where_clause))
         
         cur.execute(sql, params)
         rows = cur.fetchall()
@@ -321,11 +341,12 @@ def update_candidate_profile(
         params.append(utcnow_str())
         params.extend([profile_id, user_id])
         
-        update_sql = prepare_query(conn, f"""
+        base_update_query = """
             UPDATE candidate_profiles
-            SET {', '.join(set_clauses)}
+            SET {}
             WHERE id = ? AND user_id = ?
-        """)
+        """
+        update_sql = prepare_query(conn, base_update_query.format(', '.join(set_clauses)))
         
         cur.execute(update_sql, params)
         conn.commit()
@@ -351,7 +372,12 @@ def delete_candidate_profile(profile_id: str, user_id: str) -> bool:
             WHERE id = ? AND user_id = ?
         """)
         cur.execute(query, (profile_id, user_id))
-        conn.commit()
+        try:
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Failed to delete candidate profile: {e}", exc_info=True)
+            raise
         
         return cur.rowcount > 0
 
@@ -435,9 +461,15 @@ def link_candidate_to_analysis(candidate_profile_id: str, report_id: str) -> boo
                 VALUES (?, ?, ?)
             """)
             cur.execute(query, (candidate_profile_id, report_id, utcnow_str()))
-            conn.commit()
-            return True
-    except Exception:
+            try:
+                conn.commit()
+                return True
+            except Exception as e:
+                conn.rollback()
+                logger.error(f"Failed to link candidate to analysis: {e}", exc_info=True)
+                return False
+    except Exception as e:
+        logger.error(f"Error linking candidate to analysis: {e}", exc_info=True)
         return False
 
 

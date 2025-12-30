@@ -9,6 +9,7 @@ import re
 import hashlib
 import uuid
 import asyncio
+import logging
 from dataclasses import asdict
 from datetime import datetime
 from typing import List, Dict, Any, Tuple
@@ -22,6 +23,9 @@ from skills_researcher import SkillsResearcher
 from ai_certification_researcher import AICertificationResearcher
 from config import OpenAIConfig
 from db import get_db, utcnow_str
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 
 class CandidateRankerApp:
@@ -66,68 +70,108 @@ class CandidateRankerApp:
             required_skills: List[str] = None, preferred_skills: List[str] = None,
             progress_callback=None, resume_cache: Dict[str, Dict[str, Any]] = None,
             user_id: str = None, resume_assets: List[Dict[str, Any]] = None,
-            job_source_asset_id: str = None) -> str:
+            job_source_asset_id: str = None,
+            avionte_candidates: List[Dict[str, Any]] = None,
+            avionte_job: JobDetails = None) -> str:
         """
         Main workflow execution
 
         Args:
-            job_title: The job title
-            certifications: List of dicts with 'name' and 'category' ('must-have' or 'bonus')
-            location: Job location
-            job_description: Full job description
-            resume_files: List of paths to resume files (PDF, DOCX, TXT)
+            job_title: The job title (ignored if avionte_job provided)
+            certifications: List of dicts with 'name' and 'category' ('must-have' or 'bonus') (ignored if avionte_job provided)
+            location: Job location (ignored if avionte_job provided)
+            job_description: Full job description (ignored if avionte_job provided)
+            resume_files: List of paths to resume files (PDF, DOCX, TXT) (ignored if avionte_candidates provided)
             required_skills: Optional list of required skills from AI extraction
             preferred_skills: Optional list of preferred skills from AI extraction
             progress_callback: Optional callback function(step_name, progress, current, total) for progress updates
+            resume_cache: Optional cache for parsed resumes
+            user_id: Optional user ID for persistence
+            resume_assets: Optional resume asset metadata
+            job_source_asset_id: Optional job source asset ID
+            avionte_candidates: Optional list of pre-fetched candidates from Avionté (dict format)
+            avionte_job: Optional JobDetails object from Avionté (overrides job_title, certifications, location, job_description)
 
         Returns:
             Path to generated PDF report
         """
-        print("=" * 80)
-        print("RECRUITMENT CANDIDATE SCREENING AND RANKING SYSTEM")
-        print("=" * 80)
-        print()
+        logger.info("=" * 80)
+        logger.info("RECRUITMENT CANDIDATE SCREENING AND RANKING SYSTEM")
+        logger.info("=" * 80)
+        logger.info("")
 
         # Step 1: Parse and structure job details (0-10%)
         if progress_callback:
             progress_callback("analyzing", 0.05, 0, 0)
-        print("STEP 1: Analyzing job requirements...")
-        self.job_details = self._parse_job_details(
-            job_title, certifications, location, job_description,
-            required_skills=required_skills, preferred_skills=preferred_skills
-        )
+        logger.info("STEP 1: Analyzing job requirements...")
+        
+        # Use Avionté job if provided, otherwise parse from inputs
+        if avionte_job:
+            logger.info("Using job details from Avionté")
+            self.job_details = avionte_job
+        else:
+            self.job_details = self._parse_job_details(
+                job_title, certifications, location, job_description,
+                required_skills=required_skills, preferred_skills=preferred_skills
+            )
         if progress_callback:
             progress_callback("analyzing", 0.10, 0, 0)
 
         # Step 2: Research equivalent terms, skills, and certifications (10-20%)
         if progress_callback:
             progress_callback("researching", 0.15, 0, 0)
-        print("STEP 2: Researching equivalent titles, skills, and certifications...")
+        logger.info("STEP 2: Researching equivalent titles, skills, and certifications...")
         self._research_equivalents()
         
         # Step 2b: Expand certifications with AI if "or equivalent" mentioned
-        print("STEP 2b: Researching equivalent certifications...")
+        logger.info("STEP 2b: Researching equivalent certifications...")
         self._expand_certification_equivalents()
         if progress_callback:
             progress_callback("researching", 0.20, 0, 0)
 
         # Step 3: Parse all resumes (20-40%) - now parallelized
-        print(f"STEP 3: Parsing {len(resume_files)} resume(s)...")
-        # Merge external cache if provided (e.g., Streamlit session)
-        if resume_cache is not None:
-            # Use provided cache as backing store
-            self.resume_cache = resume_cache
-
-        candidates = self._parse_resumes(resume_files, progress_callback)
+        # Use Avionté candidates if provided, otherwise parse from resume files
+        if avionte_candidates:
+            logger.info(f"STEP 3: Using {len(avionte_candidates)} candidate(s) from Avionté...")
+            candidates = avionte_candidates
+            # For Avionté candidates, we may need to parse resume files if they have them
+            # But the candidate data is already structured, so we can use it directly
+            # If resume files are provided for Avionté candidates, we'll still parse them for additional data
+            if resume_files:
+                logger.info("Parsing additional resume files for Avionté candidates...")
+                parsed_resumes = self._parse_resumes(resume_files, progress_callback)
+                # Merge parsed resume data with Avionté candidate data
+                # Match by name/email if possible
+                for candidate in candidates:
+                    candidate_email = candidate.get('email', '').lower()
+                    candidate_name = candidate.get('name', '').lower()
+                    for parsed in parsed_resumes:
+                        parsed_email = parsed.get('email', '').lower()
+                        parsed_name = parsed.get('name', '').lower()
+                        if (candidate_email and parsed_email and candidate_email == parsed_email) or \
+                           (candidate_name and parsed_name and candidate_name == parsed_name):
+                            # Merge data - prefer Avionté data but add parsed resume details
+                            candidate.update({
+                                'raw_text': parsed.get('raw_text', candidate.get('raw_text', '')),
+                                'job_titles': parsed.get('job_titles', candidate.get('job_titles', []))
+                            })
+                            break
+        else:
+            logger.info(f"STEP 3: Parsing {len(resume_files)} resume(s)...")
+            # Merge external cache if provided (e.g., Streamlit session)
+            if resume_cache is not None:
+                # Use provided cache as backing store
+                self.resume_cache = resume_cache
+            candidates = self._parse_resumes(resume_files, progress_callback)
 
         # Step 4: Score each candidate (40-70%) - now parallelized
-        print(f"STEP 4: Scoring {len(candidates)} candidate(s)...")
+        logger.info(f"STEP 4: Scoring {len(candidates)} candidate(s)...")
         self._score_candidates(candidates, progress_callback)
 
         # Step 5: Rank and select top candidates (70-80%)
         if progress_callback:
             progress_callback("ranking", 0.75, 0, 0)
-        print("STEP 5: Ranking candidates...")
+        logger.info("STEP 5: Ranking candidates...")
         top_candidates = self._rank_candidates()
         if progress_callback:
             progress_callback("ranking", 0.80, 0, 0)
@@ -135,15 +179,15 @@ class CandidateRankerApp:
         # Step 6: Generate PDF report (80-100%)
         if progress_callback:
             progress_callback("generating", 0.85, 0, 0)
-        print("STEP 6: Generating PDF report...")
+        logger.info("STEP 6: Generating PDF report...")
         pdf_path = self._generate_report(top_candidates)
         if progress_callback:
             progress_callback("generating", 1.0, 0, 0)
 
-        print()
-        print("=" * 80)
-        print(f"REPORT GENERATED: {pdf_path}")
-        print("=" * 80)
+        logger.info("")
+        logger.info("=" * 80)
+        logger.info(f"REPORT GENERATED: {pdf_path}")
+        logger.info("=" * 80)
 
         # Persist run metadata if user_id provided
         if user_id:
@@ -156,7 +200,7 @@ class CandidateRankerApp:
                     top_candidates=top_candidates
                 )
             except Exception as e:
-                print(f"WARNING: Failed to persist run metadata: {e}")
+                logger.warning(f"Failed to persist run metadata: {e}", exc_info=True)
 
         return pdf_path
 
@@ -315,8 +359,8 @@ class CandidateRankerApp:
             if synonyms:
                 self.job_details.skill_synonyms[skill] = synonyms
 
-        print(f"  Found {len(self.job_details.equivalent_titles)} equivalent titles")
-        print(f"  Mapped {len(self.job_details.skill_synonyms)} skill synonyms")
+        logger.info(f"  Found {len(self.job_details.equivalent_titles)} equivalent titles")
+        logger.info(f"  Mapped {len(self.job_details.skill_synonyms)} skill synonyms")
 
     async def _expand_certification_equivalents_async(self):
         """Expand certifications that mention 'or equivalent' using AI in parallel"""
@@ -347,7 +391,7 @@ class CandidateRankerApp:
                 )
                 return cert_name, equivalents
             except Exception as e:
-                print(f"  ERROR researching equivalents for {cert.name}: {e}")
+                logger.error(f"  ERROR researching equivalents for {cert.name}: {e}", exc_info=True)
                 return cert.name, []
         
         # Research all certs in parallel
@@ -357,15 +401,15 @@ class CandidateRankerApp:
         # Process results
         for result in results:
             if isinstance(result, Exception):
-                print(f"  ERROR: Exception during cert research: {result}")
+                logger.error(f"  ERROR: Exception during cert research: {result}", exc_info=True)
                 continue
             cert_name, equivalents = result
             if equivalents:
-                print(f"  Found {len(equivalents)} equivalent(s) for {cert_name}")
+                logger.info(f"  Found {len(equivalents)} equivalent(s) for {cert_name}")
                 # Store equivalents in job_details for matching
                 self.job_details.certification_equivalents[cert_name] = equivalents
             else:
-                print(f"  No equivalents found for {cert_name}")
+                logger.info(f"  No equivalents found for {cert_name}")
     
     def _expand_certification_equivalents(self):
         """Expand certifications that mention 'or equivalent' using AI (sync wrapper)"""
@@ -392,7 +436,7 @@ class CandidateRankerApp:
         async def parse_single_resume(resume_file, index):
             """Parse a single resume file"""
             try:
-                print(f"  Parsing resume {index}/{total}: {Path(resume_file).name}")
+                logger.info(f"  Parsing resume {index}/{total}: {Path(resume_file).name}")
                 if progress_callback:
                     # Progress from 20% to 40% (20% range for parsing)
                     progress = 0.20 + ((index - 1) / total * 0.20)
@@ -409,14 +453,14 @@ class CandidateRankerApp:
                     file_bytes = await loop.run_in_executor(None, read_file)
                     file_hash = hashlib.sha256(file_bytes).hexdigest()
                 except Exception as e:
-                    print(f"    WARNING: Failed to read {resume_file}: {e}")
+                    logger.warning(f"    WARNING: Failed to read {resume_file}: {e}", exc_info=True)
                     file_hash = None
                 
                 # Check cache first
                 cached_candidate = self.resume_cache.get(file_hash) if file_hash else None
                 
                 if cached_candidate:
-                    print("    Using cached parse for this resume")
+                    logger.debug("    Using cached parse for this resume")
                     candidate_data = cached_candidate
                 else:
                     try:
@@ -434,7 +478,7 @@ class CandidateRankerApp:
                         # Filter out errors related to deprecated _generate_deterministic_seed method
                         error_str = str(e)
                         if '_generate_deterministic_seed' not in error_str:
-                            print(f"    WARNING: Failed to parse {resume_file}: {e}")
+                            logger.warning(f"    WARNING: Failed to parse {resume_file}: {e}", exc_info=True)
                         return None
                 
                 if progress_callback:
@@ -447,7 +491,7 @@ class CandidateRankerApp:
                 # Filter out errors related to deprecated _generate_deterministic_seed method
                 error_str = str(e)
                 if '_generate_deterministic_seed' not in error_str:
-                    print(f"    ERROR parsing resume {index} ({Path(resume_file).name}): {e}")
+                    logger.error(f"    ERROR parsing resume {index} ({Path(resume_file).name}): {e}", exc_info=True)
                 return None
         
         # Create tasks for all resumes
@@ -463,12 +507,12 @@ class CandidateRankerApp:
         candidates = []
         for i, result in enumerate(results):
             if isinstance(result, Exception):
-                print(f"  ERROR: Exception during parsing resume {i+1}: {result}")
+                logger.error(f"  ERROR: Exception during parsing resume {i+1}: {result}", exc_info=True)
                 continue
             if result is not None:
                 candidates.append(result)
         
-        print(f"  Successfully parsed {len(candidates)} resume(s)")
+        logger.info(f"  Successfully parsed {len(candidates)} resume(s)")
         return candidates
     
     def _parse_resumes(self, resume_files: List[str], progress_callback=None) -> List[Dict[str, Any]]:
@@ -502,7 +546,7 @@ class CandidateRankerApp:
             """Score a single candidate with semaphore for rate limiting"""
             async with semaphore:
                 try:
-                    print(f"  Scoring candidate {index}/{total}: {candidate.get('name', 'Unknown')}")
+                    logger.info(f"  Scoring candidate {index}/{total}: {candidate.get('name', 'Unknown')}")
                     if progress_callback:
                         # Progress from 40% to 70% (30% range for scoring)
                         progress = 0.40 + ((index - 1) / total * 0.30)
@@ -520,7 +564,7 @@ class CandidateRankerApp:
                     
                     return score_result
                 except Exception as e:
-                    print(f"  ERROR scoring candidate {index} ({candidate.get('name', 'Unknown')}): {e}")
+                    logger.error(f"  ERROR scoring candidate {index} ({candidate.get('name', 'Unknown')}): {e}", exc_info=True)
                     # Return a default low score for failed candidates
                     from models import CandidateScore
                     return CandidateScore(
@@ -550,7 +594,7 @@ class CandidateRankerApp:
         # Process results and handle any exceptions
         for i, result in enumerate(results):
             if isinstance(result, Exception):
-                print(f"  ERROR: Exception during scoring candidate {i+1}: {result}")
+                logger.error(f"  ERROR: Exception during scoring candidate {i+1}: {result}", exc_info=True)
                 # Create a default low score for exceptions
                 from models import CandidateScore
                 # Safely get candidate data - ensure it's a dictionary
@@ -629,17 +673,17 @@ class CandidateRankerApp:
             # Scores are too high, need to reduce
             # Target mean of 6.25, so reduce by factor
             calibration_factor = 6.25 / mean_score if mean_score > 0 else 1.0
-            print(f"  Calibrating scores: Mean too high ({mean_score:.2f}), applying factor {calibration_factor:.3f}")
+            logger.info(f"  Calibrating scores: Mean too high ({mean_score:.2f}), applying factor {calibration_factor:.3f}")
         elif mean_score < 5.0:
             # Scores are too low, but we'll be conservative and not inflate
             # Only calibrate if mean is very low (<4.0)
             if mean_score < 4.0:
                 calibration_factor = 5.0 / mean_score if mean_score > 0 else 1.0
-                print(f"  Calibrating scores: Mean too low ({mean_score:.2f}), applying factor {calibration_factor:.3f}")
+                logger.info(f"  Calibrating scores: Mean too low ({mean_score:.2f}), applying factor {calibration_factor:.3f}")
             else:
-                print(f"  Score distribution acceptable (mean: {mean_score:.2f})")
+                logger.info(f"  Score distribution acceptable (mean: {mean_score:.2f})")
         else:
-            print(f"  Score distribution acceptable (mean: {mean_score:.2f})")
+            logger.info(f"  Score distribution acceptable (mean: {mean_score:.2f})")
         
         # Apply calibration if needed
         if calibration_factor != 1.0:
@@ -656,7 +700,7 @@ class CandidateRankerApp:
                 if must_have_certs_required:
                     has_must_have = candidate_score.certification_match.get('has_must_have', False)
                     if not has_must_have and calibrated_score > 5.0:
-                        print(f"    RE-CAPPING: {candidate_score.name} missing must-have certs, capping calibrated score at 5.0")
+                        logger.info(f"    RE-CAPPING: {candidate_score.name} missing must-have certs, capping calibrated score at 5.0")
                         calibrated_score = min(calibrated_score, 5.0)
                 
                 # Update score and calibration metadata
@@ -664,7 +708,7 @@ class CandidateRankerApp:
                 candidate_score.calibration_applied = True
                 candidate_score.calibration_factor = calibration_factor
                 
-                print(f"    {candidate_score.name}: {original_score:.2f} -> {calibrated_score:.2f}")
+                logger.debug(f"    {candidate_score.name}: {original_score:.2f} -> {calibrated_score:.2f}")
 
     def _check_score_consistency(self):
         """
@@ -685,10 +729,10 @@ class CandidateRankerApp:
                     
                     # If profiles are similar (>70% similarity) but scores differ significantly
                     if similarity > 0.7:
-                        print(f"  WARNING: Similar candidates with very different scores:")
-                        print(f"    {candidate1.name}: {candidate1.fit_score:.2f}")
-                        print(f"    {candidate2.name}: {candidate2.fit_score:.2f}")
-                        print(f"    Similarity: {similarity:.1%}, Score difference: {score_diff:.2f}")
+                        logger.warning(f"  WARNING: Similar candidates with very different scores:")
+                        logger.warning(f"    {candidate1.name}: {candidate1.fit_score:.2f}")
+                        logger.warning(f"    {candidate2.name}: {candidate2.fit_score:.2f}")
+                        logger.warning(f"    Similarity: {similarity:.1%}, Score difference: {score_diff:.2f}")
 
     def _calculate_profile_similarity(self, candidate1: CandidateScore, candidate2: CandidateScore) -> float:
         """
@@ -761,7 +805,7 @@ class CandidateRankerApp:
         
         if max_cluster_size > cluster_threshold:
             clustered_score = max(score_counts.items(), key=lambda x: x[1])[0]
-            print(f"  WARNING: Score clustering detected - {max_cluster_size} candidates at score {clustered_score:.1f}")
+            logger.warning(f"  WARNING: Score clustering detected - {max_cluster_size} candidates at score {clustered_score:.1f}")
         
         # Verify ranking order makes sense
         # Check if score differences are reasonable
@@ -769,7 +813,7 @@ class CandidateRankerApp:
             score_diff = sorted_candidates[i].fit_score - sorted_candidates[i+1].fit_score
             # If scores are very close (<0.1 difference), ranking might be arbitrary
             if 0 < score_diff < 0.1:
-                print(f"  NOTE: Candidates {i+1} and {i+2} have very similar scores "
+                logger.debug(f"  NOTE: Candidates {i+1} and {i+2} have very similar scores "
                       f"({sorted_candidates[i].fit_score:.2f} vs {sorted_candidates[i+1].fit_score:.2f})")
 
     def _rank_candidates(self) -> List[CandidateScore]:
@@ -798,8 +842,8 @@ class CandidateRankerApp:
             # If less than 4 viable, still only include viable candidates (not all)
             # This ensures we never include candidates below 5.0 threshold
             top_candidates = viable_candidates
-            print(f"  Only {len(viable_candidates)} viable candidate(s) found (score >= 5.0)")
-            print(f"  Note: {len(sorted_candidates) - len(viable_candidates)} candidate(s) excluded (score < 5.0)")
+            logger.info(f"  Only {len(viable_candidates)} viable candidate(s) found (score >= 5.0)")
+            logger.info(f"  Note: {len(sorted_candidates) - len(viable_candidates)} candidate(s) excluded (score < 5.0)")
         else:
             # Take top 10 or all viable, whichever is smaller
             top_candidates = viable_candidates[:min(10, len(viable_candidates))]
@@ -807,7 +851,7 @@ class CandidateRankerApp:
         # Ensure candidates are sorted (highest to lowest)
         top_candidates = sorted(top_candidates, key=lambda x: x.fit_score, reverse=True)
         
-        print(f"  Selected {len(top_candidates)} top candidate(s) (all with score >= 5.0)")
+        logger.info(f"  Selected {len(top_candidates)} top candidate(s) (all with score >= 5.0)")
 
         return top_candidates
 
@@ -850,108 +894,113 @@ class CandidateRankerApp:
         preferred_skills_json = json.dumps(self.job_details.preferred_skills)
 
         with get_db() as conn:
-            # Job description
-            _exec(
-                conn,
-                """
-                INSERT INTO job_descriptions (
-                    id, user_id, title, location, certifications_json,
-                    required_skills_json, preferred_skills_json, full_description,
-                    source_asset_id, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    job_id,
-                    user_id,
-                    self.job_details.job_title,
-                    self.job_details.location,
-                    certifications_json,
-                    required_skills_json,
-                    preferred_skills_json,
-                    self.job_details.full_description,
-                    job_source_asset_id,
-                    now,
-                ),
-            )
-
-            # Report
-            _exec(
-                conn,
-                """
-                INSERT INTO reports (id, user_id, job_description_id, pdf_path, summary_json, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    report_id,
-                    user_id,
-                    job_id,
-                    pdf_path,
-                    json.dumps({"all_candidates": len(self.candidate_scores), "top_candidates": len(top_candidates)}),
-                    now,
-                ),
-            )
-
-            # Resumes (optional, if provided)
-            # Only persist resumes that have a valid file_asset_id (saved to file_assets table)
-            # Resumes without file_asset_id will be saved later in the auto-save section
-            if resume_assets:
-                for asset in resume_assets:
-                    # source_asset_id must be a valid file_assets.id (UUID), not a hash
-                    # Skip resumes that don't have file_asset_id set yet (they'll be saved later)
-                    source_asset_id = asset.get("file_asset_id")
-                    if not source_asset_id:
-                        # Skip this resume - it will be saved later when file_asset_id is available
-                        continue
-                    
-                    resume_id = str(uuid.uuid4())
-                    _exec(
-                        conn,
-                        """
-                        INSERT INTO resumes (id, user_id, original_name, stored_path, parsed_metadata_json, source_asset_id, uploaded_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
-                        """,
-                        (
-                            resume_id,
-                            user_id,
-                            asset.get("original_name"),
-                            asset.get("stored_path"),
-                            None,
-                            source_asset_id,  # Use actual file_assets.id
-                            now,
-                        ),
-                    )
-
-            # Candidate scores (top candidates snapshot)
-            for cand in top_candidates:
-                score_id = str(uuid.uuid4())
+            try:
+                # Job description
                 _exec(
                     conn,
                     """
-                    INSERT INTO candidate_scores (
-                        id, report_id, candidate_name, email, phone, fit_score, rationale, raw_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO job_descriptions (
+                        id, user_id, title, location, certifications_json,
+                        required_skills_json, preferred_skills_json, full_description,
+                        source_asset_id, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
-                        score_id,
-                        report_id,
-                        cand.name,
-                        cand.email,
-                        cand.phone,
-                        cand.fit_score,
-                        cand.rationale,
-                        json.dumps(asdict(cand)),
+                        job_id,
+                        user_id,
+                        self.job_details.job_title,
+                        self.job_details.location,
+                        certifications_json,
+                        required_skills_json,
+                        preferred_skills_json,
+                        self.job_details.full_description,
+                        job_source_asset_id,
+                        now,
                     ),
                 )
 
-            conn.commit()
+                # Report
+                _exec(
+                    conn,
+                    """
+                    INSERT INTO reports (id, user_id, job_description_id, pdf_path, summary_json, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        report_id,
+                        user_id,
+                        job_id,
+                        pdf_path,
+                        json.dumps({"all_candidates": len(self.candidate_scores), "top_candidates": len(top_candidates)}),
+                        now,
+                    ),
+                )
+
+                # Resumes (optional, if provided)
+                # Only persist resumes that have a valid file_asset_id (saved to file_assets table)
+                # Resumes without file_asset_id will be saved later in the auto-save section
+                if resume_assets:
+                    for asset in resume_assets:
+                        # source_asset_id must be a valid file_assets.id (UUID), not a hash
+                        # Skip resumes that don't have file_asset_id set yet (they'll be saved later)
+                        source_asset_id = asset.get("file_asset_id")
+                        if not source_asset_id:
+                            # Skip this resume - it will be saved later when file_asset_id is available
+                            continue
+                        
+                        resume_id = str(uuid.uuid4())
+                        _exec(
+                            conn,
+                            """
+                            INSERT INTO resumes (id, user_id, original_name, stored_path, parsed_metadata_json, source_asset_id, uploaded_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (
+                                resume_id,
+                                user_id,
+                                asset.get("original_name"),
+                                asset.get("stored_path"),
+                                None,
+                                source_asset_id,  # Use actual file_assets.id
+                                now,
+                            ),
+                        )
+
+                # Candidate scores (top candidates snapshot)
+                for cand in top_candidates:
+                    score_id = str(uuid.uuid4())
+                    _exec(
+                        conn,
+                        """
+                        INSERT INTO candidate_scores (
+                            id, report_id, candidate_name, email, phone, fit_score, rationale, raw_json
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            score_id,
+                            report_id,
+                            cand.name,
+                            cand.email,
+                            cand.phone,
+                            cand.fit_score,
+                            cand.rationale,
+                            json.dumps(asdict(cand)),
+                        ),
+                    )
+
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                logger.error(f"Failed to persist run: {e}", exc_info=True)
+                raise
 
 
 def main():
     """Example usage"""
-    print("\nRECRUITMENT CANDIDATE RANKER")
-    print("This application requires input via code or API.")
-    print("\nExample usage:")
-    print("""
+    logger.info("\nRECRUITMENT CANDIDATE RANKER")
+    logger.info("This application requires input via code or API.")
+    logger.info("\nExample usage:")
+    logger.info("""
     from candidate_ranker import CandidateRankerApp
 
     app = CandidateRankerApp()
@@ -967,7 +1016,7 @@ def main():
         resume_files=["resume1.pdf", "resume2.pdf", "resume3.pdf"]
     )
 
-    print(f"Report generated: {pdf_path}")
+    logger.info(f"Report generated: {pdf_path}")
     """)
 
 

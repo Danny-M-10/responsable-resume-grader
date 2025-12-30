@@ -115,15 +115,46 @@ def _auth_gate():
         user_id, email = user
         st.session_state["user_id"] = user_id
         st.session_state["user_email"] = email
-        # Ensure token is stored in cookie and query params for persistence
+        # Ensure token is stored in cookie for persistence
         if token:
             set_session_token_cookie(token)
-            # Store in query params as backup (less secure but works across reloads)
-            if not st.query_params.get("token"):
-                st.query_params["token"] = token
             update_session_activity(token)
         st.sidebar.success(f"Logged in as {email}")
         st.sidebar.info("Session expires after 2 hours of inactivity")
+        
+        # Avionté Connection Status
+        from config import AvionteConfig
+        if AvionteConfig.is_configured():
+            st.sidebar.markdown("---")
+            st.sidebar.markdown("### Avionté Integration")
+            
+            from avionte_client import AvionteClient
+            try:
+                if 'avionte_sidebar_test' not in st.session_state:
+                    with st.spinner("Testing..."):
+                        client = AvionteClient()
+                        if client.test_connection():
+                            st.session_state['avionte_sidebar_test'] = True
+                            st.sidebar.success("✓ Connected")
+                        else:
+                            st.session_state['avionte_sidebar_test'] = False
+                            st.sidebar.error("✗ Connection Failed")
+                else:
+                    if st.session_state.get('avionte_sidebar_test'):
+                        st.sidebar.success("✓ Connected")
+                    else:
+                        st.sidebar.error("✗ Connection Failed")
+                        if st.sidebar.button("Retry Connection", key="retry_avionte"):
+                            st.session_state.pop('avionte_sidebar_test', None)
+                            st.rerun()
+            except Exception as e:
+                st.sidebar.error("✗ Error")
+                st.sidebar.caption(f"Error: {str(e)[:50]}")
+        else:
+            st.sidebar.markdown("---")
+            st.sidebar.markdown("### Avionté Integration")
+            st.sidebar.info("Not configured")
+            st.sidebar.caption("Set AVIONTE_API_KEY, AVIONTE_CLIENT_ID, and AVIONTE_CLIENT_SECRET")
         
         # Previous Analyses section in sidebar
         st.sidebar.markdown("---")
@@ -794,7 +825,8 @@ def generate_excel_export(analysis_data: Dict, job_title: str, location: str) ->
                         try:
                             if len(str(cell.value)) > max_length:
                                 max_length = len(str(cell.value))
-                        except:
+                        except (AttributeError, TypeError, ValueError) as e:
+                            logger.debug(f"Error processing cell value: {e}")
                             pass
                     adjusted_width = min(max_length + 2, 50)
                     ws.column_dimensions[column_letter].width = adjusted_width
@@ -1077,7 +1109,7 @@ def display_analysis_history(user_id: str):
             elif days_ago <= 30:
                 border_color = "#0066CC"  # Blue for recent month
             else:
-                border_color = "#CCCCCC"  # Gray for older
+                border_color = "#6c757d"  # Gray for older (adjusted for dark mode visibility)
             
             # Card container
             with st.container():
@@ -1090,6 +1122,7 @@ def display_analysis_history(user_id: str):
                         margin-bottom: var(--spacing-sm);
                         background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
                         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                        color: var(--text-primary);
                     ">
                     """,
                     unsafe_allow_html=True
@@ -1785,7 +1818,12 @@ def display_resume_database(user_id: str):
                                 stored_path,
                                 utcnow_str()
                             ))
-                            conn.commit()
+                            try:
+                                conn.commit()
+                            except Exception as e:
+                                conn.rollback()
+                                logger.error(f"Failed to save file asset: {e}", exc_info=True)
+                                raise
                         
                         # Parse tags
                         tags = [t.strip() for t in tags_input.split(',') if t.strip()] if tags_input else []
@@ -2145,6 +2183,34 @@ def main():
             --error-bg: #F8D7DA;
             --error-border: #DC3545;
         }
+        
+        /* Dark mode support */
+        @media (prefers-color-scheme: dark) {
+            :root {
+                /* Dark mode backgrounds */
+                --bg-primary: #1a1a1a;
+                --bg-secondary: #2d2d2d;
+                
+                /* Dark mode text colors */
+                --text-primary: #f5f5f5;
+                --text-secondary: #e0e0e0;
+                --text-muted: #b0b0b0;
+                
+                /* Dark mode borders */
+                --border-color: #4a4a4a;
+                --border-color-hover: var(--brand-green);
+                
+                /* Dark mode status colors */
+                --success-bg: #1e3a1e;
+                --success-border: #4ade80;
+                --info-bg: #1e2a3a;
+                --info-border: #60a5fa;
+                --warning-bg: #3a2e1e;
+                --warning-border: #fbbf24;
+                --error-bg: #3a1e1e;
+                --error-border: #f87171;
+            }
+        }
 
         .header-container {
             display: flex;
@@ -2297,24 +2363,28 @@ def main():
         .stSuccess {
             background-color: var(--success-bg) !important;
             border-left: 4px solid var(--success-border) !important;
+            color: var(--text-primary) !important;
         }
 
         /* Update info boxes to use brand blue */
         .stInfo {
             background-color: var(--info-bg) !important;
             border-left: 4px solid var(--info-border) !important;
+            color: var(--text-primary) !important;
         }
 
         /* Update error boxes */
         .stError {
             background-color: var(--error-bg) !important;
             border-left: 4px solid var(--error-border) !important;
+            color: var(--text-primary) !important;
         }
         
         /* Warning boxes */
         .stWarning {
             background-color: var(--warning-bg) !important;
             border-left: 4px solid var(--warning-border) !important;
+            color: var(--text-primary) !important;
         }
 
         /* Style file uploaders with brand colors */
@@ -2341,6 +2411,12 @@ def main():
         .stRadio > div > label {
             color: var(--brand-dark-gray) !important;
         }
+        
+        @media (prefers-color-scheme: dark) {
+            .stRadio > div > label {
+                color: var(--text-primary) !important;
+            }
+        }
 
         /* Style expanders */
         .streamlit-expanderHeader {
@@ -2362,6 +2438,115 @@ def main():
         .main .block-container {
             padding-top: var(--spacing-lg);
             padding-bottom: var(--spacing-lg);
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+        }
+        
+        /* Dark mode adjustments for Streamlit components */
+        @media (prefers-color-scheme: dark) {
+            /* Ensure Streamlit's default styles work with dark mode */
+            .stMarkdown {
+                color: var(--text-primary);
+            }
+            
+            .stMarkdown p, .stMarkdown li, .stMarkdown ul, .stMarkdown ol {
+                color: var(--text-primary);
+            }
+            
+            /* Input fields */
+            .stTextInput > div > div > input,
+            .stTextArea > div > div > textarea,
+            .stSelectbox > div > div > select {
+                background-color: var(--bg-secondary);
+                color: var(--text-primary);
+                border-color: var(--border-color);
+            }
+            
+            /* Tables and dataframes */
+            .stDataFrame {
+                background-color: var(--bg-secondary);
+                color: var(--text-primary);
+            }
+            
+            /* Expanders */
+            .streamlit-expanderHeader {
+                color: var(--text-primary);
+            }
+            
+            .streamlit-expanderContent {
+                background-color: var(--bg-secondary);
+                color: var(--text-primary);
+            }
+            
+            /* Metrics */
+            [data-testid="stMetricLabel"] {
+                color: var(--text-secondary);
+            }
+            
+            [data-testid="stMetricValue"] {
+                color: var(--brand-blue);
+            }
+            
+            /* Borders and dividers */
+            .section-header {
+                border-bottom-color: var(--brand-green);
+            }
+            
+            .header-container {
+                border-bottom-color: var(--brand-blue);
+            }
+            
+            /* Form sections */
+            .form-section {
+                background-color: var(--bg-secondary);
+                border-left-color: var(--brand-blue);
+            }
+            
+            /* Loading container */
+            .loading-container {
+                background-color: var(--bg-secondary);
+            }
+            
+            .loading-progress-bar {
+                background-color: rgba(255, 255, 255, 0.1);
+            }
+            
+            /* File uploader adjustments */
+            .stFileUploader > div > div {
+                background-color: var(--bg-secondary);
+            }
+            
+            /* Button text contrast */
+            button[kind="primary"] {
+                color: white !important;  /* Ensure white text on brand green */
+            }
+            
+            /* Download button text */
+            .stDownloadButton > button {
+                color: white !important;  /* Ensure white text on brand blue */
+            }
+            
+            /* Chart/visualization adjustments */
+            .stDataFrame table {
+                background-color: var(--bg-secondary);
+                color: var(--text-primary);
+            }
+            
+            /* Ensure all markdown text is readable */
+            .stMarkdown h1, .stMarkdown h2, .stMarkdown h3,
+            .stMarkdown h4, .stMarkdown h5, .stMarkdown h6 {
+                color: var(--text-primary);
+            }
+            
+            /* Sub-header text color */
+            .sub-header {
+                color: var(--text-secondary);
+            }
+            
+            /* Text input focus shadow adjustment */
+            .stTextInput > div > div > input:focus {
+                box-shadow: 0 0 0 2px rgba(0, 166, 81, 0.4) !important;
+            }
         }
         
         /* Improved table styling */
@@ -2392,6 +2577,13 @@ def main():
         .score-excellent { background-color: var(--score-excellent); }
         .score-good { background-color: var(--score-good); }
         .score-poor { background-color: var(--score-poor); }
+        
+        @media (prefers-color-scheme: dark) {
+            /* Score colors remain the same for visibility */
+            .score-excellent { background-color: #2ecc71; }  /* Slightly brighter green */
+            .score-good { background-color: #f39c12; }  /* Keep orange */
+            .score-poor { background-color: #e74c3c; }  /* Keep red */
+        }
 
         /* Processing status styling */
         .processing-status {
@@ -2400,6 +2592,7 @@ def main():
             border-radius: 0.5rem;
             padding: var(--spacing-md);
             margin: var(--spacing-md) 0;
+            color: var(--text-primary);
         }
 
         .processing-step {
@@ -2430,6 +2623,12 @@ def main():
             margin: 0;
             padding: 0;
             overflow: hidden;
+        }
+        
+        @media (prefers-color-scheme: dark) {
+            .full-page-loading-overlay {
+                background: rgba(26, 26, 26, 0.98);
+            }
         }
         
         /* Hide scrollbars during loading */
@@ -2661,14 +2860,20 @@ def main():
                     - Location: 5%
                     """)
 
-            # Main input toggle
-            st.markdown('<div class="section-header">Input Method</div>', unsafe_allow_html=True)
-
+            # Job Source Selection
+            st.markdown('<div class="section-header">Job Source</div>', unsafe_allow_html=True)
+            
+            from config import AvionteConfig
+            
+            job_source_options = ["Upload Job Description File (AI Extracts Everything)", "Manual Entry"]
+            if AvionteConfig.is_configured():
+                job_source_options.insert(1, "Pull from Avionté")
+            
             input_mode = st.radio(
                 "Choose how to provide job details:",
-                ["Upload Job Description File (AI Extracts Everything)", "Manual Entry"],
+                job_source_options,
                 horizontal=True,
-                help="File upload uses AI to automatically extract all job details",
+                help="File upload uses AI to automatically extract all job details. Avionté allows you to select from posted jobs.",
                 key="input_mode_radio"
             )
             st.caption("**Note:** Job details are required. Candidate resumes are optional - you can add them later or upload them now.")
@@ -2692,9 +2897,121 @@ def main():
             location = ""
             certifications = []
             job_description = ""
+            avionte_job = None
+
+            # MODE: Pull from Avionté
+            if input_mode == "Pull from Avionté":
+                st.markdown('<div class="section-header">Select Job from Avionté</div>', unsafe_allow_html=True)
+                
+                from avionte_client import AvionteClient
+                from avionte_transformer import AvionteTransformer
+                
+                if not AvionteConfig.is_configured():
+                    st.error("**Avionté API not configured.** Please configure AVIONTE_API_KEY, AVIONTE_CLIENT_ID, and AVIONTE_CLIENT_SECRET environment variables.")
+                else:
+                    try:
+                        client = AvionteClient()
+                        transformer = AvionteTransformer(client)
+                        
+                        # Test connection
+                        if 'avionte_job_connection_test' not in st.session_state:
+                            with st.spinner("Testing Avionté connection..."):
+                                if client.test_connection():
+                                    st.session_state['avionte_job_connection_test'] = True
+                                    st.success("✓ Connected to Avionté")
+                                else:
+                                    st.session_state['avionte_job_connection_test'] = False
+                                    st.error("Failed to connect to Avionté. Please check your credentials.")
+                        
+                        if st.session_state.get('avionte_job_connection_test'):
+                            # Search/filter UI
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                job_search = st.text_input("Search jobs by title", key="job_search", placeholder="Enter job title...")
+                            with col2:
+                                job_limit = st.number_input("Max results", min_value=10, max_value=500, value=50, step=10, key="job_limit")
+                            
+                            if st.button("Search Jobs", key="search_jobs_btn"):
+                                try:
+                                    with st.spinner("Fetching jobs from Avionté..."):
+                                        filters = {}
+                                        if job_search:
+                                            filters = {'search': job_search}
+                                        
+                                        jobs = client.get_jobs(filters=filters, limit=job_limit)
+                                        st.session_state['avionte_jobs'] = jobs
+                                        st.success(f"Found {len(jobs)} job(s)")
+                                except Exception as e:
+                                    st.error(f"Failed to fetch jobs: {str(e)}")
+                                    logger.error(f"Error fetching Avionté jobs: {e}", exc_info=True)
+                            
+                            # Display jobs for selection
+                            if 'avionte_jobs' in st.session_state and st.session_state['avionte_jobs']:
+                                jobs = st.session_state['avionte_jobs']
+                                
+                                # Job selector
+                                job_options = {}
+                                for job in jobs:
+                                    job_id = job.get('id') or job.get('jobId', '')
+                                    title = job.get('title') or job.get('jobTitle') or job.get('name', 'Untitled')
+                                    job_location = job.get('location') or ''
+                                    if job_location:
+                                        display_name = f"{title} - {job_location}"
+                                    else:
+                                        display_name = title
+                                    job_options[display_name] = job_id
+                                
+                                selected_job_name = st.selectbox(
+                                    "Select a job",
+                                    options=[""] + list(job_options.keys()),
+                                    key="selected_avionte_job",
+                                    help="Select a job from Avionté to use for this analysis"
+                                )
+                                
+                                if selected_job_name:
+                                    selected_job_id = job_options[selected_job_name]
+                                    
+                                    if st.button("Use Selected Job", key="use_avionte_job_btn"):
+                                        try:
+                                            with st.spinner("Loading job details from Avionté..."):
+                                                # Fetch full job data
+                                                job_data = client.get_job_by_id(selected_job_id)
+                                                
+                                                if job_data:
+                                                    # Transform to JobDetails format
+                                                    avionte_job = transformer.transform_job_to_job_details(job_data)
+                                                    st.session_state['avionte_job'] = avionte_job
+                                                    st.success(f"Loaded job: {avionte_job.job_title}")
+                                                    
+                                                    # Display job details
+                                                    with st.expander("View job details", expanded=True):
+                                                        st.write(f"**Title:** {avionte_job.job_title}")
+                                                        st.write(f"**Location:** {avionte_job.location}")
+                                                        st.write(f"**Required Skills:** {', '.join(avionte_job.required_skills) if avionte_job.required_skills else 'None'}")
+                                                        st.write(f"**Certifications:** {len(avionte_job.certifications)} required")
+                                                        st.write(f"**Description:** {avionte_job.full_description[:200]}..." if len(avionte_job.full_description) > 200 else f"**Description:** {avionte_job.full_description}")
+                                                else:
+                                                    st.error("Job not found in Avionté")
+                                        except Exception as e:
+                                            st.error(f"Failed to load job: {str(e)}")
+                                            logger.error(f"Error loading Avionté job: {e}", exc_info=True)
+                                    
+                                    # Use stored job if available
+                                    if 'avionte_job' in st.session_state:
+                                        avionte_job = st.session_state['avionte_job']
+                                        # Extract values for display/processing
+                                        job_title = avionte_job.job_title
+                                        location = avionte_job.location
+                                        job_description = avionte_job.full_description
+                                        certifications = [{"name": c.name, "category": c.category} for c in avionte_job.certifications]
+                            else:
+                                st.info("Click 'Search Jobs' to find jobs from Avionté")
+                    except Exception as e:
+                        st.error(f"Error initializing Avionté client: {str(e)}")
+                        logger.error(f"Error initializing Avionté: {e}", exc_info=True)
 
             # MODE 1: File Upload (AI Auto-Extraction)
-            if input_mode == "Upload Job Description File (AI Extracts Everything)":
+            elif input_mode == "Upload Job Description File (AI Extracts Everything)":
                 st.markdown('<div class="section-header">Upload Job Description</div>', unsafe_allow_html=True)
 
                 job_desc_file = st.file_uploader(
@@ -3066,57 +3383,195 @@ The AI will analyze this to extract skills and requirements.""",
                     help="Required: Provide as much detail as possible for accurate matching"
                 )
 
-            # Resume Upload (Optional)
-            st.markdown('<div class="section-header">Candidate Resumes (Optional)</div>', unsafe_allow_html=True)
-            st.caption("You can optionally select candidates from your database and/or upload additional resumes. If no resumes are provided, the analysis will be created with just the job requirements.")
+            # Candidate Source Selection
+            st.markdown('<div class="section-header">Candidate Source (Optional)</div>', unsafe_allow_html=True)
+            candidate_source = st.radio(
+                "Choose candidate source:",
+                ["Upload Resumes", "Pull from Avionté", "Select from Database"],
+                horizontal=True,
+                key="candidate_source_radio",
+                help="Choose how to provide candidate information"
+            )
             
             uploaded_files = []
             selected_candidate_ids = []
+            avionte_candidates = []
             
-            # Section 1: Select from Database (Optional)
-            st.markdown("**Select candidates from your resume database (optional):**")
-            all_candidates = search_candidates(user_id, query="", filters={})
-            
-            if all_candidates:
-                candidate_options = {f"{c['name']} ({c['email']})": c['id'] for c in all_candidates}
-                selected_names = st.multiselect(
-                    "Choose candidates",
-                    options=list(candidate_options.keys()),
-                    key="selected_candidate_names",
-                    help="Optional: Select one or more candidates from your database"
-                )
-                selected_candidate_ids = [candidate_options[name] for name in selected_names]
+            if candidate_source == "Pull from Avionté":
+                # Avionté candidate selection
+                from config import AvionteConfig
+                from avionte_client import AvionteClient
+                from avionte_transformer import AvionteTransformer
                 
-                if selected_candidate_ids:
-                    st.success(f"Selected {len(selected_candidate_ids)} candidate(s) from database")
-                    with st.expander("View selected candidates", expanded=False):
-                        selected_profiles = get_candidates_for_analysis(user_id, selected_candidate_ids)
-                        for profile in selected_profiles:
-                            st.write(f"- {profile['name']} ({profile['email']})")
-            else:
-                st.info("No candidates in database. Upload resumes below to add them.")
+                if not AvionteConfig.is_configured():
+                    st.error("**Avionté API not configured.** Please configure AVIONTE_API_KEY, AVIONTE_CLIENT_ID, and AVIONTE_CLIENT_SECRET environment variables.")
+                else:
+                    try:
+                        client = AvionteClient()
+                        transformer = AvionteTransformer(client)
+                        
+                        # Test connection
+                        if 'avionte_connection_test' not in st.session_state:
+                            with st.spinner("Testing Avionté connection..."):
+                                if client.test_connection():
+                                    st.session_state['avionte_connection_test'] = True
+                                    st.success("✓ Connected to Avionté")
+                                else:
+                                    st.session_state['avionte_connection_test'] = False
+                                    st.error("Failed to connect to Avionté. Please check your credentials.")
+                        
+                        if st.session_state.get('avionte_connection_test'):
+                            # Search/filter UI
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                talent_search = st.text_input("Search by name or email", key="talent_search", placeholder="Enter name or email...")
+                            with col2:
+                                talent_limit = st.number_input("Max results", min_value=10, max_value=500, value=50, step=10, key="talent_limit")
+                            
+                            if st.button("Search Talents", key="search_talents_btn"):
+                                try:
+                                    with st.spinner("Fetching talents from Avionté..."):
+                                        filters = {}
+                                        if talent_search:
+                                            # Note: Avionté API may have different filter parameters
+                                            # This is a placeholder - adjust based on actual API
+                                            filters = {'search': talent_search}
+                                        
+                                        talents = client.get_talents(filters=filters, limit=talent_limit)
+                                        st.session_state['avionte_talents'] = talents
+                                        st.success(f"Found {len(talents)} talent(s)")
+                                except Exception as e:
+                                    st.error(f"Failed to fetch talents: {str(e)}")
+                                    logger.error(f"Error fetching Avionté talents: {e}", exc_info=True)
+                            
+                            # Display talents for selection
+                            if 'avionte_talents' in st.session_state and st.session_state['avionte_talents']:
+                                talents = st.session_state['avionte_talents']
+                                
+                                # Multi-select for talents
+                                talent_options = {}
+                                for talent in talents:
+                                    talent_id = talent.get('id') or talent.get('talentId') or talent.get('applicantId', '')
+                                    first_name = talent.get('firstName') or talent.get('first_name', '')
+                                    last_name = talent.get('lastName') or talent.get('last_name', '')
+                                    name = f"{first_name} {last_name}".strip() or talent.get('name', 'Unknown')
+                                    email = talent.get('email') or talent.get('emailAddress', '')
+                                    display_name = f"{name} ({email})" if email else name
+                                    talent_options[display_name] = talent_id
+                                
+                                selected_talent_names = st.multiselect(
+                                    "Select talents to grade",
+                                    options=list(talent_options.keys()),
+                                    key="selected_avionte_talents",
+                                    help="Select one or more talents from Avionté"
+                                )
+                                
+                                if selected_talent_names:
+                                    selected_talent_ids = [talent_options[name] for name in selected_talent_names]
+                                    
+                                    if st.button("Fetch Selected Candidates", key="fetch_avionte_candidates_btn"):
+                                        try:
+                                            with st.spinner(f"Fetching {len(selected_talent_ids)} candidate(s) from Avionté..."):
+                                                # Fetch full talent data
+                                                full_talents = client.query_multiple_talents(selected_talent_ids)
+                                                
+                                                # Transform to app format
+                                                avionte_candidates = transformer.transform_talents_to_candidates(
+                                                    full_talents, 
+                                                    download_resumes=True
+                                                )
+                                                
+                                                st.session_state['avionte_candidates'] = avionte_candidates
+                                                st.success(f"Fetched {len(avionte_candidates)} candidate(s) from Avionté")
+                                        except Exception as e:
+                                            st.error(f"Failed to fetch candidates: {str(e)}")
+                                            logger.error(f"Error fetching Avionté candidates: {e}", exc_info=True)
+                                    
+                                    # Show selected candidates
+                                    if 'avionte_candidates' in st.session_state:
+                                        avionte_candidates = st.session_state['avionte_candidates']
+                                        st.success(f"Ready to process {len(avionte_candidates)} candidate(s) from Avionté")
+                                        with st.expander("View selected candidates", expanded=False):
+                                            for candidate in avionte_candidates:
+                                                st.write(f"- {candidate.get('name', 'Unknown')} ({candidate.get('email', 'No email')})")
+                            else:
+                                st.info("Click 'Search Talents' to find candidates from Avionté")
+                    except Exception as e:
+                        st.error(f"Error initializing Avionté client: {str(e)}")
+                        logger.error(f"Error initializing Avionté: {e}", exc_info=True)
             
-            # Section 2: Upload Additional Resumes (Optional)
-            st.markdown("**Upload additional resume files (optional):**")
-            uploaded_files = st.file_uploader(
-                "Upload Resume Files",
-                type=["pdf", "docx", "txt"],
-                accept_multiple_files=True,
-                help="Optional: Upload candidate resumes in PDF, DOCX, or TXT format. These will be automatically saved to your database after analysis.",
-                key="resume_uploader"
-            )
+            elif candidate_source == "Select from Database":
+                # Section 1: Select from Database (Optional)
+                st.markdown("**Select candidates from your resume database (optional):**")
+                all_candidates = search_candidates(user_id, query="", filters={})
+                
+                if all_candidates:
+                    candidate_options = {f"{c['name']} ({c['email']})": c['id'] for c in all_candidates}
+                    selected_names = st.multiselect(
+                        "Choose candidates",
+                        options=list(candidate_options.keys()),
+                        key="selected_candidate_names",
+                        help="Optional: Select one or more candidates from your database"
+                    )
+                    selected_candidate_ids = [candidate_options[name] for name in selected_names]
+                    
+                    if selected_candidate_ids:
+                        st.success(f"Selected {len(selected_candidate_ids)} candidate(s) from database")
+                        with st.expander("View selected candidates", expanded=False):
+                            selected_profiles = get_candidates_for_analysis(user_id, selected_candidate_ids)
+                            for profile in selected_profiles:
+                                st.write(f"- {profile['name']} ({profile['email']})")
+                else:
+                    st.info("No candidates in database. Upload resumes below to add them.")
+                
+                # Section 2: Upload Additional Resumes (Optional)
+                st.markdown("**Upload additional resume files (optional):**")
+                uploaded_files = st.file_uploader(
+                    "Upload Resume Files",
+                    type=["pdf", "docx", "txt"],
+                    accept_multiple_files=True,
+                    help="Optional: Upload candidate resumes in PDF, DOCX, or TXT format. These will be automatically saved to your database after analysis.",
+                    key="resume_uploader"
+                )
 
-            if uploaded_files:
-                st.success(f"Uploaded {len(uploaded_files)} resume(s)")
-                with st.expander("View uploaded files", expanded=False):
-                    for file in uploaded_files:
-                        size_kb = file.size / 1024
-                        st.write(f"- {file.name} ({size_kb:.1f} KB)")
+                if uploaded_files:
+                    st.success(f"Uploaded {len(uploaded_files)} resume(s)")
+                    with st.expander("View uploaded files", expanded=False):
+                        for file in uploaded_files:
+                            size_kb = file.size / 1024
+                            st.write(f"- {file.name} ({size_kb:.1f} KB)")
+            else:
+                # Upload Resumes mode
+                st.markdown("**Upload resume files (optional):**")
+                uploaded_files = st.file_uploader(
+                    "Upload Resume Files",
+                    type=["pdf", "docx", "txt"],
+                    accept_multiple_files=True,
+                    help="Optional: Upload candidate resumes in PDF, DOCX, or TXT format. These will be automatically saved to your database after analysis.",
+                    key="resume_uploader"
+                )
+
+                if uploaded_files:
+                    st.success(f"Uploaded {len(uploaded_files)} resume(s)")
+                    with st.expander("View uploaded files", expanded=False):
+                        for file in uploaded_files:
+                            size_kb = file.size / 1024
+                            st.write(f"- {file.name} ({size_kb:.1f} KB)")
             
             # Show combined total
             total_candidates = len(selected_candidate_ids) + len(uploaded_files) if uploaded_files else len(selected_candidate_ids)
+            if avionte_candidates:
+                total_candidates = len(avionte_candidates)
             if total_candidates > 0:
-                st.info(f"**Total candidates for analysis:** {total_candidates} ({len(selected_candidate_ids)} from database, {len(uploaded_files) if uploaded_files else 0} uploaded)")
+                source_breakdown = []
+                if avionte_candidates:
+                    source_breakdown.append(f"{len(avionte_candidates)} from Avionté")
+                if selected_candidate_ids:
+                    source_breakdown.append(f"{len(selected_candidate_ids)} from database")
+                if uploaded_files:
+                    source_breakdown.append(f"{len(uploaded_files)} uploaded")
+                breakdown_text = ", ".join(source_breakdown) if source_breakdown else "0"
+                st.info(f"**Total candidates for analysis:** {total_candidates} ({breakdown_text})")
             else:
                 st.info("**Info:** No resumes selected. The analysis will be created with job requirements only. You can add candidates later or upload resumes now.")
 
@@ -3138,12 +3593,20 @@ The AI will analyze this to extract skills and requirements.""",
             if process_button:
                 # Validation
                 errors = []
+                
+                # Get Avionté job if available
+                avionte_job = st.session_state.get('avionte_job')
+                if avionte_job:
+                    job_title = avionte_job.job_title
+                    location = avionte_job.location
+                    job_description = avionte_job.full_description
+                    certifications = [{"name": c.name, "category": c.category} for c in avionte_job.certifications]
 
-                if not job_title:
+                if not job_title and not avionte_job:
                     errors.append("Job title is required")
-                if not location:
+                if not location and not avionte_job:
                     errors.append("Location is required")
-                if not job_description:
+                if not job_description and not avionte_job:
                     errors.append("Job description is required")
                 # Note: Resumes are now optional - removed validation for them
 
@@ -3239,6 +3702,10 @@ The AI will analyze this to extract skills and requirements.""",
                             required_skills = st.session_state.get('current_required_skills', None)
                             preferred_skills = st.session_state.get('current_preferred_skills', None)
                             
+                            # Get Avionté candidates and job if available
+                            avionte_candidates = st.session_state.get('avionte_candidates', [])
+                            avionte_job = st.session_state.get('avionte_job')
+                            
                             # Run processing with progress callback
                             pdf_path = app.run(
                                 job_title=job_title,
@@ -3250,7 +3717,9 @@ The AI will analyze this to extract skills and requirements.""",
                                 preferred_skills=preferred_skills,
                                 progress_callback=update_progress,
                                 user_id=st.session_state.get("user_id"),
-                                resume_assets=resume_assets
+                                resume_assets=resume_assets,
+                                avionte_candidates=avionte_candidates if avionte_candidates else None,
+                                avionte_job=avionte_job
                             )
                             
                             # Get report ID if available (from app.run)
@@ -3286,7 +3755,12 @@ The AI will analyze this to extract skills and requirements.""",
                                                 resume_info['stored_path'],
                                                 utcnow_str()
                                             ))
-                                            conn.commit()
+                                            try:
+                                                conn.commit()
+                                            except Exception as e:
+                                                conn.rollback()
+                                                logger.error(f"Failed to save file asset: {e}", exc_info=True)
+                                                raise
                                         
                                         # Update resume_assets with file_asset_id for future reference
                                         for asset in resume_assets:
