@@ -19,8 +19,7 @@ def save_candidate_profile(
     resume_data: Dict[str, Any],
     resume_file_id: Optional[str] = None,
     tags: List[str] = None,
-    notes: str = None,
-    avionte_talent_id: Optional[str] = None
+    notes: str = None
 ) -> str:
     """
     Save a parsed resume to the candidate profiles database
@@ -31,17 +30,12 @@ def save_candidate_profile(
         resume_file_id: Optional file_assets ID for the resume file
         tags: Optional list of tags for organization
         notes: Optional user notes about the candidate
-        avionte_talent_id: Optional Avionté talent ID for syncing
     
     Returns:
         Profile ID
     """
     profile_id = str(uuid.uuid4())
     now = utcnow_str()
-    
-    # Extract avionte_talent_id from resume_data if not provided directly
-    if not avionte_talent_id:
-        avionte_talent_id = resume_data.get('avionte_talent_id')
     
     with get_db() as conn:
         cur = conn.cursor()
@@ -52,8 +46,6 @@ def save_candidate_profile(
              avionte_talent_id, avionte_sync_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """)
-        
-        avionte_sync_at = now if avionte_talent_id else None
         
         cur.execute(query, (
             profile_id,
@@ -68,8 +60,8 @@ def save_candidate_profile(
             notes or '',
             now,
             now,
-            avionte_talent_id,
-            avionte_sync_at
+            None,  # avionte_talent_id (no longer used)
+            None   # avionte_sync_at (no longer used)
         ))
         try:
             conn.commit()

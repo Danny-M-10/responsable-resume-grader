@@ -159,7 +159,11 @@ Extract and return ONLY a JSON object with these fields:
     ],
     "required_skills": ["skill1", "skill2"],
     "preferred_skills": ["skill1", "skill2"],
-    "experience_level": "Junior/Mid/Senior"
+    "experience_level": "Junior/Mid/Senior",
+    "industry_context": "brief description of the industry or field (optional)",
+    "soft_skills": ["communication", "teamwork", "leadership"],
+    "technical_stack": ["specific technologies", "tools", "software"],
+    "full_description": "the complete original job description text"
 }}
 
 CRITICAL RULES FOR JOB TITLE EXTRACTION - READ CAREFULLY:
@@ -251,6 +255,14 @@ CRITICAL RULES FOR JOB TITLE EXTRACTION - READ CAREFULLY:
 
 11. **Experience**: Look for years or level (Junior/Mid/Senior)
 
+12. **Industry Context** (optional): Extract a brief description of the industry, sector, or field (e.g., "Utility/Solar Energy", "Healthcare", "Construction"). This helps understand the business context. If not clear, leave as null.
+
+13. **Soft Skills** (optional): Extract interpersonal and communication skills explicitly mentioned (e.g., "communication", "teamwork", "leadership", "problem-solving"). Only extract if explicitly stated in requirements. If not mentioned, return empty array [].
+
+14. **Technical Stack** (optional): Extract specific technologies, tools, software, or systems explicitly mentioned (e.g., "Python", "AWS", "SQL", "Salesforce"). Only extract technologies explicitly required. If not mentioned, return empty array [].
+
+15. **Full Description**: Always include the complete original job description text in this field.
+
 MOST IMPORTANT RULE:
 - The job_title field MUST be a proper job title (2+ words, contains job function)
 - If you're unsure between multiple options, choose the one that:
@@ -335,6 +347,16 @@ JSON:
                 if not extracted_location or extracted_location.lower() in ['not found', 'none', 'n/a', '']:
                     job_data['location'] = 'Location Not Specified'
 
+                # Ensure all optional fields are present with defaults
+                if 'industry_context' not in job_data:
+                    job_data['industry_context'] = None
+                if 'soft_skills' not in job_data:
+                    job_data['soft_skills'] = []
+                if 'technical_stack' not in job_data:
+                    job_data['technical_stack'] = []
+                if 'full_description' not in job_data:
+                    job_data['full_description'] = content
+                
                 # Ensure skills are not empty or invalid - filter out single-word garbage
                 # Strict filtering: reject abbreviations, single letters, and invalid short words
                 invalid_abbreviations = ['ai', 'go', 'aws', 'it', 'hr', 'pr', 'ml', 'nlp', 'api', 'ui', 'ux', 'qa', 'pm']
@@ -383,9 +405,22 @@ JSON:
                         skill.strip() for skill in job_data['preferred_skills']
                         if is_valid_skill(skill)
                     ]
+                
+                # Filter soft_skills and technical_stack similarly
+                if 'soft_skills' in job_data:
+                    job_data['soft_skills'] = [
+                        skill.strip() for skill in job_data['soft_skills']
+                        if is_valid_skill(skill)
+                    ]
+                if 'technical_stack' in job_data:
+                    job_data['technical_stack'] = [
+                        skill.strip() for skill in job_data['technical_stack']
+                        if is_valid_skill(skill)
+                    ]
 
-                # Add full description
-                job_data['full_description'] = content
+                # Ensure full_description is set
+                if 'full_description' not in job_data or not job_data['full_description']:
+                    job_data['full_description'] = content
 
                 return job_data
             else:

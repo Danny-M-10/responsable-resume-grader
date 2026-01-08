@@ -32,6 +32,13 @@ class JobDetails:
     equivalent_titles: List[str] = field(default_factory=list)
     skill_synonyms: Dict[str, List[str]] = field(default_factory=dict)
     certification_equivalents: Dict[str, List[str]] = field(default_factory=dict)  # Maps cert name to list of equivalents
+    
+    # Universal recruiting tool enhancements
+    scoring_profile: Dict[str, float] = field(default_factory=dict)  # Custom scoring weights
+    industry_template: str = ""  # Industry template name (e.g., "healthcare", "technology")
+    custom_criteria: List[Dict[str, Any]] = field(default_factory=list)  # Additional custom evaluation criteria
+    bias_reduction_enabled: bool = False  # Enable blind screening
+    dealbreakers: List[str] = field(default_factory=list)  # Criteria that automatically disqualify candidates
 
 
 @dataclass
@@ -48,6 +55,12 @@ class CandidateScore:
     certification_match: Dict[str, Any]
     skills_match: Dict[str, Any]
     location_match: bool
+    # Transferrable skills analysis (NEW)
+    transferrable_skills_match: Dict[str, Any] = field(default_factory=lambda: {
+        'match_rate': 0.0,
+        'transferrable_skills': [],
+        'relevance_score': 0.0
+    })
     # Component scores for transparency and validation
     component_scores: Dict[str, float] = field(default_factory=dict)
     # Calibration metadata

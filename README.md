@@ -1,16 +1,20 @@
-# Recruitment Candidate Screening and Ranking Application
+# Universal Recruiting Tool
 
-A comprehensive AI-powered recruitment tool that analyzes job requirements and candidate resumes to provide intelligent ranking with detailed reasoning.
+A comprehensive AI-powered recruitment tool that analyzes job requirements and candidate resumes to provide intelligent ranking with detailed reasoning. **Now enhanced with industry-specific templates and customizable scoring for recruiters across all industries.**
 
 ## Features
 
-- Automated resume parsing from PDF, DOCX, and TXT formats
-- Intelligent job requirement extraction from descriptions
-- Chain-of-thought scoring with transparent reasoning
-- Weighted evaluation across multiple criteria
-- Professional PDF reports with visualizations
-- Skills and job title synonym matching
-- Certification requirement validation
+- **Universal Industry Support**: Pre-configured templates for Healthcare, Technology, Construction, Finance, Sales, and General roles
+- **Customizable Scoring**: Adjust scoring weights per job or industry
+- **Automated Resume Parsing**: Supports PDF, DOCX, and TXT formats
+- **Intelligent Job Requirement Extraction**: AI-powered analysis of job descriptions
+- **Chain-of-Thought Scoring**: Transparent reasoning for each candidate evaluation
+- **Weighted Evaluation**: Flexible scoring across multiple criteria
+- **Professional PDF Reports**: Detailed reports with visualizations
+- **Skills and Job Title Synonym Matching**: Recognizes equivalent terms
+- **Certification Requirement Validation**: Checks for required credentials
+- **Dealbreaker Detection**: Automatically disqualify candidates meeting specific criteria
+- **Bias Reduction**: Optional blind screening to reduce unconscious bias
 
 ## Installation
 
@@ -56,7 +60,11 @@ pdf_path = app.run(
         "path/to/resume1.pdf",
         "path/to/resume2.pdf",
         "path/to/resume3.docx"
-    ]
+    ],
+    industry_template="technology",  # Optional: Use technology template
+    custom_scoring_weights=None,  # Optional: Override template weights
+    dealbreakers=None,  # Optional: List of disqualifying criteria
+    bias_reduction_enabled=False  # Optional: Enable blind screening
 )
 
 print(f"Report generated: {pdf_path}")
@@ -96,8 +104,9 @@ Extracts structured data from resumes:
 
 ### 4. Scoring Algorithm
 
-Each candidate receives a score from 1-10 based on weighted criteria:
+Each candidate receives a score from 1-10 based on weighted criteria. **Weights are customizable** per job or industry template:
 
+**Default Weights (General Template)**:
 - Must-have certifications: 30%
 - Bonus certifications: 10%
 - Required skills: 25%
@@ -105,6 +114,15 @@ Each candidate receives a score from 1-10 based on weighted criteria:
 - Experience level: 10%
 - Job title match: 10%
 - Location: 5%
+
+**Industry Templates** adjust these weights automatically:
+- **Healthcare**: Emphasizes certifications (40%) and experience (15%)
+- **Technology**: Emphasizes skills (35%) and experience (15%)
+- **Construction**: Emphasizes certifications (35%) and experience (20%)
+- **Finance**: Balanced with focus on certifications (30%) and experience (20%)
+- **Sales**: Emphasizes experience (30%) and job title match (15%)
+
+See [INDUSTRY_TEMPLATES_GUIDE.md](INDUSTRY_TEMPLATES_GUIDE.md) for detailed information.
 
 ### 5. Chain-of-Thought Reasoning
 
@@ -170,6 +188,39 @@ Generated report includes:
 - `bonus`: Preferred certifications (additional points)
 
 ## Advanced Features
+
+### Industry Templates
+
+Pre-configured scoring profiles for different industries:
+- **Healthcare**: Optimized for medical roles requiring licenses
+- **Technology**: Emphasizes technical skills over certifications
+- **Construction**: Focuses on safety certifications and experience
+- **Finance**: Balanced for financial credentials and education
+- **Sales**: Prioritizes experience and achievements
+- **General**: Universal template for most roles
+
+See [INDUSTRY_TEMPLATES_GUIDE.md](INDUSTRY_TEMPLATES_GUIDE.md) for complete details.
+
+### Custom Scoring Weights
+
+Customize the importance of each evaluation criterion:
+- Adjust weights using sliders in the web interface
+- Override template defaults per job
+- Weights must sum to 100% (validated automatically)
+
+### Dealbreakers
+
+Automatically disqualify candidates meeting specific criteria:
+- Set dealbreakers like "Missing required license"
+- Candidates matching any dealbreaker receive score 0.0
+- Useful for filtering out non-viable candidates early
+
+### Bias Reduction
+
+Enable blind screening to reduce unconscious bias:
+- Removes names, photos, and graduation dates from evaluation
+- Focuses evaluation on qualifications only
+- Promotes fairer hiring decisions
 
 ### Synonym Matching
 

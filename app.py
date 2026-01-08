@@ -40,6 +40,8 @@ from resume_database import (
     filter_candidates, update_candidate_profile, delete_candidate_profile,
     get_candidates_for_analysis, link_candidate_to_analysis, get_candidate_analyses
 )
+# Theme system imports (needed early for _auth_gate)
+from ui.components import get_initial_theme, inject_theme_css, render_theme_toggle, render_theme_script, set_theme
 
 
 @st.cache_resource
@@ -119,42 +121,15 @@ def _auth_gate():
         if token:
             set_session_token_cookie(token)
             update_session_activity(token)
+        # Theme toggle in sidebar header
+        # Get current theme (will be initialized in main() but we need it here)
+        current_theme = get_initial_theme()
+        st.sidebar.markdown("### Theme")
+        render_theme_toggle(current_theme)
+        st.sidebar.markdown("---")
+        
         st.sidebar.success(f"Logged in as {email}")
         st.sidebar.info("Session expires after 2 hours of inactivity")
-        
-        # Avionté Connection Status
-        from config import AvionteConfig
-        if AvionteConfig.is_configured():
-            st.sidebar.markdown("---")
-            st.sidebar.markdown("### Avionté Integration")
-            
-            from avionte_client import AvionteClient
-            try:
-                if 'avionte_sidebar_test' not in st.session_state:
-                    with st.spinner("Testing..."):
-                        client = AvionteClient()
-                        if client.test_connection():
-                            st.session_state['avionte_sidebar_test'] = True
-                            st.sidebar.success("✓ Connected")
-                        else:
-                            st.session_state['avionte_sidebar_test'] = False
-                            st.sidebar.error("✗ Connection Failed")
-                else:
-                    if st.session_state.get('avionte_sidebar_test'):
-                        st.sidebar.success("✓ Connected")
-                    else:
-                        st.sidebar.error("✗ Connection Failed")
-                        if st.sidebar.button("Retry Connection", key="retry_avionte"):
-                            st.session_state.pop('avionte_sidebar_test', None)
-                            st.rerun()
-            except Exception as e:
-                st.sidebar.error("✗ Error")
-                st.sidebar.caption(f"Error: {str(e)[:50]}")
-        else:
-            st.sidebar.markdown("---")
-            st.sidebar.markdown("### Avionté Integration")
-            st.sidebar.info("Not configured")
-            st.sidebar.caption("Set AVIONTE_API_KEY, AVIONTE_CLIENT_ID, and AVIONTE_CLIENT_SECRET")
         
         # Previous Analyses section in sidebar
         st.sidebar.markdown("---")
@@ -465,7 +440,8 @@ def load_analysis_data(report_id: str, user_id: str) -> Optional[Dict]:
                         logger.warning(f"Failed to load PDF from {pdf_path}: {e}", exc_info=True)
                         # Continue without PDF data - don't fail the entire load
                 else:
-                    # Only log warning if PDF is recent (within last 24 hours) to avoid spam from old deleted PDFs
+                    # Only log warning if PDF is recent (within last 6 hours) to avoid spam from old deleted PDFs
+                    # Use debug level for missing PDFs to reduce log noise - missing PDFs are handled gracefully
                     try:
                         # Try to extract timestamp from filename
                         import re
@@ -474,11 +450,14 @@ def load_analysis_data(report_id: str, user_id: str) -> Optional[Dict]:
                             pdf_timestamp_str = match.group(1)
                             pdf_date = datetime.strptime(pdf_timestamp_str, "%Y%m%d_%H%M%S")
                             hours_old = (datetime.now() - pdf_date).total_seconds() / 3600
-                            if hours_old < 24:
-                                logger.warning(f"PDF file not found at path: {pdf_path}")
+                            # Only log as warning if very recent (within 6 hours), otherwise debug
+                            if hours_old < 6:
+                                logger.warning(f"PDF file not found at path: {pdf_path} (created {hours_old:.1f} hours ago)")
+                            else:
+                                logger.debug(f"PDF file not found at path: {pdf_path} (created {hours_old:.1f} hours ago - likely cleaned up)")
                         else:
-                            # If we can't parse timestamp, log it (might be important)
-                            logger.warning(f"PDF file not found at path: {pdf_path}")
+                            # If we can't parse timestamp, log as debug (likely an old file or non-standard path)
+                            logger.debug(f"PDF file not found at path: {pdf_path} (unable to parse timestamp)")
                     except Exception:
                         # If parsing fails, don't log - likely an old file
                         pass
@@ -1937,15 +1916,17 @@ def display_results(results):
                 'Score': [c.fit_score for c in sorted_for_viz]
             })
             
-            # Create color mapping based on score
+            # Create color mapping based on score (using CSS variables)
+            # Note: Plotly doesn't support CSS variables directly, so we use the actual color values
+            from ui.theme import SCORE_COLORS
             colors = []
             for score in chart_data['Score']:
                 if score >= 7.5:
-                    colors.append('#27ae60')  # Green - Excellent
+                    colors.append(SCORE_COLORS['excellent'])  # Green - Excellent
                 elif score >= 5.5:
-                    colors.append('#f39c12')  # Yellow/Orange - Good
+                    colors.append(SCORE_COLORS['good'])  # Yellow/Orange - Good
                 else:
-                    colors.append('#e74c3c')  # Red - Needs improvement
+                    colors.append(SCORE_COLORS['poor'])  # Red - Needs improvement
             
             # Display horizontal bar chart
             st.bar_chart(chart_data.set_index('Candidate'), height=400, use_container_width=True)
@@ -2036,34 +2017,116 @@ def display_results(results):
         # Display score in expander header
         score_display = f"{candidate.fit_score:.2f}/10"
         with st.expander(f"{i}. {candidate.name} - {score_display}", expanded=show_details):
-            # Score and basic info row
-            col1, col2, col3 = st.columns([1, 2, 2])
-
-            with col1:
-                st.markdown(f"**Score:** {score_badge}", unsafe_allow_html=True)
-
-            with col2:
-                st.markdown(f"**Email:** {candidate.email}")
-                st.markdown(f"**Phone:** {candidate.phone}")
-
-            with col3:
-                # Certification match indicator
-                has_must_have = candidate.certification_match.get('has_must_have', False)
-                cert_icon = "Yes" if has_must_have else "No"
-                st.markdown(f"**Must-Have Certs:** {cert_icon}")
-
-                # Location match indicator
-                loc_icon = "Yes" if candidate.location_match else "No"
-                st.markdown(f"**Location Match:** {loc_icon}")
-
-            # Certifications
-            if candidate.certifications:
-                st.markdown(f"**Certifications:** {', '.join(candidate.certifications)}")
-            else:
-                st.markdown("**Certifications:** None listed")
-
-            # Rationale with better formatting
+            # Contact info - ALWAYS displayed (matching report format)
+            st.markdown(f"**Email:** {candidate.email if candidate.email else 'Not provided'} • **Phone:** {candidate.phone if candidate.phone else 'Not provided'}")
             st.markdown("---")
+            
+            # Key Qualifications (by importance) - matching report format
+            st.markdown("**Key Qualifications (by importance):**")
+            
+            # Get scoring weights to prioritize information
+            from industry_templates import get_default_weights
+            from models import JobDetails
+            job_details_obj = results.get('job_details_obj')  # Try to get JobDetails object
+            if not job_details_obj:
+                # Fallback: create a minimal JobDetails for weights
+                job_details_obj = JobDetails(
+                    job_title=results['job_details']['title'],
+                    certifications=[],
+                    location=results['job_details']['location'],
+                    full_description=""
+                )
+            weights = job_details_obj.scoring_profile if hasattr(job_details_obj, 'scoring_profile') and job_details_obj.scoring_profile else get_default_weights()
+            
+            # Get required/preferred skills from JobDetails object
+            required_skills = getattr(job_details_obj, 'required_skills', []) if hasattr(job_details_obj, 'required_skills') else []
+            preferred_skills = getattr(job_details_obj, 'preferred_skills', []) if hasattr(job_details_obj, 'preferred_skills') else []
+            
+            qual_items = []
+            
+            # 1. Experience Level (HIGHEST PRIORITY)
+            exp_years = candidate.experience_match.get('years', 0)
+            if exp_years > 0:
+                qual_items.append((weights.get('experience_level', 0.25), f"• **Experience:** {exp_years} years"))
+            else:
+                qual_items.append((weights.get('experience_level', 0.25), f"• **Experience:** Not specified"))
+            
+            # 2. Job Title Match (SECOND PRIORITY)
+            titles = candidate.experience_match.get('titles', [])
+            if titles:
+                title_list = ', '.join(titles[:3])
+                if len(titles) > 3:
+                    title_list += f" (+{len(titles) - 3} more)"
+                qual_items.append((weights.get('job_title_match', 0.20), f"• **Job Title Match:** {title_list}"))
+            else:
+                qual_items.append((weights.get('job_title_match', 0.20), f"• **Job Title Match:** No relevant titles"))
+            
+            # 3. Required Skills (THIRD PRIORITY)
+            req_skills_list = candidate.skills_match.get('candidate_skills', [])
+            matched_skills = [s for s in req_skills_list if any(req.lower() in s.lower() or s.lower() in req.lower() for req in required_skills)] if required_skills else req_skills_list[:5]
+            if matched_skills:
+                skills_display = ', '.join(matched_skills[:5])
+                if len(matched_skills) > 5:
+                    skills_display += f" (+{len(matched_skills) - 5} more)"
+                qual_items.append((weights.get('required_skills', 0.18), f"• **Required Skills:** {skills_display}"))
+            else:
+                qual_items.append((weights.get('required_skills', 0.18), f"• **Required Skills:** Limited match"))
+            
+            # 4. Transferrable Skills (FOURTH PRIORITY)
+            transferrable_skills_list = candidate.transferrable_skills_match.get('transferrable_skills', [])
+            if transferrable_skills_list:
+                skills_display = ', '.join(transferrable_skills_list[:5])
+                if len(transferrable_skills_list) > 5:
+                    skills_display += f" (+{len(transferrable_skills_list) - 5} more)"
+                qual_items.append((weights.get('transferrable_skills', 0.15), f"• **Transferrable Skills:** {skills_display}"))
+            else:
+                qual_items.append((weights.get('transferrable_skills', 0.15), f"• **Transferrable Skills:** Limited transferrable skills"))
+            
+            # 5. Location (FIFTH PRIORITY)
+            if candidate.location_match:
+                qual_items.append((weights.get('location', 0.10), f"• **Location:** ✓ Matches job location"))
+            else:
+                qual_items.append((weights.get('location', 0.10), f"• **Location:** ✗ Does not match job location"))
+            
+            # 6. Preferred Skills (SIXTH PRIORITY)
+            pref_skills_list = candidate.skills_match.get('candidate_skills', [])
+            matched_pref_skills = [s for s in pref_skills_list if any(pref.lower() in s.lower() or s.lower() in pref.lower() for pref in preferred_skills)] if preferred_skills else pref_skills_list[:5]
+            if matched_pref_skills:
+                skills_display = ', '.join(matched_pref_skills[:5])
+                if len(matched_pref_skills) > 5:
+                    skills_display += f" (+{len(matched_pref_skills) - 5} more)"
+                qual_items.append((weights.get('preferred_skills', 0.07), f"• **Preferred Skills:** {skills_display}"))
+            else:
+                qual_items.append((weights.get('preferred_skills', 0.07), f"• **Preferred Skills:** Limited match"))
+            
+            # 7. Certifications/Education (LOWEST PRIORITY)
+            if candidate.certifications:
+                MAX_CERTS_DISPLAY = 3
+                if len(candidate.certifications) > MAX_CERTS_DISPLAY:
+                    cert_list = ', '.join(candidate.certifications[:MAX_CERTS_DISPLAY])
+                    qual_items.append((weights.get('certifications_education', 0.05), f"• **Certifications/Education:** {cert_list} (+{len(candidate.certifications) - MAX_CERTS_DISPLAY} more)"))
+                else:
+                    qual_items.append((weights.get('certifications_education', 0.05), f"• **Certifications/Education:** {', '.join(candidate.certifications)}"))
+            else:
+                qual_items.append((weights.get('certifications_education', 0.05), f"• **Certifications/Education:** None listed"))
+            
+            # Sort by weight (highest first) and display
+            qual_items.sort(key=lambda x: x[0], reverse=True)
+            for _, bullet in qual_items:
+                st.markdown(bullet)
+            
+            st.markdown("---")
+            
+            # Summary - concise 1-2 sentence fit assessment (matching report format)
+            st.markdown("**Summary:**")
+            from pdf_generator import PDFGenerator
+            pdf_gen = PDFGenerator()
+            summary_text = pdf_gen._generate_concise_summary(candidate, job_details_obj)
+            st.markdown(summary_text)
+            
+            st.markdown("---")
+            
+            # AI Assessment (full rationale)
             st.markdown("**AI Assessment:**")
             st.markdown(f"<div style='background-color: var(--bg-secondary); padding: var(--spacing-sm); border-radius: 0.5rem; font-size: var(--font-size-sm);'>{candidate.rationale}</div>", unsafe_allow_html=True)
 
@@ -2132,18 +2195,36 @@ def main():
         layout="wide"
     )
 
-    # Require authentication
-    _auth_gate()
+    # Initialize theme system (before auth gate so theme toggle works)
+    current_theme = get_initial_theme()
+    
+    # Inject theme CSS
+    inject_theme_css()
+    
+    # Inject theme initialization script
+    theme_script = render_theme_script(current_theme)
+    st.markdown(theme_script, unsafe_allow_html=True)
+    
+    # Set data-theme attribute on html element
+    st.markdown(f'<script>document.documentElement.setAttribute("data-theme", "{current_theme}");</script>', unsafe_allow_html=True)
 
+    # Require authentication (now theme system is initialized)
+    _auth_gate()
+    
     # Custom CSS with logo branding colors and enhanced styling
     st.markdown("""
         <style>
-        /* Logo branding colors and design system */
+        /* Logo branding colors and design system - now using design tokens */
         :root {
-            /* Brand colors */
-            --brand-blue: #0066CC;
-            --brand-green: #00A651;
+            /* CROSSROADS Professional Services Brand Colors */
+            --brand-blue: #00A8CC;  /* Bright medium blue (cyan/teal) from logo */
+            --brand-brown: #6B4423;  /* Dark brown/sepia for primary text */
+            --brand-black: #000000;  /* Black background */
+            --brand-green: #00A651;  /* Keep for success states */
             --brand-dark-gray: #4A4A4A;
+            
+            /* CROSSROADS Typography */
+            --font-serif: 'Times New Roman', 'Times', serif;
             --score-excellent: #27ae60;
             --score-good: #f39c12;
             --score-poor: #e74c3c;
@@ -2164,8 +2245,8 @@ def main():
             --font-size-2xl: 1.5rem;
             --font-size-3xl: 1.875rem;
             
-            /* Semantic colors */
-            --text-primary: #1a1a1a;
+            /* Semantic colors - CROSSROADS theme */
+            --text-primary: #6B4423;  /* Brown for primary text */
             --text-secondary: #4A4A4A;
             --text-muted: #6c757d;
             --bg-primary: #ffffff;
@@ -2184,33 +2265,24 @@ def main():
             --error-border: #DC3545;
         }
         
-        /* Dark mode support */
-        @media (prefers-color-scheme: dark) {
-            :root {
-                /* Dark mode backgrounds */
-                --bg-primary: #1a1a1a;
-                --bg-secondary: #2d2d2d;
-                
-                /* Dark mode text colors */
-                --text-primary: #f5f5f5;
-                --text-secondary: #e0e0e0;
-                --text-muted: #b0b0b0;
-                
-                /* Dark mode borders */
-                --border-color: #4a4a4a;
-                --border-color-hover: var(--brand-green);
-                
-                /* Dark mode status colors */
-                --success-bg: #1e3a1e;
-                --success-border: #4ade80;
-                --info-bg: #1e2a3a;
-                --info-border: #60a5fa;
-                --warning-bg: #3a2e1e;
-                --warning-border: #fbbf24;
-                --error-bg: #3a1e1e;
-                --error-border: #f87171;
-            }
-        }
+        /* Legacy variable mappings for backward compatibility */
+        --text-primary: var(--color-text-primary);
+        --text-secondary: var(--color-text-secondary);
+        --text-muted: var(--color-text-muted);
+        --bg-primary: var(--color-surface);
+        --bg-secondary: var(--color-surface-elevated);
+        --border-color: var(--color-border);
+        --border-color-hover: var(--color-border-hover);
+        
+        /* Status colors using new tokens (will be overridden by theme) */
+        --success-bg: var(--color-success);
+        --success-border: var(--color-success);
+        --info-bg: var(--color-info);
+        --info-border: var(--color-info);
+        --warning-bg: var(--color-warning);
+        --warning-border: var(--color-warning);
+        --error-bg: var(--color-danger);
+        --error-border: var(--color-danger);
 
         .header-container {
             display: flex;
@@ -2218,7 +2290,8 @@ def main():
             gap: 1rem;
             margin-bottom: 1.5rem;
             padding-bottom: 1rem;
-            border-bottom: 2px solid var(--brand-blue);
+            border-bottom: 2px solid var(--brand-blue);  /* CROSSROADS blue accent */
+            font-family: var(--font-serif);
         }
 
         .logo-container {
@@ -2242,13 +2315,14 @@ def main():
 
         .main-header {
             font-size: 2.5rem;
-            color: var(--brand-blue);
+            color: var(--brand-brown);  /* CROSSROADS brown */
             font-weight: bold;
             margin-bottom: 0.3rem;
+            font-family: var(--font-serif);
         }
 
-        .main-header .green-text {
-            color: var(--brand-green);
+        .main-header .blue-text {
+            color: var(--brand-blue);  /* CROSSROADS blue for Professional Services */
         }
 
         .sub-header {
@@ -2259,13 +2333,14 @@ def main():
 
         .section-header {
             font-size: var(--font-size-2xl);
-            color: var(--brand-blue);
+            color: var(--brand-brown);  /* CROSSROADS brown for headers */
             font-weight: 600;
             line-height: 1.3;
             margin-top: var(--spacing-lg);
             margin-bottom: var(--spacing-md);
-            border-bottom: 2px solid var(--brand-green);
+            border-bottom: 2px solid var(--brand-blue);  /* CROSSROADS blue accent */
             padding-bottom: var(--spacing-xs);
+            font-family: var(--font-serif);
         }
         
         /* Typography improvements */
@@ -2315,33 +2390,40 @@ def main():
             border-radius: 0.25rem;
         }
 
-        /* Style the Process Candidates button with brand green */
+        /* Style the Process Candidates button with CROSSROADS blue */
         div[data-testid="stButton"] > button[kind="primary"],
         button[kind="primary"] {
-            background-color: var(--brand-green) !important;
-            background: var(--brand-green) !important;
-            color: white !important;
+            background-color: var(--color-primary) !important;
+            background: var(--color-primary) !important;
+            color: var(--color-text-inverse) !important;
             border: none !important;
-            font-weight: bold !important;
-            font-size: 1.1rem !important;
-            padding: 0.75rem 2rem !important;
-            border-radius: 0.5rem !important;
-            transition: all 0.3s ease !important;
+            font-weight: var(--font-weight-semibold) !important;
+            font-size: var(--font-size-lg) !important;
+            padding: var(--spacing-md) var(--spacing-xl) !important;
+            border-radius: var(--radius-md) !important;
+            transition: all 0.2s ease !important;
         }
 
         div[data-testid="stButton"] > button[kind="primary"]:hover,
         button[kind="primary"]:hover {
-            background-color: #008A42 !important;
-            background: #008A42 !important;
-            box-shadow: 0 4px 8px rgba(0, 166, 81, 0.4) !important;
+            background-color: var(--color-primary) !important;
+            background: var(--color-primary) !important;
+            opacity: 0.9;
+            box-shadow: var(--shadow-md) !important;
             transform: translateY(-1px) !important;
         }
+        
+        div[data-testid="stButton"] > button[kind="primary"]:focus-visible,
+        button[kind="primary"]:focus-visible {
+            outline: 2px solid var(--color-focus-ring) !important;
+            outline-offset: 2px !important;
+        }
 
-        /* Style download button with brand blue */
+        /* Style download button with CROSSROADS blue */
         div[data-testid="stDownloadButton"] > button,
         .stDownloadButton > button {
-            background-color: var(--brand-blue) !important;
-            background: var(--brand-blue) !important;
+            background-color: var(--brand-blue) !important;  /* CROSSROADS blue */
+            background: var(--brand-blue) !important;  /* CROSSROADS blue */
             color: white !important;
             border: none !important;
             font-weight: bold !important;
@@ -2355,8 +2437,8 @@ def main():
 
         /* Additional Streamlit button styling */
         button[data-baseweb="button"][kind="primary"] {
-            background-color: var(--brand-green) !important;
-            background: var(--brand-green) !important;
+            background-color: var(--brand-blue) !important;  /* CROSSROADS blue */
+            background: var(--brand-blue) !important;  /* CROSSROADS blue */
         }
 
         /* Update success messages to use brand green */
@@ -2580,9 +2662,9 @@ def main():
         
         @media (prefers-color-scheme: dark) {
             /* Score colors remain the same for visibility */
-            .score-excellent { background-color: #2ecc71; }  /* Slightly brighter green */
-            .score-good { background-color: #f39c12; }  /* Keep orange */
-            .score-poor { background-color: #e74c3c; }  /* Keep red */
+            .score-excellent { background-color: var(--score-excellent); }
+            .score-good { background-color: var(--score-good); }
+            .score-poor { background-color: var(--score-poor); }
         }
 
         /* Processing status styling */
@@ -2613,8 +2695,9 @@ def main():
             left: 0;
             width: 100vw;
             height: 100vh;
-            background: rgba(255, 255, 255, 0.98);
-            backdrop-filter: blur(2px);
+                            background: var(--color-surface);
+                            opacity: 0.98;
+                            backdrop-filter: blur(2px);
             z-index: 9999;
             display: flex;
             align-items: center;
@@ -2709,8 +2792,8 @@ def main():
         </style>
     """, unsafe_allow_html=True)
 
-    # Header with logo
-    logo_path = Path(__file__).parent / "responsableLOGO-color-2048px.jpg"
+    # Header with logo - CROSSROADS Professional Services
+    logo_path = Path(__file__).parent / "Services Logo Full Color3840px copy.png"
 
     # Display logo with fixed width to maintain aspect ratio while reducing size, centered
     if logo_path.exists():
@@ -2740,8 +2823,8 @@ def main():
                     pass  # Silently fail if logo can't be displayed
         st.markdown("""
             <div style="text-align: center; margin-top: 0.5rem; margin-bottom: 1rem;">
-                <div style="font-size: var(--font-size-lg); color: var(--text-secondary); font-weight: 500;">
-                    AI-Powered Candidate Screening and Ranking System
+                <div style="font-size: var(--font-size-lg); color: var(--brand-blue); font-weight: 500; font-family: var(--font-serif);">
+                    Universal Recruiting Tool
                 </div>
             </div>
         """, unsafe_allow_html=True)
@@ -2751,8 +2834,8 @@ def main():
 
         with col1:
             st.markdown("""
-                <div style="font-size: var(--font-size-2xl); font-weight: bold; color: var(--brand-blue);">
-                    RA
+                <div style="font-size: var(--font-size-2xl); font-weight: bold; color: var(--brand-brown); font-family: 'Times New Roman', serif;">
+                    C
                 </div>
             """, unsafe_allow_html=True)
 
@@ -2760,10 +2843,10 @@ def main():
             st.markdown("""
                 <div class="header-text">
                     <div class="main-header">
-                        <span style="color: var(--brand-blue);">RESPONS</span><span class="green-text">ABLE</span>
-                        <span style="color: var(--text-secondary); font-size: var(--font-size-3xl);">Safety Staffing</span>
+                        <span style="color: var(--brand-brown); font-family: 'Times New Roman', serif; font-weight: bold;">CROSSROADS</span>
+                        <span style="color: var(--brand-blue); font-family: 'Times New Roman', serif; font-style: italic;">Professional Services</span>
                     </div>
-                    <div class="sub-header">AI-Powered Candidate Screening and Ranking System</div>
+                    <div class="sub-header">Universal Recruiting Tool</div>
                 </div>
             """, unsafe_allow_html=True)
 
@@ -2786,7 +2869,7 @@ def main():
                         'total': 0
                     })
                     
-                    # Use full viewport styling
+                    # Use full viewport styling with all necessary CSS
                     st.markdown("""
                         <style>
                         .full-page-loading-overlay {
@@ -2795,7 +2878,8 @@ def main():
                             left: 0;
                             width: 100vw;
                             height: 100vh;
-                            background: rgba(255, 255, 255, 0.98);
+                            background: var(--color-surface);
+                            opacity: 0.98;
                             backdrop-filter: blur(2px);
                             z-index: 9999;
                             display: flex;
@@ -2805,6 +2889,53 @@ def main():
                             margin: 0;
                             padding: 0;
                             overflow: hidden;
+                        }
+                        .loading-container {
+                            display: flex;
+                            flex-direction: column;
+                            align-items: center;
+                            justify-content: center;
+                            gap: 1.5rem;
+                            padding: 2rem;
+                            text-align: center;
+                        }
+                        .loading-spinner {
+                            width: 60px;
+                            height: 60px;
+                            border: 4px solid rgba(0, 166, 81, 0.2);
+                            border-top-color: var(--color-primary);
+                            border-radius: 50%;
+                            animation: spin 1s linear infinite;
+                        }
+                        @keyframes spin {
+                            to { transform: rotate(360deg); }
+                        }
+                        .loading-title {
+                            font-size: 1.5rem;
+                            font-weight: 600;
+                            color: var(--color-text-primary);
+                            margin: 0;
+                        }
+                        .loading-message {
+                            font-size: 1rem;
+                            color: var(--color-text-muted);
+                            margin: 0;
+                            max-width: 600px;
+                        }
+                        .loading-progress-bar {
+                            width: 100%;
+                            max-width: 400px;
+                            height: 8px;
+                            background-color: rgba(0, 166, 81, 0.1);
+                            border-radius: 4px;
+                            overflow: hidden;
+                            margin-top: 0.5rem;
+                        }
+                        .loading-progress-fill {
+                            height: 100%;
+                            background-color: var(--color-primary);
+                            border-radius: 4px;
+                            transition: width 0.3s ease;
                         }
                         </style>
                     """, unsafe_allow_html=True)
@@ -2824,7 +2955,7 @@ def main():
                 # Footer
                 st.markdown("---")
                 st.markdown(
-                    '<div style="text-align: center; color: var(--text-muted); padding: var(--spacing-sm);">ResponsAble Safety Staffing | Recruitment Candidate Ranker</div>',
+                    '<div style="text-align: center; color: var(--text-muted); padding: var(--spacing-sm);">CROSSROADS Professional Services | Universal Recruiting Tool</div>',
                     unsafe_allow_html=True
                 )
             # If we have stored results from viewing previous analysis, show them
@@ -2834,7 +2965,7 @@ def main():
                 # Footer
                 st.markdown("---")
                 st.markdown(
-                    '<div style="text-align: center; color: var(--text-muted); padding: var(--spacing-sm);">ResponsAble Safety Staffing | Recruitment Candidate Ranker</div>',
+                    '<div style="text-align: center; color: var(--text-muted); padding: var(--spacing-sm);">CROSSROADS Professional Services | Universal Recruiting Tool</div>',
                     unsafe_allow_html=True
                 )
             else:
@@ -2844,41 +2975,46 @@ def main():
                     This application analyzes job requirements and candidate resumes to provide intelligent rankings:
 
                     **Input Methods**:
-                    - **Job Sources**: Upload job description file (AI auto-extracts everything), pull from Avionté, or enter manually
-                    - **Candidate Sources**: Upload resume files, pull from Avionté, or select from your saved database
+                    - **Job Sources**: Upload job description file (AI auto-extracts everything) or enter manually
+                    - **Candidate Sources**: Upload resume files or select from your saved database
 
                     **Processing Steps**:
                     1. **Job Analysis**: Extracts requirements from job description (automatically if uploaded file)
                     2. **Research**: Identifies equivalent skills and job titles
-                    3. **Resume Parsing**: Extracts structured data from resumes (or uses pre-parsed Avionté data)
-                    4. **Scoring**: Evaluates candidates with chain-of-thought reasoning
+                    3. **Resume Parsing**: Extracts structured data from resumes
+                    4. **Scoring**: Evaluates candidates with AI-powered analysis and chain-of-thought reasoning
                     5. **Ranking**: Selects top 4-10 candidates
                     6. **Report**: Generates professional PDF with visualizations
 
-                    **Scoring Criteria**:
-                    - Must-have certifications: 30%
-                    - Bonus certifications: 10%
-                    - Required skills: 25%
-                    - Preferred skills: 10%
-                    - Experience level: 10%
-                    - Job title match: 10%
-                    - Location: 5%
+                    **Default Scoring Criteria** (Universal Standard - in order of priority):
+                    1. **Experience Level**: 25% - Candidate's years and depth of relevant experience
+                    2. **Job Title Match**: 20% - Relevance of candidate's previous job titles to the role
+                    3. **Required Skills**: 18% - Skills explicitly listed as required for the position
+                    4. **Transferrable Skills**: 15% - AI-identified skills from candidate's experience that are relevant but not explicitly listed (cross-industry, semantically similar, or relevant unlisted skills)
+                    5. **Location**: 10% - Geographic proximity to job location
+                    6. **Preferred Skills**: 7% - Skills listed as preferred (nice-to-have)
+                    7. **Certifications/Education**: 5% - Certifications, licenses, degrees, and education level (combined evaluation)
+
+                    **Customizable Scoring**:
+                    - **Industry Templates**: Choose from pre-configured templates (General, Healthcare, Technology, Construction, Finance, Sales) that adjust weights based on industry priorities
+                    - **Custom Weights**: Manually adjust the importance of each criterion to match your specific hiring needs
+                    - **Dealbreakers**: Set criteria that automatically disqualify candidates
+                    - **Bias Reduction**: Enable blind screening to reduce unconscious bias
+
+                    **AI-Powered Features**:
+                    - **Transferrable Skills Analysis**: The AI identifies skills from a candidate's experience that are relevant to the role but not explicitly listed in job requirements
+                    - **Semantic Understanding**: Recognizes skills with different wording but same meaning
+                    - **Cross-Industry Skills**: Identifies transferrable abilities from related fields
                     """)
 
             # Job Source Selection
             st.markdown('<div class="section-header">Job Source</div>', unsafe_allow_html=True)
             
-            from config import AvionteConfig
-            
-            job_source_options = ["Upload Job Description File (AI Extracts Everything)", "Manual Entry"]
-            if AvionteConfig.is_configured():
-                job_source_options.insert(1, "Pull from Avionté")
-            
             input_mode = st.radio(
                 "Choose how to provide job details:",
-                job_source_options,
+                ["Upload Job Description File (AI Extracts Everything)", "Manual Entry"],
                 horizontal=True,
-                help="File upload uses AI to automatically extract all job details. Avionté allows you to select from posted jobs.",
+                help="File upload uses AI to automatically extract all job details.",
                 key="input_mode_radio"
             )
             st.caption("**Note:** Job details are required. Candidate resumes are optional - you can add them later or upload them now.")
@@ -2894,6 +3030,7 @@ def main():
                 st.session_state.pop('edited_experience_level', None)
                 st.session_state.pop('edit_extracted_info', None)
                 st.session_state.pop('extracted_job_data', None)
+                st.session_state.pop('last_uploaded_file_hash', None)  # Clear hash when input mode changes
                 st.session_state.pop('current_required_skills', None)
                 st.session_state.pop('current_preferred_skills', None)
             st.session_state['last_input_mode'] = input_mode
@@ -2902,121 +3039,9 @@ def main():
             location = ""
             certifications = []
             job_description = ""
-            avionte_job = None
-
-            # MODE: Pull from Avionté
-            if input_mode == "Pull from Avionté":
-                st.markdown('<div class="section-header">Select Job from Avionté</div>', unsafe_allow_html=True)
-                
-                from avionte_client import AvionteClient
-                from avionte_transformer import AvionteTransformer
-                
-                if not AvionteConfig.is_configured():
-                    st.error("**Avionté API not configured.** Please configure AVIONTE_API_KEY, AVIONTE_CLIENT_ID, and AVIONTE_CLIENT_SECRET environment variables.")
-                else:
-                    try:
-                        client = AvionteClient()
-                        transformer = AvionteTransformer(client)
-                        
-                        # Test connection
-                        if 'avionte_job_connection_test' not in st.session_state:
-                            with st.spinner("Testing Avionté connection..."):
-                                if client.test_connection():
-                                    st.session_state['avionte_job_connection_test'] = True
-                                    st.success("✓ Connected to Avionté")
-                                else:
-                                    st.session_state['avionte_job_connection_test'] = False
-                                    st.error("Failed to connect to Avionté. Please check your credentials.")
-                        
-                        if st.session_state.get('avionte_job_connection_test'):
-                            # Search/filter UI
-                            col1, col2 = st.columns(2)
-                            with col1:
-                                job_search = st.text_input("Search jobs by title", key="job_search", placeholder="Enter job title...")
-                            with col2:
-                                job_limit = st.number_input("Max results", min_value=10, max_value=500, value=50, step=10, key="job_limit")
-                            
-                            if st.button("Search Jobs", key="search_jobs_btn"):
-                                try:
-                                    with st.spinner("Fetching jobs from Avionté..."):
-                                        filters = {}
-                                        if job_search:
-                                            filters = {'search': job_search}
-                                        
-                                        jobs = client.get_jobs(filters=filters, limit=job_limit)
-                                        st.session_state['avionte_jobs'] = jobs
-                                        st.success(f"Found {len(jobs)} job(s)")
-                                except Exception as e:
-                                    st.error(f"Failed to fetch jobs: {str(e)}")
-                                    logger.error(f"Error fetching Avionté jobs: {e}", exc_info=True)
-                            
-                            # Display jobs for selection
-                            if 'avionte_jobs' in st.session_state and st.session_state['avionte_jobs']:
-                                jobs = st.session_state['avionte_jobs']
-                                
-                                # Job selector
-                                job_options = {}
-                                for job in jobs:
-                                    job_id = job.get('id') or job.get('jobId', '')
-                                    title = job.get('title') or job.get('jobTitle') or job.get('name', 'Untitled')
-                                    job_location = job.get('location') or ''
-                                    if job_location:
-                                        display_name = f"{title} - {job_location}"
-                                    else:
-                                        display_name = title
-                                    job_options[display_name] = job_id
-                                
-                                selected_job_name = st.selectbox(
-                                    "Select a job",
-                                    options=[""] + list(job_options.keys()),
-                                    key="selected_avionte_job",
-                                    help="Select a job from Avionté to use for this analysis"
-                                )
-                                
-                                if selected_job_name:
-                                    selected_job_id = job_options[selected_job_name]
-                                    
-                                    if st.button("Use Selected Job", key="use_avionte_job_btn"):
-                                        try:
-                                            with st.spinner("Loading job details from Avionté..."):
-                                                # Fetch full job data
-                                                job_data = client.get_job_by_id(selected_job_id)
-                                                
-                                                if job_data:
-                                                    # Transform to JobDetails format
-                                                    avionte_job = transformer.transform_job_to_job_details(job_data)
-                                                    st.session_state['avionte_job'] = avionte_job
-                                                    st.success(f"Loaded job: {avionte_job.job_title}")
-                                                    
-                                                    # Display job details
-                                                    with st.expander("View job details", expanded=True):
-                                                        st.write(f"**Title:** {avionte_job.job_title}")
-                                                        st.write(f"**Location:** {avionte_job.location}")
-                                                        st.write(f"**Required Skills:** {', '.join(avionte_job.required_skills) if avionte_job.required_skills else 'None'}")
-                                                        st.write(f"**Certifications:** {len(avionte_job.certifications)} required")
-                                                        st.write(f"**Description:** {avionte_job.full_description[:200]}..." if len(avionte_job.full_description) > 200 else f"**Description:** {avionte_job.full_description}")
-                                                else:
-                                                    st.error("Job not found in Avionté")
-                                        except Exception as e:
-                                            st.error(f"Failed to load job: {str(e)}")
-                                            logger.error(f"Error loading Avionté job: {e}", exc_info=True)
-                                    
-                                    # Use stored job if available
-                                    if 'avionte_job' in st.session_state:
-                                        avionte_job = st.session_state['avionte_job']
-                                        # Extract values for display/processing
-                                        job_title = avionte_job.job_title
-                                        location = avionte_job.location
-                                        job_description = avionte_job.full_description
-                                        certifications = [{"name": c.name, "category": c.category} for c in avionte_job.certifications]
-                            else:
-                                st.info("Click 'Search Jobs' to find jobs from Avionté")
-                    except Exception as e:
-                        st.error(f"Error initializing Avionté client: {str(e)}")
-                        logger.error(f"Error initializing Avionté: {e}", exc_info=True)
 
             # MODE 1: File Upload (AI Auto-Extraction)
-            elif input_mode == "Upload Job Description File (AI Extracts Everything)":
+            if input_mode == "Upload Job Description File (AI Extracts Everything)":
                 st.markdown('<div class="section-header">Upload Job Description</div>', unsafe_allow_html=True)
 
                 job_desc_file = st.file_uploader(
@@ -3034,8 +3059,23 @@ def main():
                         job_desc_file = None
                     
                     if job_desc_file:
+                        import hashlib
+                        
+                        # Calculate file hash for more reliable tracking (name + size + content hash)
+                        # Use getvalue() instead of getbuffer() for consistent hashing across reruns
+                        file_bytes = job_desc_file.getvalue()
+                        file_hash = hashlib.md5(file_bytes).hexdigest()
+                        file_size = len(file_bytes)
+                        file_identifier = f"{job_desc_file.name}_{file_size}_{file_hash[:8]}"
+                        
+                        # Check if this exact file has already been parsed - skip parsing if already done
+                        file_already_parsed = (
+                            'extracted_job_data' in st.session_state and 
+                            st.session_state.get('last_uploaded_file_hash') == file_hash
+                        )
+                        
                         # Clear previous edited values when new file is uploaded
-                        if 'extracted_job_data' not in st.session_state or st.session_state.get('last_uploaded_file') != job_desc_file.name:
+                        if not file_already_parsed:
                             # Clear edited values to start fresh
                             st.session_state.pop('edited_job_title', None)
                             st.session_state.pop('edited_location', None)
@@ -3046,20 +3086,46 @@ def main():
                             st.session_state.pop('edited_experience_level', None)
                             st.session_state.pop('edit_extracted_info', None)
                             st.session_state['last_uploaded_file'] = job_desc_file.name
+                            # Don't store hash here - store it AFTER successful parsing
                         
-                        with st.spinner("AI is analyzing job description..."):
+                        # Only parse if file hasn't been parsed yet
+                        if not file_already_parsed:
+                            # Show loading screen with progress bar
+                            loading_placeholder = st.empty()
                             try:
+                                # Step 1: Reading file and preparing content (0-20%)
+                                with loading_placeholder.container():
+                                    from loading_components import show_job_analysis_loading
+                                    show_job_analysis_loading(progress=0.1)
+                                
                                 # Save to temp file for parser
                                 temp_dir = tempfile.mkdtemp()
                                 temp_path = os.path.join(temp_dir, job_desc_file.name)
 
                                 try:
                                     with open(temp_path, 'wb') as f:
-                                        f.write(job_desc_file.getbuffer())
+                                        f.write(file_bytes)  # Use file_bytes already calculated for hash
+                                    
+                                    # Step 2: File read complete (20%)
+                                    with loading_placeholder.container():
+                                        show_job_analysis_loading(progress=0.2)
 
+                                    # Step 3: AI extraction (20-60%)
+                                    with loading_placeholder.container():
+                                        show_job_analysis_loading(progress=0.3)
+                                    
                                     # Parse the job description file using AI parser
                                     parser = AIJobParser()  # Uses AI if API key available
+                                    
+                                    # Update progress during AI call (30-50%)
+                                    with loading_placeholder.container():
+                                        show_job_analysis_loading(progress=0.5)
+                                    
                                     job_data = parser.parse(temp_path)
+                                    
+                                    # Step 4: Parsing AI response (60-80%)
+                                    with loading_placeholder.container():
+                                        show_job_analysis_loading(progress=0.7)
                                 finally:
                                     # Cleanup temporary files
                                     import shutil
@@ -3069,8 +3135,15 @@ def main():
                                         logger.warning(f"Failed to cleanup temp directory {temp_dir}: {e}", exc_info=True)
                                         # Continue - cleanup errors are non-critical
 
+                                # Step 5: Storing results and initializing form fields (80-100%)
+                                with loading_placeholder.container():
+                                    show_job_analysis_loading(progress=0.9)
+
                                 # Store extracted data in session state for editing
                                 st.session_state['extracted_job_data'] = job_data
+                                # Store hash AFTER successful parsing to ensure it persists
+                                st.session_state['last_uploaded_file_hash'] = file_hash  # Use hash calculated at start of function
+                                st.session_state['last_uploaded_file'] = job_desc_file.name
                                 
                                 # Initialize edited values if not already set
                                 if 'edited_job_title' not in st.session_state:
@@ -3087,148 +3160,211 @@ def main():
                                     st.session_state['edited_preferred_skills'] = job_data.get('preferred_skills', [])
                                 if 'edited_experience_level' not in st.session_state:
                                     st.session_state['edited_experience_level'] = job_data.get('experience_level', '')
-
+                                
+                                # Hide loading screen
+                                loading_placeholder.empty()
+                                
                                 # Show success with extracted info
                                 st.success(f"Successfully processed: {job_desc_file.name}")
-
-                                # Check if we're in edit mode
-                                edit_mode = st.session_state.get("edit_extracted_info", False)
+                            except Exception as e:
+                                # Hide loading screen on error
+                                loading_placeholder.empty()
+                                logger.error(f"Error parsing job description: {e}", exc_info=True)
                                 
-                                if edit_mode:
-                                    # EDIT MODE: Show editable form fields
-                                    st.markdown("### Edit Extracted Information")
-                                    
-                                    # Job Title
-                                    edited_job_title = st.text_input(
-                                        "Job Title",
-                                        value=st.session_state.get('edited_job_title', job_data.get('job_title', '')),
-                                        key="edit_job_title",
-                                        help="Edit the job title"
-                                    )
-                                    
-                                    # Location
-                                    edited_location = st.text_input(
-                                        "Location",
-                                        value=st.session_state.get('edited_location', job_data.get('location', '')),
-                                        key="edit_location",
-                                        help="Edit the location"
-                                    )
-                                    
-                                    # Experience Level
-                                    exp_level = st.session_state.get('edited_experience_level', job_data.get('experience_level', ''))
-                                    exp_options = ["", "Junior", "Mid", "Senior"]
-                                    exp_index = exp_options.index(exp_level) if exp_level in exp_options else 0
-                                    edited_experience_level = st.selectbox(
-                                        "Experience Level",
-                                        options=exp_options,
-                                        index=exp_index,
-                                        key="edit_experience_level",
-                                        help="Select experience level"
-                                    )
-                                    
-                                    # Certifications - convert to editable text format
-                                    current_certs = st.session_state.get('edited_certifications', job_data.get('certifications', []))
-                                    cert_text_lines = []
-                                    for cert in current_certs:
-                                        if cert.get('category') == 'must-have':
-                                            cert_text_lines.append(f"*{cert.get('name', '')}")
-                                        else:
-                                            cert_text_lines.append(cert.get('name', ''))
-                                    cert_text_default = "\n".join(cert_text_lines)
-                                    
-                                    st.markdown("**Certifications** (one per line, prefix with `*` for required)")
-                                    st.caption("Example: `*OSHA 30` (required) or `First Aid` (preferred)")
-                                    
-                                    edited_cert_text = st.text_area(
-                                        "Certifications",
-                                        value=cert_text_default,
-                                        height=100,
-                                        key="edit_certifications_text",
-                                        help="Enter one certification per line. Prefix with * for must-have/required certifications.",
-                                        label_visibility="collapsed"
-                                    )
-                                    
-                                    # Parse certifications from text
-                                    edited_certifications = []
-                                    if edited_cert_text:
-                                        for line in edited_cert_text.strip().split('\n'):
-                                            line = line.strip()
-                                            if line:
-                                                if line.startswith('*'):
-                                                    edited_certifications.append({
-                                                        "name": line[1:].strip(),
-                                                        "category": "must-have"
-                                                    })
-                                                else:
-                                                    edited_certifications.append({
-                                                        "name": line,
-                                                        "category": "bonus"
-                                                    })
-                                    
-                                    if edited_certifications:
-                                        st.caption(f"Parsed: {len([c for c in edited_certifications if c['category'] == 'must-have'])} required, {len([c for c in edited_certifications if c['category'] == 'bonus'])} preferred")
-                                    
-                                    # Required Skills
-                                    current_req_skills = st.session_state.get('edited_required_skills', job_data.get('required_skills', []))
-                                    edited_required_skills_text = st.text_area(
-                                        "Required Skills",
-                                        value=", ".join(current_req_skills) if current_req_skills else "",
-                                        height=80,
-                                        key="edit_required_skills",
-                                        help="Comma-separated list of required skills"
-                                    )
-                                    edited_required_skills = [s.strip() for s in edited_required_skills_text.split(',') if s.strip()] if edited_required_skills_text else []
-                                    
-                                    # Preferred Skills
-                                    current_pref_skills = st.session_state.get('edited_preferred_skills', job_data.get('preferred_skills', []))
-                                    edited_preferred_skills_text = st.text_area(
-                                        "Preferred Skills",
-                                        value=", ".join(current_pref_skills) if current_pref_skills else "",
-                                        height=80,
-                                        key="edit_preferred_skills",
-                                        help="Comma-separated list of preferred skills"
-                                    )
-                                    edited_preferred_skills = [s.strip() for s in edited_preferred_skills_text.split(',') if s.strip()] if edited_preferred_skills_text else []
-                                    
-                                    # Job Description
-                                    edited_job_description = st.text_area(
-                                        "Full Job Description",
-                                        value=st.session_state.get('edited_job_description', job_data.get('full_description', '')),
-                                        height=300,
-                                        key="edit_job_description",
-                                        help="Edit the full job description"
-                                    )
-                                    
-                                    # Save/Cancel buttons
-                                    col_save, col_cancel = st.columns([1, 1])
-                                    with col_save:
-                                        if st.button("Save Changes", type="primary", key="save_edited_info", width='stretch'):
-                                            # Store edited values
-                                            st.session_state['edited_job_title'] = edited_job_title
-                                            st.session_state['edited_location'] = edited_location
-                                            st.session_state['edited_certifications'] = edited_certifications
-                                            st.session_state['edited_job_description'] = edited_job_description
-                                            st.session_state['edited_required_skills'] = edited_required_skills
-                                            st.session_state['edited_preferred_skills'] = edited_preferred_skills
-                                            st.session_state['edited_experience_level'] = edited_experience_level
-                                            st.session_state["edit_extracted_info"] = False
-                                            st.success("Changes saved!")
-                                            st.rerun()
-                                    
-                                    with col_cancel:
-                                        if st.button("Cancel", key="cancel_edit", width='stretch'):
-                                            st.session_state["edit_extracted_info"] = False
-                                            st.rerun()
+                                # Provide more helpful error messages
+                                error_msg = str(e)
+                                if "400" in error_msg or "Bad Request" in error_msg:
+                                    st.error(f"**Error - File Processing:** The file '{job_desc_file.name}' could not be processed. This may be due to:\n\n"
+                                            "- File format issue (corrupted or unsupported format)\n"
+                                            "- File is too large or contains invalid content\n"
+                                            "- PDF is image-based (scanned) rather than text-based\n\n"
+                                            "**Please try:**\n"
+                                            "- Converting the PDF to text format\n"
+                                            "- Using a different file format (DOCX or TXT)\n"
+                                            "- Ensuring the file is not corrupted")
+                                elif "API" in error_msg or "OpenAI" in error_msg or "key" in error_msg.lower():
+                                    st.error(f"**Error - API:** {error_msg}\n\n"
+                                            "Please check your OpenAI API key configuration.")
+                                elif "read" in error_msg.lower() or "parse" in error_msg.lower() or "encrypted" in error_msg.lower():
+                                    st.error(f"**Error - File Reading:** Could not read the file '{job_desc_file.name}'. "
+                                            "The file may be corrupted, encrypted, or in an unsupported format. Please try a different file.")
                                 else:
-                                    # VIEW MODE: Show read-only display
-                                    st.markdown("### AI-Extracted Information")
-                                    
-                                    # Use edited values if they exist, otherwise use extracted values
-                                    display_job_title = st.session_state.get('edited_job_title', job_data.get('job_title', ''))
-                                    display_location = st.session_state.get('edited_location', job_data.get('location', ''))
-                                    display_certifications = st.session_state.get('edited_certifications', job_data.get('certifications', []))
-                                    display_job_description = st.session_state.get('edited_job_description', job_data.get('full_description', ''))
-                                    display_experience_level = st.session_state.get('edited_experience_level', job_data.get('experience_level', ''))
+                                    st.error(f"**Error processing file:** {error_msg}\n\n"
+                                            f"If this problem persists, please try uploading a different file format (TXT, DOCX, or text-based PDF).")
+                                
+                                # Clear the file from session state on error so user can retry
+                                if 'last_uploaded_file' in st.session_state:
+                                    st.session_state.pop('last_uploaded_file', None)
+                                    st.session_state.pop('last_uploaded_file_hash', None)
+                                    st.session_state.pop('extracted_job_data', None)
+                                # Set job_data to empty dict to prevent errors downstream
+                                job_data = {}
+                        
+                        # If file was already parsed, use cached data (only if parsing didn't happen/fail)
+                        if file_already_parsed:
+                            # Use cached extracted data
+                            job_data = st.session_state.get('extracted_job_data', {})
+                            
+                            # Ensure edited values are initialized from cached data
+                            if 'edited_job_title' not in st.session_state and job_data.get('job_title'):
+                                st.session_state['edited_job_title'] = job_data.get('job_title', '')
+                            if 'edited_location' not in st.session_state and job_data.get('location'):
+                                st.session_state['edited_location'] = job_data.get('location', '')
+                            if 'edited_certifications' not in st.session_state and job_data.get('certifications'):
+                                st.session_state['edited_certifications'] = job_data.get('certifications', [])
+                            if 'edited_job_description' not in st.session_state and job_data.get('full_description'):
+                                st.session_state['edited_job_description'] = job_data.get('full_description', '')
+                            if 'edited_required_skills' not in st.session_state and job_data.get('required_skills'):
+                                st.session_state['edited_required_skills'] = job_data.get('required_skills', [])
+                            if 'edited_preferred_skills' not in st.session_state and job_data.get('preferred_skills'):
+                                st.session_state['edited_preferred_skills'] = job_data.get('preferred_skills', [])
+                            if 'edited_experience_level' not in st.session_state and job_data.get('experience_level'):
+                                st.session_state['edited_experience_level'] = job_data.get('experience_level', '')
+                        
+                        # Ensure job_data is defined (for both parsed and cached paths)
+                        if 'job_data' not in locals() or not job_data:
+                            job_data = st.session_state.get('extracted_job_data', {})
+                        
+                        # Only proceed with edit/view mode if we have valid job_data
+                        if job_data:
+                            # Check if we're in edit mode (for both parsed and cached data)
+                            edit_mode = st.session_state.get("edit_extracted_info", False)
+                            
+                            if edit_mode:
+                                # EDIT MODE: Show editable form fields
+                                st.markdown("### Edit Extracted Information")
+                                
+                                # Job Title
+                                edited_job_title = st.text_input(
+                                    "Job Title",
+                                    value=st.session_state.get('edited_job_title', job_data.get('job_title', '')),
+                                    key="edit_job_title",
+                                    help="Edit the job title"
+                                )
+                                
+                                # Location
+                                edited_location = st.text_input(
+                                    "Location",
+                                    value=st.session_state.get('edited_location', job_data.get('location', '')),
+                                    key="edit_location",
+                                    help="Edit the location"
+                                )
+                                
+                                # Experience Level
+                                exp_level = st.session_state.get('edited_experience_level', job_data.get('experience_level', ''))
+                                exp_options = ["", "Junior", "Mid", "Senior"]
+                                exp_index = exp_options.index(exp_level) if exp_level in exp_options else 0
+                                edited_experience_level = st.selectbox(
+                                    "Experience Level",
+                                    options=exp_options,
+                                    index=exp_index,
+                                    key="edit_experience_level",
+                                    help="Select experience level"
+                                )
+                                
+                                # Certifications - convert to editable text format
+                                current_certs = st.session_state.get('edited_certifications', job_data.get('certifications', []))
+                                cert_text_lines = []
+                                for cert in current_certs:
+                                    if cert.get('category') == 'must-have':
+                                        cert_text_lines.append(f"*{cert.get('name', '')}")
+                                    else:
+                                        cert_text_lines.append(cert.get('name', ''))
+                                cert_text_default = "\n".join(cert_text_lines)
+                                
+                                st.markdown("**Certifications** (one per line, prefix with `*` for required)")
+                                st.caption("Example: `*OSHA 30` (required) or `First Aid` (preferred)")
+                                
+                                edited_cert_text = st.text_area(
+                                    "Certifications",
+                                    value=cert_text_default,
+                                    height=100,
+                                    key="edit_certifications_text",
+                                    help="Enter one certification per line. Prefix with * for must-have/required certifications.",
+                                    label_visibility="collapsed"
+                                )
+                                
+                                # Parse certifications from text
+                                edited_certifications = []
+                                if edited_cert_text:
+                                    for line in edited_cert_text.strip().split('\n'):
+                                        line = line.strip()
+                                        if line:
+                                            if line.startswith('*'):
+                                                edited_certifications.append({
+                                                    "name": line[1:].strip(),
+                                                    "category": "must-have"
+                                                })
+                                            else:
+                                                edited_certifications.append({
+                                                    "name": line,
+                                                    "category": "bonus"
+                                                })
+                                
+                                if edited_certifications:
+                                    st.caption(f"Parsed: {len([c for c in edited_certifications if c['category'] == 'must-have'])} required, {len([c for c in edited_certifications if c['category'] == 'bonus'])} preferred")
+                                
+                                # Required Skills
+                                current_req_skills = st.session_state.get('edited_required_skills', job_data.get('required_skills', []))
+                                edited_required_skills_text = st.text_area(
+                                    "Required Skills",
+                                    value=", ".join(current_req_skills) if current_req_skills else "",
+                                    height=80,
+                                    key="edit_required_skills",
+                                    help="Comma-separated list of required skills"
+                                )
+                                edited_required_skills = [s.strip() for s in edited_required_skills_text.split(',') if s.strip()] if edited_required_skills_text else []
+                                
+                                # Preferred Skills
+                                current_pref_skills = st.session_state.get('edited_preferred_skills', job_data.get('preferred_skills', []))
+                                edited_preferred_skills_text = st.text_area(
+                                    "Preferred Skills",
+                                    value=", ".join(current_pref_skills) if current_pref_skills else "",
+                                    height=80,
+                                    key="edit_preferred_skills",
+                                    help="Comma-separated list of preferred skills"
+                                )
+                                edited_preferred_skills = [s.strip() for s in edited_preferred_skills_text.split(',') if s.strip()] if edited_preferred_skills_text else []
+                                
+                                # Job Description
+                                edited_job_description = st.text_area(
+                                    "Full Job Description",
+                                    value=st.session_state.get('edited_job_description', job_data.get('full_description', '')),
+                                    height=300,
+                                    key="edit_job_description",
+                                    help="Edit the full job description"
+                                )
+                                
+                                # Save/Cancel buttons
+                                col_save, col_cancel = st.columns([1, 1])
+                                with col_save:
+                                    if st.button("Save Changes", type="primary", key="save_edited_info", width='stretch'):
+                                        # Store edited values
+                                        st.session_state['edited_job_title'] = edited_job_title
+                                        st.session_state['edited_location'] = edited_location
+                                        st.session_state['edited_certifications'] = edited_certifications
+                                        st.session_state['edited_job_description'] = edited_job_description
+                                        st.session_state['edited_required_skills'] = edited_required_skills
+                                        st.session_state['edited_preferred_skills'] = edited_preferred_skills
+                                        st.session_state['edited_experience_level'] = edited_experience_level
+                                        st.session_state["edit_extracted_info"] = False
+                                        st.success("Changes saved!")
+                                        st.rerun()
+                                
+                                with col_cancel:
+                                    if st.button("Cancel", key="cancel_edit", width='stretch'):
+                                        st.session_state["edit_extracted_info"] = False
+                                        st.rerun()
+                            else:
+                                # VIEW MODE: Show read-only display
+                                st.markdown("### AI-Extracted Information")
+                                
+                                # Use edited values if they exist, otherwise use extracted values
+                                display_job_title = st.session_state.get('edited_job_title', job_data.get('job_title', ''))
+                                display_location = st.session_state.get('edited_location', job_data.get('location', ''))
+                                display_certifications = st.session_state.get('edited_certifications', job_data.get('certifications', []))
+                                display_job_description = st.session_state.get('edited_job_description', job_data.get('full_description', ''))
+                                display_experience_level = st.session_state.get('edited_experience_level', job_data.get('experience_level', ''))
 
                                 col1, col2 = st.columns(2)
                                 with col1:
@@ -3288,35 +3424,6 @@ def main():
                                     st.session_state['current_preferred_skills'] = st.session_state.get('edited_preferred_skills', job_data.get('preferred_skills', []))
                                 else:
                                     st.session_state['current_preferred_skills'] = job_data.get('preferred_skills', [])
-
-                            except Exception as e:
-                                logger.error(f"Error processing job description file: {e}", exc_info=True)
-                                
-                                # Provide more helpful error messages
-                                error_msg = str(e)
-                                if "400" in error_msg or "Bad Request" in error_msg:
-                                    st.error(f"**Error - File Processing:** The file '{job_desc_file.name}' could not be processed. This may be due to:\n\n"
-                                            "- File format issue (corrupted or unsupported format)\n"
-                                            "- File is too large or contains invalid content\n"
-                                            "- PDF is image-based (scanned) rather than text-based\n\n"
-                                            "**Please try:**\n"
-                                            "- Converting the PDF to text format\n"
-                                            "- Using a different file format (DOCX or TXT)\n"
-                                            "- Ensuring the file is not corrupted")
-                                elif "API" in error_msg or "OpenAI" in error_msg or "key" in error_msg.lower():
-                                    st.error(f"**Error - API:** {error_msg}\n\n"
-                                            "Please check your OpenAI API key configuration.")
-                                elif "read" in error_msg.lower() or "parse" in error_msg.lower() or "encrypted" in error_msg.lower():
-                                    st.error(f"**Error - File Reading:** Could not read the file '{job_desc_file.name}'. "
-                                            "The file may be corrupted, encrypted, or in an unsupported format. Please try a different file.")
-                                else:
-                                    st.error(f"**Error processing file:** {error_msg}\n\n"
-                                            f"If this problem persists, please try uploading a different file format (TXT, DOCX, or text-based PDF).")
-                                job_description = ""
-                                # Clear the file from session state on error so user can retry
-                                if 'last_uploaded_file' in st.session_state:
-                                    st.session_state.pop('last_uploaded_file', None)
-                                    st.session_state.pop('extracted_job_data', None)
 
             # MODE 2: Manual Entry
             else:
@@ -3388,11 +3495,210 @@ The AI will analyze this to extract skills and requirements.""",
                     help="Required: Provide as much detail as possible for accurate matching"
                 )
 
+            # Universal Recruiting Tool Enhancements
+            st.markdown('<div class="section-header">Scoring Configuration (Optional)</div>', unsafe_allow_html=True)
+            st.caption("Customize how candidates are evaluated. Leave defaults for standard scoring.")
+            
+            with st.expander("⚙️ Advanced Scoring Options", expanded=False):
+                from industry_templates import get_industry_templates, get_default_weights
+                from scoring_profiles import validate_weights
+                
+                # Industry Template Selector
+                templates = get_industry_templates()
+                template_names = {name: template.description for name, template in templates.items()}
+                
+                selected_template = st.selectbox(
+                    "Industry Template",
+                    options=["general"] + [k for k in templates.keys() if k != "general"],
+                    format_func=lambda x: f"{x.title()} - {templates[x].description}" if x in templates else x.title(),
+                    help="Select a pre-configured scoring profile for your industry. Defaults to General (universal standard). You can customize weights below.",
+                    index=0,  # Default to "general" (first option)
+                    key="industry_template_select"
+                )
+                
+                # Show template preview
+                if selected_template in templates:
+                    template = templates[selected_template]
+                    st.info(f"**{template.name.title()} Template**: {template.description}")
+                    
+                    # Display weights as a simple visualization
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.markdown("**Scoring Weights:**")
+                        for key, weight in template.weights.items():
+                            weight_pct = weight * 100
+                            st.caption(f"• {key.replace('_', ' ').title()}: {weight_pct:.0f}%")
+                    
+                    # Apply template button
+                    if st.button("Apply Template", key="apply_template_btn"):
+                        st.session_state['selected_template'] = selected_template
+                        st.session_state['custom_weights'] = template.weights.copy()
+                        st.success(f"Applied {template.name.title()} template!")
+                
+                st.markdown("---")
+                
+                # Custom Scoring Weights Editor
+                st.markdown("**Custom Scoring Weights** (optional - overrides template)")
+                st.caption("Adjust the importance of each evaluation criterion. Weights must sum to 100%.")
+                
+                # Get current weights (from template or session state)
+                # Default to General template weights (universal standard)
+                if 'custom_weights' in st.session_state and st.session_state['custom_weights']:
+                    current_weights = st.session_state['custom_weights']
+                elif selected_template in templates:
+                    current_weights = templates[selected_template].weights.copy()
+                else:
+                    # Default to General/Universal template weights (universal standard)
+                    current_weights = templates['general'].weights.copy()
+                
+                # Weight sliders (NEW PRIORITY ORDER)
+                st.caption("Weights are ordered by default priority. Adjust to customize evaluation focus.")
+                
+                # 1. Experience Level (HIGHEST PRIORITY)
+                weight_experience = st.slider(
+                    "1. Experience Level (Highest Priority)",
+                    min_value=0.0,
+                    max_value=1.0,
+                    value=current_weights.get('experience_level', 0.25),
+                    step=0.01,
+                    format="%.0f%%",
+                    help="Weight for candidate's years and level of experience",
+                    key="weight_experience"
+                )
+                
+                # 2. Job Title Match (SECOND PRIORITY)
+                weight_job_title = st.slider(
+                    "2. Job Title Match (Second Priority)",
+                    min_value=0.0,
+                    max_value=1.0,
+                    value=current_weights.get('job_title_match', 0.20),
+                    step=0.01,
+                    format="%.0f%%",
+                    help="Weight for relevance of candidate's previous job titles",
+                    key="weight_job_title"
+                )
+                
+                # 3. Required Skills (THIRD PRIORITY)
+                weight_required_skills = st.slider(
+                    "3. Required Skills (Third Priority)",
+                    min_value=0.0,
+                    max_value=1.0,
+                    value=current_weights.get('required_skills', 0.18),
+                    step=0.01,
+                    format="%.0f%%",
+                    help="Weight for skills explicitly listed as required for the role",
+                    key="weight_required_skills"
+                )
+                
+                # 4. Transferrable Skills (FOURTH PRIORITY - NEW)
+                weight_transferrable_skills = st.slider(
+                    "4. Transferrable Skills (Fourth Priority)",
+                    min_value=0.0,
+                    max_value=1.0,
+                    value=current_weights.get('transferrable_skills', 0.15),
+                    step=0.01,
+                    format="%.0f%%",
+                    help="Weight for AI-identified skills from candidate's experience that are relevant but not explicitly listed (cross-industry, semantically similar, or relevant unlisted skills)",
+                    key="weight_transferrable_skills"
+                )
+                
+                # 5. Location (FIFTH PRIORITY)
+                weight_location = st.slider(
+                    "5. Location (Fifth Priority)",
+                    min_value=0.0,
+                    max_value=1.0,
+                    value=current_weights.get('location', 0.10),
+                    step=0.01,
+                    format="%.0f%%",
+                    help="Weight for geographic location match",
+                    key="weight_location"
+                )
+                
+                # 6. Preferred Skills (SIXTH PRIORITY)
+                weight_preferred_skills = st.slider(
+                    "6. Preferred Skills (Sixth Priority)",
+                    min_value=0.0,
+                    max_value=1.0,
+                    value=current_weights.get('preferred_skills', 0.07),
+                    step=0.01,
+                    format="%.0f%%",
+                    help="Weight for skills listed as preferred (nice-to-have) for the role",
+                    key="weight_preferred_skills"
+                )
+                
+                # 7. Certifications/Education (LOWEST PRIORITY - COMBINED)
+                weight_certifications_education = st.slider(
+                    "7. Certifications/Education (Lowest Priority)",
+                    min_value=0.0,
+                    max_value=1.0,
+                    value=current_weights.get('certifications_education', 0.05),
+                    step=0.01,
+                    format="%.0f%%",
+                    help="Weight for certifications, licenses, degrees, and education level (combines must-have certs, bonus certs, and education)",
+                    key="weight_certifications_education"
+                )
+                
+                # Calculate total
+                total_weight = (weight_experience + weight_job_title + weight_required_skills + 
+                              weight_transferrable_skills + weight_location + weight_preferred_skills + 
+                              weight_certifications_education)
+                
+                # Validation
+                if abs(total_weight - 1.0) > 0.01:
+                    st.error(f"⚠️ Weights must sum to 100%. Current total: {total_weight*100:.1f}%")
+                    st.caption("Adjust the sliders above to fix the total.")
+                else:
+                    st.success(f"✓ Weights valid (Total: {total_weight*100:.0f}%)")
+                    # Store custom weights (NEW STRUCTURE)
+                    custom_weights = {
+                        'experience_level': weight_experience,
+                        'job_title_match': weight_job_title,
+                        'required_skills': weight_required_skills,
+                        'transferrable_skills': weight_transferrable_skills,
+                        'location': weight_location,
+                        'preferred_skills': weight_preferred_skills,
+                        'certifications_education': weight_certifications_education
+                    }
+                    st.session_state['custom_weights'] = custom_weights
+                
+                st.markdown("---")
+                
+                # Dealbreakers Section
+                st.markdown("**Dealbreakers** (optional)")
+                st.caption("Candidates meeting these criteria will be automatically disqualified (score = 0.0)")
+                
+                dealbreaker_text = st.text_area(
+                    "Dealbreaker Criteria",
+                    height=100,
+                    placeholder="One per line, e.g.:\nMissing required license\nNo relevant experience\nCriminal record",
+                    help="Enter criteria that automatically disqualify candidates. One per line.",
+                    key="dealbreakers_text"
+                )
+                
+                dealbreakers = []
+                if dealbreaker_text:
+                    dealbreakers = [line.strip() for line in dealbreaker_text.strip().split('\n') if line.strip()]
+                    if dealbreakers:
+                        st.caption(f"Configured {len(dealbreakers)} dealbreaker(s)")
+                
+                st.markdown("---")
+                
+                # Bias Reduction Toggle
+                bias_reduction = st.checkbox(
+                    "Enable Bias Reduction (Blind Screening)",
+                    value=False,
+                    help="When enabled, removes names, photos, and graduation dates from evaluation to reduce unconscious bias",
+                    key="bias_reduction_checkbox"
+                )
+                
+                if bias_reduction:
+                    st.info("ℹ️ Bias reduction enabled. Personal information will be excluded from scoring.")
+
             # Candidate Source Selection
             st.markdown('<div class="section-header">Candidate Source (Optional)</div>', unsafe_allow_html=True)
             candidate_source = st.radio(
                 "Choose candidate source:",
-                ["Upload Resumes", "Pull from Avionté", "Select from Database"],
+                ["Upload Resumes", "Select from Database"],
                 horizontal=True,
                 key="candidate_source_radio",
                 help="Choose how to provide candidate information"
@@ -3400,112 +3706,8 @@ The AI will analyze this to extract skills and requirements.""",
             
             uploaded_files = []
             selected_candidate_ids = []
-            avionte_candidates = []
             
-            if candidate_source == "Pull from Avionté":
-                # Avionté candidate selection
-                from config import AvionteConfig
-                from avionte_client import AvionteClient
-                from avionte_transformer import AvionteTransformer
-                
-                if not AvionteConfig.is_configured():
-                    st.error("**Avionté API not configured.** Please configure AVIONTE_API_KEY, AVIONTE_CLIENT_ID, and AVIONTE_CLIENT_SECRET environment variables.")
-                else:
-                    try:
-                        client = AvionteClient()
-                        transformer = AvionteTransformer(client)
-                        
-                        # Test connection
-                        if 'avionte_connection_test' not in st.session_state:
-                            with st.spinner("Testing Avionté connection..."):
-                                if client.test_connection():
-                                    st.session_state['avionte_connection_test'] = True
-                                    st.success("✓ Connected to Avionté")
-                                else:
-                                    st.session_state['avionte_connection_test'] = False
-                                    st.error("Failed to connect to Avionté. Please check your credentials.")
-                        
-                        if st.session_state.get('avionte_connection_test'):
-                            # Search/filter UI
-                            col1, col2 = st.columns(2)
-                            with col1:
-                                talent_search = st.text_input("Search by name or email", key="talent_search", placeholder="Enter name or email...")
-                            with col2:
-                                talent_limit = st.number_input("Max results", min_value=10, max_value=500, value=50, step=10, key="talent_limit")
-                            
-                            if st.button("Search Talents", key="search_talents_btn"):
-                                try:
-                                    with st.spinner("Fetching talents from Avionté..."):
-                                        filters = {}
-                                        if talent_search:
-                                            # Note: Avionté API may have different filter parameters
-                                            # This is a placeholder - adjust based on actual API
-                                            filters = {'search': talent_search}
-                                        
-                                        talents = client.get_talents(filters=filters, limit=talent_limit)
-                                        st.session_state['avionte_talents'] = talents
-                                        st.success(f"Found {len(talents)} talent(s)")
-                                except Exception as e:
-                                    st.error(f"Failed to fetch talents: {str(e)}")
-                                    logger.error(f"Error fetching Avionté talents: {e}", exc_info=True)
-                            
-                            # Display talents for selection
-                            if 'avionte_talents' in st.session_state and st.session_state['avionte_talents']:
-                                talents = st.session_state['avionte_talents']
-                                
-                                # Multi-select for talents
-                                talent_options = {}
-                                for talent in talents:
-                                    talent_id = talent.get('id') or talent.get('talentId') or talent.get('applicantId', '')
-                                    first_name = talent.get('firstName') or talent.get('first_name', '')
-                                    last_name = talent.get('lastName') or talent.get('last_name', '')
-                                    name = f"{first_name} {last_name}".strip() or talent.get('name', 'Unknown')
-                                    email = talent.get('email') or talent.get('emailAddress', '')
-                                    display_name = f"{name} ({email})" if email else name
-                                    talent_options[display_name] = talent_id
-                                
-                                selected_talent_names = st.multiselect(
-                                    "Select talents to grade",
-                                    options=list(talent_options.keys()),
-                                    key="selected_avionte_talents",
-                                    help="Select one or more talents from Avionté"
-                                )
-                                
-                                if selected_talent_names:
-                                    selected_talent_ids = [talent_options[name] for name in selected_talent_names]
-                                    
-                                    if st.button("Fetch Selected Candidates", key="fetch_avionte_candidates_btn"):
-                                        try:
-                                            with st.spinner(f"Fetching {len(selected_talent_ids)} candidate(s) from Avionté..."):
-                                                # Fetch full talent data
-                                                full_talents = client.query_multiple_talents(selected_talent_ids)
-                                                
-                                                # Transform to app format
-                                                avionte_candidates = transformer.transform_talents_to_candidates(
-                                                    full_talents, 
-                                                    download_resumes=True
-                                                )
-                                                
-                                                st.session_state['avionte_candidates'] = avionte_candidates
-                                                st.success(f"Fetched {len(avionte_candidates)} candidate(s) from Avionté")
-                                        except Exception as e:
-                                            st.error(f"Failed to fetch candidates: {str(e)}")
-                                            logger.error(f"Error fetching Avionté candidates: {e}", exc_info=True)
-                                    
-                                    # Show selected candidates
-                                    if 'avionte_candidates' in st.session_state:
-                                        avionte_candidates = st.session_state['avionte_candidates']
-                                        st.success(f"Ready to process {len(avionte_candidates)} candidate(s) from Avionté")
-                                        with st.expander("View selected candidates", expanded=False):
-                                            for candidate in avionte_candidates:
-                                                st.write(f"- {candidate.get('name', 'Unknown')} ({candidate.get('email', 'No email')})")
-                            else:
-                                st.info("Click 'Search Talents' to find candidates from Avionté")
-                    except Exception as e:
-                        st.error(f"Error initializing Avionté client: {str(e)}")
-                        logger.error(f"Error initializing Avionté: {e}", exc_info=True)
-            
-            elif candidate_source == "Select from Database":
+            if candidate_source == "Select from Database":
                 # Section 1: Select from Database (Optional)
                 st.markdown("**Select candidates from your resume database (optional):**")
                 all_candidates = search_candidates(user_id, query="", filters={})
@@ -3564,13 +3766,9 @@ The AI will analyze this to extract skills and requirements.""",
                             st.write(f"- {file.name} ({size_kb:.1f} KB)")
             
             # Show combined total
-            total_candidates = len(selected_candidate_ids) + len(uploaded_files) if uploaded_files else len(selected_candidate_ids)
-            if avionte_candidates:
-                total_candidates = len(avionte_candidates)
+            total_candidates = len(selected_candidate_ids) + (len(uploaded_files) if uploaded_files else 0)
             if total_candidates > 0:
                 source_breakdown = []
-                if avionte_candidates:
-                    source_breakdown.append(f"{len(avionte_candidates)} from Avionté")
                 if selected_candidate_ids:
                     source_breakdown.append(f"{len(selected_candidate_ids)} from database")
                 if uploaded_files:
@@ -3594,42 +3792,60 @@ The AI will analyze this to extract skills and requirements.""",
                     key="process_btn"
                 )
 
-            # Process
-            if process_button:
-                # Validation
-                errors = []
+            # Process - either button was clicked OR processing was started and needs to continue
+            # Check if processing was started on a previous rerun (button was clicked, rerun triggered, now continue)
+            should_process = process_button or (st.session_state.get('processing', False) and st.session_state.get('processing_started', False))
+            
+            if should_process:
+                # Only validate if button was just clicked (not on rerun continuation)
+                if process_button:
+                    # Validation
+                    errors = []
+                    
+                    if not job_title:
+                        errors.append("Job title is required")
+                    if not location:
+                        errors.append("Location is required")
+                    if not job_description:
+                        errors.append("Job description is required")
+                    # Note: Resumes are now optional - removed validation for them
+
+                    if errors:
+                        for error in errors:
+                            st.error(error)
+                        # Clear processing flags if validation fails
+                        st.session_state['processing'] = False
+                        st.session_state['processing_started'] = False
+                    else:
+                        # Validation passed - set processing flag
+                        st.session_state['processing'] = True
+                        st.session_state['show_results_page'] = False
+                        
+                        # Initialize progress tracking
+                        st.session_state['loading_progress'] = {
+                            'step': 'analyzing',
+                            'progress': 0.0,
+                            'current': 0,
+                            'total': 0
+                        }
                 
-                # Get Avionté job if available
-                avionte_job = st.session_state.get('avionte_job')
-                if avionte_job:
-                    job_title = avionte_job.job_title
-                    location = avionte_job.location
-                    job_description = avionte_job.full_description
-                    certifications = [{"name": c.name, "category": c.category} for c in avionte_job.certifications]
-
-                if not job_title and not avionte_job:
-                    errors.append("Job title is required")
-                if not location and not avionte_job:
-                    errors.append("Location is required")
-                if not job_description and not avionte_job:
-                    errors.append("Job description is required")
-                # Note: Resumes are now optional - removed validation for them
-
-                if errors:
-                    for error in errors:
-                        st.error(error)
-                else:
-                    # Set processing flag and show full-page loading
-                    st.session_state['processing'] = True
-                    st.session_state['show_results_page'] = False
+                # Continue with processing if processing flag is set (either from button click or rerun)
+                if st.session_state.get('processing', False):
+                    # Show loading screen immediately by setting processing flag and forcing a rerun
+                    # This ensures the loading screen displays before long-running processing starts
+                    # On first click: trigger rerun to show loading screen
+                    # On rerun: processing_started will be True, so we continue with actual processing
+                    if not st.session_state.get('processing_started', False):
+                        st.session_state['processing_started'] = True
+                        # Force immediate rerun to show loading screen
+                        # On rerun, processing_started will be True, so we'll continue with processing
+                        st.rerun()
+                        st.stop()  # Stop execution to allow loading screen to render on rerun
                     
-                    # Create full-page loading placeholder
-                    loading_placeholder = st.empty()
-                    
-                    # Progress callback function for full-page loading
+                    # Progress callback function for real-time updates
+                    # This updates session state, and the loading screen in tab_new will read it
                     def update_progress(step, progress, current, total):
-                        # Store progress in session state so tab_new section can read it
-                        # Note: UI updates will happen on next rerun (after processing completes)
+                        # Store progress in session state
                         st.session_state['loading_progress'] = {
                             'step': step,
                             'progress': progress,
@@ -3638,6 +3854,10 @@ The AI will analyze this to extract skills and requirements.""",
                         }
                     
                     # Process the candidates with progress tracking
+                    # Note: The loading screen is shown in the tab_new section (line 2855)
+                    # which reads from st.session_state['loading_progress']
+                    # Progress updates are stored in session state and will be displayed
+                    # when the loading screen renders (which happens immediately when processing starts)
                     start_time = datetime.now()
 
                     try:
@@ -3707,9 +3927,14 @@ The AI will analyze this to extract skills and requirements.""",
                             required_skills = st.session_state.get('current_required_skills', None)
                             preferred_skills = st.session_state.get('current_preferred_skills', None)
                             
-                            # Get Avionté candidates and job if available
-                            avionte_candidates = st.session_state.get('avionte_candidates', [])
-                            avionte_job = st.session_state.get('avionte_job')
+                            # Get universal recruiting tool settings
+                            industry_template = st.session_state.get('selected_template') or st.session_state.get('industry_template_select', None)
+                            custom_weights = st.session_state.get('custom_weights', None)
+                            dealbreakers = st.session_state.get('dealbreakers', [])
+                            if 'dealbreakers_text' in st.session_state and st.session_state.get('dealbreakers_text'):
+                                dealbreaker_text = st.session_state.get('dealbreakers_text', '')
+                                dealbreakers = [line.strip() for line in dealbreaker_text.strip().split('\n') if line.strip()]
+                            bias_reduction = st.session_state.get('bias_reduction_checkbox', False)
                             
                             # Run processing with progress callback
                             pdf_path = app.run(
@@ -3723,8 +3948,10 @@ The AI will analyze this to extract skills and requirements.""",
                                 progress_callback=update_progress,
                                 user_id=st.session_state.get("user_id"),
                                 resume_assets=resume_assets,
-                                avionte_candidates=avionte_candidates if avionte_candidates else None,
-                                avionte_job=avionte_job
+                                industry_template=industry_template,
+                                custom_scoring_weights=custom_weights,
+                                dealbreakers=dealbreakers if dealbreakers else None,
+                                bias_reduction_enabled=bias_reduction
                             )
                             
                             # Get report ID if available (from app.run)
@@ -3820,6 +4047,7 @@ The AI will analyze this to extract skills and requirements.""",
                                 'location': location,
                                 'certifications': certifications
                             },
+                            'job_details_obj': app.job_details,  # Store JobDetails object for dropdown
                             'processing_time': processing_time,
                             'timestamp': datetime.now()
                         }
@@ -3838,6 +4066,7 @@ The AI will analyze this to extract skills and requirements.""",
                         st.session_state['processing'] = False
                         st.session_state['show_results_page'] = False
                         st.session_state.pop('loading_progress', None)
+                        st.session_state.pop('processing_started', None)
                         logger.error(f"Error processing candidates: {e}", exc_info=True)
                         st.error(f"An error occurred: {str(e)}")
                         st.exception(e)
@@ -3845,7 +4074,7 @@ The AI will analyze this to extract skills and requirements.""",
             # Footer
             st.markdown("---")
             st.markdown(
-                '<div style="text-align: center; color: #7f8c8d; padding: 1rem;">ResponsAble Safety Staffing | Recruitment Candidate Ranker</div>',
+                '<div style="text-align: center; color: #7f8c8d; padding: 1rem;">CROSSROADS Professional Services | Universal Recruiting Tool</div>',
                 unsafe_allow_html=True
             )
         

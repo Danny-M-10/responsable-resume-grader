@@ -23,6 +23,8 @@ from skills_researcher import SkillsResearcher
 from ai_certification_researcher import AICertificationResearcher
 from config import OpenAIConfig
 from db import get_db, utcnow_str
+from industry_templates import get_template_by_name, get_default_weights
+from scoring_profiles import validate_weights
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -71,17 +73,22 @@ class CandidateRankerApp:
             progress_callback=None, resume_cache: Dict[str, Dict[str, Any]] = None,
             user_id: str = None, resume_assets: List[Dict[str, Any]] = None,
             job_source_asset_id: str = None,
-            avionte_candidates: List[Dict[str, Any]] = None,
-            avionte_job: JobDetails = None) -> str:
+            industry_template: str = None,
+            custom_scoring_weights: Dict[str, float] = None,
+            dealbreakers: List[str] = None,
+            bias_reduction_enabled: bool = False) -> str:
         """
         Main workflow execution
+        
+        Note: If industry_template is not specified, defaults to "general" (universal standard).
+        The General template uses balanced weights suitable for most industries and roles.
 
         Args:
-            job_title: The job title (ignored if avionte_job provided)
-            certifications: List of dicts with 'name' and 'category' ('must-have' or 'bonus') (ignored if avionte_job provided)
-            location: Job location (ignored if avionte_job provided)
-            job_description: Full job description (ignored if avionte_job provided)
-            resume_files: List of paths to resume files (PDF, DOCX, TXT) (ignored if avionte_candidates provided)
+            job_title: The job title
+            certifications: List of dicts with 'name' and 'category' ('must-have' or 'bonus')
+            location: Job location
+            job_description: Full job description
+            resume_files: List of paths to resume files (PDF, DOCX, TXT)
             required_skills: Optional list of required skills from AI extraction
             preferred_skills: Optional list of preferred skills from AI extraction
             progress_callback: Optional callback function(step_name, progress, current, total) for progress updates
@@ -89,8 +96,10 @@ class CandidateRankerApp:
             user_id: Optional user ID for persistence
             resume_assets: Optional resume asset metadata
             job_source_asset_id: Optional job source asset ID
-            avionte_candidates: Optional list of pre-fetched candidates from Avionté (dict format)
-            avionte_job: Optional JobDetails object from Avionté (overrides job_title, certifications, location, job_description)
+            industry_template: Optional industry template name (e.g., "healthcare", "technology"). Defaults to "general" (universal standard)
+            custom_scoring_weights: Optional custom scoring weights dictionary. Overrides template if provided
+            dealbreakers: Optional list of criteria that automatically disqualify candidates
+            bias_reduction_enabled: Optional flag to enable blind screening (removes names, photos, etc.)
 
         Returns:
             Path to generated PDF report
@@ -105,15 +114,23 @@ class CandidateRankerApp:
             progress_callback("analyzing", 0.05, 0, 0)
         logger.info("STEP 1: Analyzing job requirements...")
         
-        # Use Avionté job if provided, otherwise parse from inputs
-        if avionte_job:
-            logger.info("Using job details from Avionté")
-            self.job_details = avionte_job
-        else:
-            self.job_details = self._parse_job_details(
-                job_title, certifications, location, job_description,
-                required_skills=required_skills, preferred_skills=preferred_skills
-            )
+        self.job_details = self._parse_job_details(
+            job_title, certifications, location, job_description,
+            required_skills=required_skills, preferred_skills=preferred_skills,
+            industry_template=industry_template,
+            custom_scoring_weights=custom_scoring_weights,
+            dealbreakers=dealbreakers,
+            bias_reduction_enabled=bias_reduction_enabled
+        )
+        
+        # Apply industry template if specified
+        # If no template specified, General template is already set as default in _parse_job_details
+        if industry_template:
+            self.apply_industry_template(industry_template)
+        elif not self.job_details.industry_template:
+            # Ensure General template is applied if not already set
+            self.apply_industry_template("general")
+        
         if progress_callback:
             progress_callback("analyzing", 0.10, 0, 0)
 
@@ -130,39 +147,18 @@ class CandidateRankerApp:
             progress_callback("researching", 0.20, 0, 0)
 
         # Step 3: Parse all resumes (20-40%) - now parallelized
-        # Use Avionté candidates if provided, otherwise parse from resume files
-        if avionte_candidates:
-            logger.info(f"STEP 3: Using {len(avionte_candidates)} candidate(s) from Avionté...")
-            candidates = avionte_candidates
-            # For Avionté candidates, we may need to parse resume files if they have them
-            # But the candidate data is already structured, so we can use it directly
-            # If resume files are provided for Avionté candidates, we'll still parse them for additional data
-            if resume_files:
-                logger.info("Parsing additional resume files for Avionté candidates...")
-                parsed_resumes = self._parse_resumes(resume_files, progress_callback)
-                # Merge parsed resume data with Avionté candidate data
-                # Match by name/email if possible
-                for candidate in candidates:
-                    candidate_email = candidate.get('email', '').lower()
-                    candidate_name = candidate.get('name', '').lower()
-                    for parsed in parsed_resumes:
-                        parsed_email = parsed.get('email', '').lower()
-                        parsed_name = parsed.get('name', '').lower()
-                        if (candidate_email and parsed_email and candidate_email == parsed_email) or \
-                           (candidate_name and parsed_name and candidate_name == parsed_name):
-                            # Merge data - prefer Avionté data but add parsed resume details
-                            candidate.update({
-                                'raw_text': parsed.get('raw_text', candidate.get('raw_text', '')),
-                                'job_titles': parsed.get('job_titles', candidate.get('job_titles', []))
-                            })
-                            break
-        else:
+        if resume_files:
             logger.info(f"STEP 3: Parsing {len(resume_files)} resume(s)...")
             # Merge external cache if provided (e.g., Streamlit session)
             if resume_cache is not None:
                 # Use provided cache as backing store
                 self.resume_cache = resume_cache
             candidates = self._parse_resumes(resume_files, progress_callback)
+        else:
+            candidates = []
+
+        # Step 3b: Deduplicate candidates by name+email to prevent duplicate scoring
+        candidates = self._deduplicate_candidates(candidates)
 
         # Step 4: Score each candidate (40-70%) - now parallelized
         logger.info(f"STEP 4: Scoring {len(candidates)} candidate(s)...")
@@ -206,7 +202,11 @@ class CandidateRankerApp:
 
     def _parse_job_details(self, job_title: str, certifications: List[Dict[str, str]],
                           location: str, job_description: str, required_skills: List[str] = None,
-                          preferred_skills: List[str] = None) -> JobDetails:
+                          preferred_skills: List[str] = None,
+                          industry_template: str = None,
+                          custom_scoring_weights: Dict[str, float] = None,
+                          dealbreakers: List[str] = None,
+                          bias_reduction_enabled: bool = False) -> JobDetails:
         """Parse and structure job information"""
 
         # Convert certifications
@@ -220,7 +220,10 @@ class CandidateRankerApp:
             job_title=job_title,
             certifications=cert_objects,
             location=location,
-            full_description=job_description
+            full_description=job_description,
+            industry_template=industry_template or "",
+            dealbreakers=dealbreakers or [],
+            bias_reduction_enabled=bias_reduction_enabled
         )
         
         # Use AI-extracted skills if provided, otherwise set to empty arrays
@@ -238,6 +241,26 @@ class CandidateRankerApp:
         # Extract structured information from description (for other fields)
         # Note: This does NOT populate required_skills or preferred_skills anymore
         self._extract_job_requirements(job)
+        
+        # Apply custom scoring weights if provided
+        if custom_scoring_weights:
+            if validate_weights(custom_scoring_weights):
+                job.scoring_profile = custom_scoring_weights
+                logger.info(f"Applied custom scoring weights: {custom_scoring_weights}")
+            else:
+                logger.warning(f"Invalid custom weights (sum={sum(custom_scoring_weights.values())}), using defaults")
+                # Fall back to General template
+                job.scoring_profile = get_default_weights()
+                job.industry_template = "general"
+        elif industry_template:
+            # Will be applied by apply_industry_template() after job creation
+            pass
+        else:
+            # Default to General/Universal template (universal standard for resume grading)
+            # This ensures all jobs use a consistent, balanced scoring approach unless explicitly overridden
+            job.scoring_profile = get_default_weights()
+            job.industry_template = "general"
+            logger.info("Using default General/Universal template (universal standard for resume grading)")
 
         return job
 
@@ -329,21 +352,141 @@ class CandidateRankerApp:
         # are now ONLY populated by AI extraction in _parse_job_details()
         # No fallback to technical_stack - if AI doesn't extract, they remain empty arrays
 
-        # Extract industry context
+        # Extract industry context with enhanced detection
         industry_keywords = {
-            'finance': 'Finance/Banking',
+            # Healthcare
             'healthcare': 'Healthcare',
-            'retail': 'Retail/E-commerce',
-            'manufacturing': 'Manufacturing',
+            'health care': 'Healthcare',
+            'medical': 'Healthcare',
+            'hospital': 'Healthcare',
+            'nursing': 'Healthcare',
+            'physician': 'Healthcare',
+            'clinical': 'Healthcare',
+            'patient care': 'Healthcare',
+            'pharmacy': 'Healthcare',
+            'dental': 'Healthcare',
+            # Technology
             'technology': 'Technology',
+            'tech': 'Technology',
+            'software': 'Technology',
+            'programming': 'Technology',
+            'developer': 'Technology',
+            'engineer': 'Technology',
+            'it ': 'Technology',
+            'information technology': 'Technology',
+            'computer science': 'Technology',
+            'data science': 'Technology',
+            'ai ': 'Technology',
+            'machine learning': 'Technology',
+            # Construction/Safety
+            'construction': 'Construction',
+            'safety': 'Construction',
+            'osha': 'Construction',
+            'trade': 'Construction',
+            'electrician': 'Construction',
+            'plumber': 'Construction',
+            'welder': 'Construction',
+            'crane': 'Construction',
+            'heavy equipment': 'Construction',
+            'lineman': 'Construction',
+            'solar': 'Construction',
+            # Finance
+            'finance': 'Finance/Banking',
+            'financial': 'Finance/Banking',
+            'banking': 'Finance/Banking',
+            'accounting': 'Finance/Banking',
+            'cpa': 'Finance/Banking',
+            'cfa': 'Finance/Banking',
+            'audit': 'Finance/Banking',
+            'investment': 'Finance/Banking',
+            # Sales
+            'sales': 'Sales',
+            'account manager': 'Sales',
+            'business development': 'Sales',
+            'revenue': 'Sales',
+            'quota': 'Sales',
+            'territory': 'Sales',
+            # Retail
+            'retail': 'Retail/E-commerce',
+            'e-commerce': 'Retail/E-commerce',
+            'ecommerce': 'Retail/E-commerce',
+            # Manufacturing
+            'manufacturing': 'Manufacturing',
+            'production': 'Manufacturing',
+            'assembly': 'Manufacturing',
+            # Education
             'education': 'Education',
-            'government': 'Government/Public Sector'
+            'teaching': 'Education',
+            'teacher': 'Education',
+            'professor': 'Education',
+            # Government
+            'government': 'Government/Public Sector',
+            'public sector': 'Government/Public Sector',
+            'federal': 'Government/Public Sector',
+            'state': 'Government/Public Sector',
         }
 
+        # Detect industry with priority (more specific matches first)
+        detected_industry = None
         for keyword, industry in industry_keywords.items():
             if keyword in description:
-                job.industry_context = industry
-                break
+                detected_industry = industry
+                # Don't break - continue to find more specific matches
+                # But prioritize certain industries
+                if industry in ['Healthcare', 'Technology', 'Construction']:
+                    break
+        
+        if detected_industry:
+            job.industry_context = detected_industry
+            
+            # Auto-suggest industry template based on detected industry
+            industry_to_template = {
+                'Healthcare': 'healthcare',
+                'Technology': 'technology',
+                'Construction': 'construction',
+                'Finance/Banking': 'finance',
+                'Sales': 'sales',
+            }
+            
+            suggested_template = industry_to_template.get(detected_industry)
+            if suggested_template and not job.industry_template:
+                # Store suggested template (can be applied later)
+                job.industry_template = suggested_template
+                logger.info(f"Auto-detected industry: {detected_industry}, suggested template: {suggested_template}")
+
+    def apply_industry_template(self, template_name: str) -> None:
+        """
+        Apply an industry template to the current job details
+        
+        Args:
+            template_name: Name of the industry template (e.g., 'healthcare', 'technology')
+        """
+        try:
+            template = get_template_by_name(template_name)
+            
+            # Apply template weights
+            self.job_details.scoring_profile = template.weights.copy()
+            self.job_details.industry_template = template.name
+            
+            # Apply industry-specific skill synonyms if available
+            if template.industry_specific_rules.get('skill_synonyms'):
+                for skill, synonyms in template.industry_specific_rules['skill_synonyms'].items():
+                    if skill not in self.job_details.skill_synonyms:
+                        self.job_details.skill_synonyms[skill] = synonyms
+                    else:
+                        # Merge synonyms
+                        existing = set(self.job_details.skill_synonyms[skill])
+                        existing.update(synonyms)
+                        self.job_details.skill_synonyms[skill] = list(existing)
+            
+            logger.info(f"Applied industry template '{template_name}' with weights: {template.weights}")
+            logger.info(f"Template description: {template.description}")
+            
+        except ValueError as e:
+            logger.warning(f"Failed to apply template '{template_name}': {e}")
+            # Fall back to default weights
+            self.job_details.scoring_profile = get_default_weights()
+            self.job_details.industry_template = "general"
 
     def _research_equivalents(self):
         """Research equivalent titles, skills, and certifications"""
@@ -514,6 +657,54 @@ class CandidateRankerApp:
         
         logger.info(f"  Successfully parsed {len(candidates)} resume(s)")
         return candidates
+
+    def _deduplicate_candidates(self, candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Remove duplicate candidates based on name and email.
+        If duplicates are found, keep the first occurrence (most complete data).
+        
+        Args:
+            candidates: List of candidate dictionaries
+            
+        Returns:
+            Deduplicated list of candidates
+        """
+        if not candidates:
+            return candidates
+        
+        seen = {}  # (name_lower, email_lower) -> candidate
+        deduplicated = []
+        duplicates_found = []
+        
+        for candidate in candidates:
+            name = candidate.get('name', '').strip().lower()
+            email = candidate.get('email', '').strip().lower()
+            
+            # Create a unique key from name and email
+            if name or email:
+                key = (name, email)
+            else:
+                # If no name/email, use raw_text hash as fallback
+                raw_text = candidate.get('raw_text', '')
+                key = (hashlib.sha256(raw_text.encode()).hexdigest()[:16], '')
+            
+            if key in seen:
+                # Duplicate found
+                existing = seen[key]
+                existing_name = existing.get('name', 'Unknown')
+                candidate_name = candidate.get('name', 'Unknown')
+                duplicates_found.append(f"{candidate_name} (duplicate of {existing_name})")
+                logger.warning(f"  WARNING: Duplicate candidate detected: {candidate_name} (email: {email or 'N/A'}) - skipping duplicate")
+                # Keep the first occurrence (usually has more complete data)
+                continue
+            else:
+                seen[key] = candidate
+                deduplicated.append(candidate)
+        
+        if duplicates_found:
+            logger.info(f"  Removed {len(duplicates_found)} duplicate candidate(s)")
+        
+        return deduplicated
     
     def _parse_resumes(self, resume_files: List[str], progress_callback=None) -> List[Dict[str, Any]]:
         """Parse all resume files (sync wrapper for backward compatibility)"""
@@ -530,6 +721,60 @@ class CandidateRankerApp:
         except RuntimeError:
             # No event loop, create new one
             return asyncio.run(self._parse_resumes_async(resume_files, progress_callback))
+
+    def _check_dealbreakers(self, candidate: Dict[str, Any], job_details: JobDetails) -> Tuple[bool, str]:
+        """
+        Check if candidate meets any dealbreaker criteria
+        
+        Args:
+            candidate: Candidate data dictionary
+            job_details: Job requirements
+            
+        Returns:
+            Tuple of (is_disqualified, reason)
+        """
+        if not job_details.dealbreakers:
+            return False, ""
+        
+        candidate_text = candidate.get('raw_text', '').lower()
+        candidate_skills = [s.lower() for s in candidate.get('skills', [])]
+        candidate_certs = [c.lower() for c in candidate.get('certifications', [])]
+        candidate_titles = [t.lower() for t in candidate.get('job_titles', [])]
+        
+        for dealbreaker in job_details.dealbreakers:
+            dealbreaker_lower = dealbreaker.lower()
+            
+            # Check if dealbreaker is mentioned in resume text
+            if dealbreaker_lower in candidate_text:
+                return True, f"Dealbreaker found in resume: {dealbreaker}"
+            
+            # Check if it's a skill-related dealbreaker
+            if any(dealbreaker_lower in skill or skill in dealbreaker_lower for skill in candidate_skills):
+                # This is a match, but we need to check if it's a negative dealbreaker
+                # For now, if dealbreaker contains "missing" or "no", it's a negative check
+                if "missing" in dealbreaker_lower or "no " in dealbreaker_lower or "lack" in dealbreaker_lower:
+                    # This means candidate is missing something required
+                    return True, f"Dealbreaker: {dealbreaker}"
+            
+            # Check if it's a certification-related dealbreaker
+            if any(dealbreaker_lower in cert or cert in dealbreaker_lower for cert in candidate_certs):
+                if "missing" in dealbreaker_lower or "no " in dealbreaker_lower or "lack" in dealbreaker_lower:
+                    return True, f"Dealbreaker: {dealbreaker}"
+            
+            # Check for negative patterns (e.g., "Missing required license")
+            if "missing" in dealbreaker_lower or "no " in dealbreaker_lower:
+                # Extract what's missing
+                missing_item = dealbreaker_lower.replace("missing", "").replace("no ", "").replace("lack of", "").strip()
+                # Check if candidate has this item
+                has_item = (
+                    missing_item in candidate_text or
+                    any(missing_item in skill for skill in candidate_skills) or
+                    any(missing_item in cert for cert in candidate_certs)
+                )
+                if not has_item:
+                    return True, f"Dealbreaker: {dealbreaker}"
+        
+        return False, ""
 
     async def _score_candidates_async(self, candidates: List[Dict[str, Any]], progress_callback=None):
         """Score all candidates in parallel using async"""
@@ -552,10 +797,31 @@ class CandidateRankerApp:
                         progress = 0.40 + ((index - 1) / total * 0.30)
                         progress_callback("scoring", progress, index, total)
                     
-                    score_result = await self.scoring_engine.score_candidate_async(
-                        candidate=candidate,
-                        job_details=self.job_details
-                    )
+                    # Check dealbreakers first
+                    is_disqualified, dealbreaker_reason = self._check_dealbreakers(candidate, self.job_details)
+                    if is_disqualified:
+                        logger.info(f"    Candidate disqualified due to dealbreaker: {dealbreaker_reason}")
+                        # Create a low score for disqualified candidates
+                        from models import CandidateScore
+                        score_result = CandidateScore(
+                            name=candidate.get('name', 'Unknown'),
+                            phone=candidate.get('phone', ''),
+                            email=candidate.get('email', ''),
+                            certifications=candidate.get('certifications', []),
+                            fit_score=0.0,  # Automatic disqualification
+                            chain_of_thought=f"DEALBREAKER: {dealbreaker_reason}. Candidate automatically disqualified.",
+                            rationale=f"This candidate has been automatically disqualified due to: {dealbreaker_reason}",
+                            experience_match={'level_match': 0.0, 'titles': [], 'years': 0},
+                            certification_match={'has_must_have': False, 'has_bonus': False, 'candidate_certs': []},
+                            skills_match={'required_match_rate': 0.0, 'preferred_match_rate': 0.0, 'candidate_skills': []},
+                            location_match=False,
+                            component_scores={}
+                        )
+                    else:
+                        score_result = await self.scoring_engine.score_candidate_async(
+                            candidate=candidate,
+                            job_details=self.job_details
+                        )
                     
                     if progress_callback:
                         # Update progress after each candidate
@@ -634,17 +900,32 @@ class CandidateRankerApp:
         """Score all candidates (sync wrapper for backward compatibility)"""
         # Run async version - handle existing event loop (e.g., Streamlit)
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # Event loop is already running (e.g., in Streamlit), use nest_asyncio
-                import nest_asyncio
-                nest_asyncio.apply()
-                return loop.run_until_complete(self._score_candidates_async(candidates, progress_callback))
-            else:
-                return loop.run_until_complete(self._score_candidates_async(candidates, progress_callback))
-        except RuntimeError:
-            # No event loop, create new one
-            return asyncio.run(self._score_candidates_async(candidates, progress_callback))
+            # Try to get the current event loop
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # Event loop is already running (e.g., in Streamlit), use nest_asyncio
+                    import nest_asyncio
+                    nest_asyncio.apply()
+                    return loop.run_until_complete(self._score_candidates_async(candidates, progress_callback))
+                else:
+                    return loop.run_until_complete(self._score_candidates_async(candidates, progress_callback))
+            except RuntimeError as e:
+                # No event loop exists, create new one
+                if "no current event loop" in str(e).lower():
+                    return asyncio.run(self._score_candidates_async(candidates, progress_callback))
+                else:
+                    # Re-raise if it's a different RuntimeError
+                    raise
+        except Exception as e:
+            # Catch any other exceptions and log them properly
+            logger.error(f"Error in _score_candidates: {e}", exc_info=True)
+            # Fallback: try to create a new event loop
+            try:
+                return asyncio.run(self._score_candidates_async(candidates, progress_callback))
+            except Exception as fallback_error:
+                logger.error(f"Fallback also failed: {fallback_error}", exc_info=True)
+                raise
 
     def _calibrate_scores(self):
         """
@@ -857,9 +1138,14 @@ class CandidateRankerApp:
 
     def _generate_report(self, top_candidates: List[CandidateScore]) -> str:
         """Generate PDF report"""
+        from storage import ensure_storage_dir
+        
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_filename = f"Candidate_Ranking_Report_{timestamp}.pdf"
-        output_path = os.path.join(os.getcwd(), output_filename)
+        
+        # Use storage directory for persistent PDF storage
+        storage_dir = ensure_storage_dir()
+        output_path = str(storage_dir / output_filename)
 
         # Generate PDF
         self.pdf_generator.generate(

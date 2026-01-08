@@ -27,6 +27,58 @@ def show_loading_screen(title: str, message: str, progress: float = 0.0):
             <div class="loading-progress-fill" style="width: {progress * 100}%"></div>
         </div>
     </div>
+    <style>
+    .loading-container {{
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: var(--spacing-lg);
+        padding: var(--spacing-2xl);
+        text-align: center;
+        background: var(--color-surface);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-lg);
+    }}
+    .loading-spinner {{
+        width: 60px;
+        height: 60px;
+        border: 4px solid var(--color-border);
+        border-top-color: var(--color-primary);
+        border-radius: var(--radius-full);
+        animation: spin 1s linear infinite;
+    }}
+    @keyframes spin {{
+        to {{ transform: rotate(360deg); }}
+    }}
+    .loading-title {{
+        font-size: var(--font-size-2xl);
+        font-weight: var(--font-weight-semibold);
+        color: var(--color-text-primary);
+        margin: 0;
+    }}
+    .loading-message {{
+        font-size: var(--font-size-base);
+        color: var(--color-text-secondary);
+        margin: 0;
+        max-width: 600px;
+    }}
+    .loading-progress-bar {{
+        width: 100%;
+        max-width: 400px;
+        height: 8px;
+        background-color: var(--color-surface-elevated);
+        border-radius: var(--radius-full);
+        overflow: hidden;
+        margin-top: var(--spacing-sm);
+    }}
+    .loading-progress-fill {{
+        height: 100%;
+        background-color: var(--color-primary);
+        border-radius: var(--radius-full);
+        transition: width 0.3s ease;
+    }}
+    </style>
     """, unsafe_allow_html=True)
 
 

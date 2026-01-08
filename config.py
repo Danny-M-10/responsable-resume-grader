@@ -116,63 +116,6 @@ class OpenAIConfig:
         return bool(OpenAIConfig.get_api_key())
 
 
-class AvionteConfig:
-    """Configuration for Avionté API."""
-
-    @staticmethod
-    def get_api_key() -> str:
-        """Get Avionté API key (x-api-key header)."""
-        return os.getenv('AVIONTE_API_KEY', '')
-
-    @staticmethod
-    def get_client_id() -> str:
-        """Get Avionté OAuth client ID."""
-        return os.getenv('AVIONTE_CLIENT_ID', '')
-
-    @staticmethod
-    def get_client_secret() -> str:
-        """Get Avionté OAuth client secret."""
-        return os.getenv('AVIONTE_CLIENT_SECRET', '')
-
-    @staticmethod
-    def get_scope() -> str:
-        """Get Avionté API scope.
-        
-        For BOLD Front Office API, the scope should be: avionte.aero.compasintegrationservice
-        """
-        return os.getenv('AVIONTE_SCOPE', 'avionte.aero.compasintegrationservice')
-
-    @staticmethod
-    def get_base_url() -> str:
-        """Get Avionté API base URL."""
-        return os.getenv('AVIONTE_BASE_URL', 'https://api.avionte.com')
-
-    @staticmethod
-    def get_tenant() -> Optional[str]:
-        """Get Avionté tenant code (string)."""
-        return os.getenv('AVIONTE_TENANT', '')
-
-    @staticmethod
-    def get_front_office_tenant_id() -> Optional[int]:
-        """Get Avionté Front Office tenant ID (integer)."""
-        tenant_id = os.getenv('AVIONTE_FRONT_OFFICE_TENANT_ID', '')
-        if tenant_id:
-            try:
-                return int(tenant_id)
-            except ValueError:
-                return None
-        return None
-
-    @staticmethod
-    def is_configured() -> bool:
-        """Check if Avionté API is properly configured."""
-        return bool(
-            AvionteConfig.get_api_key() and
-            AvionteConfig.get_client_id() and
-            AvionteConfig.get_client_secret()
-        )
-
-
 # Convenience functions
 def get_unsplash_access_key() -> str:
     """Get Unsplash Access Key."""
@@ -200,15 +143,9 @@ if __name__ == '__main__':
     print(f"Unsplash configured: {UnsplashConfig.is_configured()}")
     print(f"OpenAI configured: {OpenAIConfig.is_configured()}")
     print(f"Anthropic configured: {AnthropicConfig.is_configured()} (DEPRECATED)")
-    print(f"Avionté configured: {AvionteConfig.is_configured()}")
-
     if UnsplashConfig.is_configured():
         print(f"Unsplash Application ID: {UnsplashConfig.get_application_id()}")
         print(f"Unsplash Access Key: {UnsplashConfig.get_access_key()[:20]}...")
     
     if OpenAIConfig.is_configured():
         print(f"OpenAI Model: {OpenAIConfig.get_model()}")
-    
-    if AvionteConfig.is_configured():
-        print(f"Avionté Base URL: {AvionteConfig.get_base_url()}")
-        print(f"Avionté Scope: {AvionteConfig.get_scope()}")

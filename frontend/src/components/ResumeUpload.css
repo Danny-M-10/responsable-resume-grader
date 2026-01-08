@@ -1,0 +1,164 @@
+.resume-upload {
+  margin-bottom: 2rem;
+}
+
+.resume-upload-section {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.resume-upload-section h3 {
+  margin-top: 0;
+  margin-bottom: 1.5rem;
+  color: #0066CC;
+  font-size: 1.5rem;
+  border-bottom: 2px solid #00A651;
+  padding-bottom: 0.5rem;
+}
+
+.file-upload-area {
+  margin-bottom: 1.5rem;
+}
+
+.upload-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background-color: #0066CC;
+  color: white;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background-color 0.3s;
+}
+
+.upload-label:hover {
+  background-color: #0052A3;
+}
+
+.upload-help {
+  margin-top: 0.5rem;
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.uploaded-files,
+.vault-resumes {
+  margin-top: 1.5rem;
+}
+
+.uploaded-files h4,
+.vault-resumes h4 {
+  margin-bottom: 1rem;
+  color: #0066CC;
+}
+
+.files-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.file-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem;
+  margin-bottom: 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background-color: #f9f9f9;
+  transition: all 0.2s;
+}
+
+.file-item:hover {
+  background-color: #f0f0f0;
+  border-color: #00A651;
+}
+
+.file-item.selected {
+  background-color: #e8f5e9;
+  border-color: #00A651;
+  border-width: 2px;
+}
+
+.file-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 1;
+  cursor: pointer;
+}
+
+.file-checkbox input[type="checkbox"] {
+  cursor: pointer;
+  width: 1.2rem;
+  height: 1.2rem;
+}
+
+.file-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 1;
+}
+
+.file-name {
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.file-size,
+.file-date {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+.remove-btn {
+  background: none;
+  border: none;
+  color: #dc3545;
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+  display: flex;
+  align-items: center;
+}
+
+.remove-btn:hover {
+  background-color: #fee;
+}
+
+.files-summary {
+  margin-top: 1rem;
+  padding: 1rem;
+  background-color: #e8f5e9;
+  border-left: 4px solid #00A651;
+  border-radius: 4px;
+  color: #155724;
+}
+
+.loading-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem;
+  color: var(--color-text-secondary);
+}
+
+.spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

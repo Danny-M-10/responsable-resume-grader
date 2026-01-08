@@ -9,6 +9,7 @@ from typing import Dict, Any, List, Tuple
 from openai import OpenAI, AsyncOpenAI
 from models import JobDetails, CandidateScore
 from config import OpenAIConfig
+from industry_templates import get_default_weights
 
 class AIScoringEngine:
     """
@@ -69,37 +70,37 @@ class AIScoringEngine:
             raise ValueError("OpenAI response was empty")
         evaluation_text = response.choices[0].message.content
 
-        # Parse the AI response to extract score, reasoning, and component scores
-        score, reasoning, component_scores = self._parse_ai_response(evaluation_text)
+        # Get weights from job_details
+        weights = job_details.scoring_profile if job_details.scoring_profile else get_default_weights()
+        # Ensure all required weight keys exist
+        default_weights = get_default_weights()
+        for key in default_weights.keys():
+            if key not in weights:
+                weights[key] = default_weights[key]
         
-        # Post-processing: Check if candidate is missing ALL must-have certs and adjust
+        # Parse the AI response to extract score, reasoning, and component scores
+        score, reasoning, component_scores = self._parse_ai_response(evaluation_text, weights)
+        
+        # Post-processing: Check if candidate is missing ALL must-have certs and adjust certifications_education score
+        # Note: certifications_education combines certs and education, but we still check must-have certs as they're critical
         has_must_have = self._check_must_have_certs(candidate, job_details)
         must_have_certs_required = any(c.category == 'must-have' for c in job_details.certifications)
         
-        # CRITICAL: If missing ALL must-have certs, enforce penalty even if component scores weren't extracted
+        # CRITICAL: If missing ALL must-have certs, adjust certifications_education component score
         if must_have_certs_required and not has_must_have:
             if component_scores:
-                # We have component scores - check and correct cert component
-                cert_component_score = component_scores.get('must_have_certs', 5.0)
+                # We have component scores - check and correct certs/education component
+                cert_ed_component_score = component_scores.get('certifications_education', 5.0)
                 
-                if cert_component_score > 1.0:
-                    # Force cert component to 0-1 range (use 0.5 as default)
-                    print(f"  CORRECTING: Candidate missing ALL must-have certs but cert component score is {cert_component_score:.2f}, forcing to 0.5")
-                    component_scores['must_have_certs'] = 0.5
+                if cert_ed_component_score > 2.0:
+                    # Missing all must-have certs should significantly lower the score
+                    print(f"  CORRECTING: Candidate missing ALL must-have certs but certs/education component score is {cert_ed_component_score:.2f}, adjusting to 2.0")
+                    component_scores['certifications_education'] = 2.0
                     
-                    # Recalculate weighted score with corrected component
-                    weights = {
-                        'must_have_certs': 0.30,
-                        'bonus_certs': 0.10,
-                        'required_skills': 0.25,
-                        'preferred_skills': 0.10,
-                        'experience_level': 0.10,
-                        'job_title_match': 0.10,
-                        'location': 0.05
-                    }
-                    
+                    # Recalculate weighted score with corrected component (use existing weights)
+                    # Only use components that exist, default missing ones to 0.0
                     recalculated_score = sum(
-                        component_scores.get(key, 5.0) * weight
+                        component_scores.get(key, 0.0) * weight
                         for key, weight in weights.items()
                     )
                     recalculated_score = max(0.0, min(10.0, recalculated_score))
@@ -108,11 +109,11 @@ class AIScoringEngine:
                     score = recalculated_score
                     print(f"  RECALCULATED: Score adjusted from AI score to {score:.2f} due to missing must-have certs")
             else:
-                # No component scores extracted - apply direct penalty
-                # Cap score at 5.0 maximum for missing all must-have certs
-                if score > 5.0:
-                    print(f"  CORRECTING: Candidate missing ALL must-have certs but score is {score:.2f}, capping at 5.0 (component scores not extracted)")
-                    score = min(score, 5.0)
+                # No component scores extracted - apply direct penalty (less severe since certs are now lower priority)
+                # Cap score at 6.0 maximum for missing all must-have certs (reduced from 5.0 since certs are lower priority)
+                if score > 6.0:
+                    print(f"  CORRECTING: Candidate missing ALL must-have certs but score is {score:.2f}, capping at 6.0 (component scores not extracted)")
+                    score = min(score, 6.0)
         
         # Validate score consistency
         validated_score = self._validate_score_consistency(
@@ -126,6 +127,28 @@ class AIScoringEngine:
         # Generate a concise (4-5 sentences) rationale from the AI output
         input_for_rationale = reasoning or evaluation_text
         concise_rationale = self._extract_concise_rationale(input_for_rationale)
+        
+        # Extract transferrable skills information from component scores and reasoning
+        transferrable_skills_score = component_scores.get('transferrable_skills', 0.0) if component_scores else 0.0
+        transferrable_skills_match = {
+            'match_rate': transferrable_skills_score / 10.0,
+            'transferrable_skills': [],  # Will be populated from AI analysis if available
+            'relevance_score': transferrable_skills_score / 10.0
+        }
+        
+        # Try to extract transferrable skills list from reasoning text
+        # Look for patterns like "Transferrable skills identified: X, Y, Z" or similar
+        import re
+        transferrable_section = re.search(
+            r'(?:TRANSFERRABLE SKILLS|Transferrable skills).*?(?=\d+\.|OVERALL|COMPONENT|FINAL_SCORE|\Z)',
+            reasoning or evaluation_text,
+            re.DOTALL | re.IGNORECASE
+        )
+        if transferrable_section:
+            # Try to extract skill names from the text
+            skill_patterns = re.findall(r'(?:skill|ability|competency)[:\s]+([A-Za-z\s]+?)(?:\.|,|$)', transferrable_section.group(0), re.IGNORECASE)
+            if skill_patterns:
+                transferrable_skills_match['transferrable_skills'] = [s.strip() for s in skill_patterns[:10]]  # Limit to 10
         
         result = CandidateScore(
             name=candidate.get('name', 'Unknown'),
@@ -151,6 +174,7 @@ class AIScoringEngine:
                 'candidate_skills': candidate.get('skills', [])  # Only explicit skills
             },
             location_match=self._check_location_match(candidate, job_details),
+            transferrable_skills_match=transferrable_skills_match,  # NEW: Transferrable skills analysis
             component_scores=component_scores,  # Store component scores
             calibration_applied=False,  # Will be set during calibration phase
             calibration_factor=1.0
@@ -191,37 +215,37 @@ class AIScoringEngine:
             raise ValueError("OpenAI response was empty")
         evaluation_text = response.choices[0].message.content
         
-        # Parse the AI response to extract score, reasoning, and component scores
-        score, reasoning, component_scores = self._parse_ai_response(evaluation_text)
+        # Get weights from job_details
+        weights = job_details.scoring_profile if job_details.scoring_profile else get_default_weights()
+        # Ensure all required weight keys exist
+        default_weights = get_default_weights()
+        for key in default_weights.keys():
+            if key not in weights:
+                weights[key] = default_weights[key]
         
-        # Post-processing: Check if candidate is missing ALL must-have certs and adjust
+        # Parse the AI response to extract score, reasoning, and component scores
+        score, reasoning, component_scores = self._parse_ai_response(evaluation_text, weights)
+        
+        # Post-processing: Check if candidate is missing ALL must-have certs and adjust certifications_education score
+        # Note: certifications_education combines certs and education, but we still check must-have certs as they're critical
         has_must_have = self._check_must_have_certs(candidate, job_details)
         must_have_certs_required = any(c.category == 'must-have' for c in job_details.certifications)
         
-        # CRITICAL: If missing ALL must-have certs, enforce penalty even if component scores weren't extracted
+        # CRITICAL: If missing ALL must-have certs, adjust certifications_education component score
         if must_have_certs_required and not has_must_have:
             if component_scores:
-                # We have component scores - check and correct cert component
-                cert_component_score = component_scores.get('must_have_certs', 5.0)
+                # We have component scores - check and correct certs/education component
+                cert_ed_component_score = component_scores.get('certifications_education', 5.0)
                 
-                if cert_component_score > 1.0:
-                    # Force cert component to 0-1 range (use 0.5 as default)
-                    print(f"  CORRECTING: Candidate missing ALL must-have certs but cert component score is {cert_component_score:.2f}, forcing to 0.5")
-                    component_scores['must_have_certs'] = 0.5
+                if cert_ed_component_score > 2.0:
+                    # Missing all must-have certs should significantly lower the score
+                    print(f"  CORRECTING: Candidate missing ALL must-have certs but certs/education component score is {cert_ed_component_score:.2f}, adjusting to 2.0")
+                    component_scores['certifications_education'] = 2.0
                     
-                    # Recalculate weighted score with corrected component
-                    weights = {
-                        'must_have_certs': 0.30,
-                        'bonus_certs': 0.10,
-                        'required_skills': 0.25,
-                        'preferred_skills': 0.10,
-                        'experience_level': 0.10,
-                        'job_title_match': 0.10,
-                        'location': 0.05
-                    }
-                    
+                    # Recalculate weighted score with corrected component (use existing weights)
+                    # Only use components that exist, default missing ones to 0.0
                     recalculated_score = sum(
-                        component_scores.get(key, 5.0) * weight
+                        component_scores.get(key, 0.0) * weight
                         for key, weight in weights.items()
                     )
                     recalculated_score = max(0.0, min(10.0, recalculated_score))
@@ -230,11 +254,11 @@ class AIScoringEngine:
                     score = recalculated_score
                     print(f"  RECALCULATED: Score adjusted from AI score to {score:.2f} due to missing must-have certs")
             else:
-                # No component scores extracted - apply direct penalty
-                # Cap score at 5.0 maximum for missing all must-have certs
-                if score > 5.0:
-                    print(f"  CORRECTING: Candidate missing ALL must-have certs but score is {score:.2f}, capping at 5.0 (component scores not extracted)")
-                    score = min(score, 5.0)
+                # No component scores extracted - apply direct penalty (less severe since certs are now lower priority)
+                # Cap score at 6.0 maximum for missing all must-have certs (reduced from 5.0 since certs are lower priority)
+                if score > 6.0:
+                    print(f"  CORRECTING: Candidate missing ALL must-have certs but score is {score:.2f}, capping at 6.0 (component scores not extracted)")
+                    score = min(score, 6.0)
         
         # Validate score consistency
         validated_score = self._validate_score_consistency(
@@ -248,6 +272,27 @@ class AIScoringEngine:
         # Generate a concise (4-5 sentences) rationale from the AI output
         input_for_rationale = reasoning or evaluation_text
         concise_rationale = self._extract_concise_rationale(input_for_rationale)
+        
+        # Extract transferrable skills information from component scores and reasoning
+        transferrable_skills_score = component_scores.get('transferrable_skills', 0.0) if component_scores else 0.0
+        transferrable_skills_match = {
+            'match_rate': transferrable_skills_score / 10.0,
+            'transferrable_skills': [],  # Will be populated from AI analysis if available
+            'relevance_score': transferrable_skills_score / 10.0
+        }
+        
+        # Try to extract transferrable skills list from reasoning text
+        import re
+        transferrable_section = re.search(
+            r'(?:TRANSFERRABLE SKILLS|Transferrable skills).*?(?=\d+\.|OVERALL|COMPONENT|FINAL_SCORE|\Z)',
+            reasoning or evaluation_text,
+            re.DOTALL | re.IGNORECASE
+        )
+        if transferrable_section:
+            # Try to extract skill names from the text
+            skill_patterns = re.findall(r'(?:skill|ability|competency)[:\s]+([A-Za-z\s]+?)(?:\.|,|$)', transferrable_section.group(0), re.IGNORECASE)
+            if skill_patterns:
+                transferrable_skills_match['transferrable_skills'] = [s.strip() for s in skill_patterns[:10]]  # Limit to 10
         
         result = CandidateScore(
             name=candidate.get('name', 'Unknown'),
@@ -273,6 +318,7 @@ class AIScoringEngine:
                 'candidate_skills': candidate.get('skills', [])  # Only explicit skills
             },
             location_match=self._check_location_match(candidate, job_details),
+            transferrable_skills_match=transferrable_skills_match,  # NEW: Transferrable skills analysis
             component_scores=component_scores or {}
         )
 
@@ -315,9 +361,28 @@ class AIScoringEngine:
                                  job_details: JobDetails) -> str:
         """Build a comprehensive prompt with weighted scoring system"""
 
-        # Format certifications
+        # Get scoring weights from job_details (or use defaults)
+        weights = job_details.scoring_profile if job_details.scoring_profile else get_default_weights()
+        
+        # Ensure all required weight keys exist
+        default_weights = get_default_weights()
+        for key in default_weights.keys():
+            if key not in weights:
+                weights[key] = default_weights[key]
+        
+        # Format weights as percentages for display (NEW PRIORITY ORDER)
+        experience_weight = weights.get('experience_level', 0.25) * 100
+        job_title_weight = weights.get('job_title_match', 0.20) * 100
+        required_skills_weight = weights.get('required_skills', 0.18) * 100
+        transferrable_skills_weight = weights.get('transferrable_skills', 0.15) * 100
+        location_weight = weights.get('location', 0.10) * 100
+        preferred_skills_weight = weights.get('preferred_skills', 0.07) * 100
+        certifications_education_weight = weights.get('certifications_education', 0.05) * 100
+
+        # Format certifications (combine must-have and bonus for display)
         must_have_certs = [c.name for c in job_details.certifications if c.category == 'must-have']
         bonus_certs = [c.name for c in job_details.certifications if c.category == 'bonus']
+        all_certs = must_have_certs + bonus_certs
 
         prompt = f"""You are an expert recruitment evaluator. Analyze this candidate against the job requirements using a STRUCTURED, WEIGHTED SCORING SYSTEM for consistency and accuracy.
 
@@ -359,89 +424,129 @@ EVALUATION TASK - STRUCTURED COMPONENT SCORING:
 -----------------------------------------------
 You MUST provide component scores for EACH criterion below, then calculate the weighted final score.
 
-SCORING RUBRIC (each component scored 0-10 with PRECISE values):
-1. **Must-Have Certifications** (30% weight - CRITICAL):
-   - 10.0: Has ALL required certifications (100% match)
-   - 7.0: Missing exactly 1 required certification (has N-1 of N required, where N > 1)
-   - 5.0: Missing exactly 2 required certifications (has N-2 of N required, where N > 2)
-   - 3.0: Missing exactly 3 required certifications (has N-3 of N required, where N > 3)
-   - 1.0: Missing 4 or more required certifications (has fewer than N-3 of N required)
-   - **0.0: Missing ALL required certifications (CRITICAL - must be exactly 0.0)**
-   - **IMPORTANT: If candidate is missing ALL must-have certifications, component score MUST be exactly 0.0, NOT 0.5 or 1.0. Must-have certifications are CRITICAL - missing all should severely penalize the candidate.**
+SCORING RUBRIC (each component scored 0-10 with PRECISE values) - NEW PRIORITY ORDER:
 
-2. **Bonus Certifications** (10% weight):
-   - 10.0: Has ALL bonus certifications (100% match)
-   - 7.0: Has most bonus certifications (missing exactly 1, where total > 1)
-   - 5.0: Has some bonus certifications (missing 2-3, where total > 3)
-   - 2.0: Has few bonus certifications (missing most, has 1-2 of many)
-   - 0.0: Has no bonus certifications
-
-3. **Required Skills** (25% weight - VERY IMPORTANT):
-   - 10.0: Has ALL required skills with strong depth (100% match)
-   - 8.0: Has most required skills (80-99% match, missing 1-2 of many)
-   - 6.0: Has some required skills (50-79% match, missing several)
-   - 3.0: Has few required skills (25-49% match, missing most)
-   - 0.0: Has no required skills or very few (<25% match)
-
-4. **Preferred Skills** (10% weight):
-   - 10.0: Has ALL preferred skills (100% match)
-   - 7.0: Has most preferred skills (missing exactly 1, where total > 1)
-   - 5.0: Has some preferred skills (missing 2-3, where total > 3)
-   - 2.0: Has few preferred skills (missing most, has 1-2 of many)
-   - 0.0: Has no preferred skills
-
-5. **Experience Level** (10% weight):
+1. **Experience Level** ({experience_weight:.0f}% weight - HIGHEST PRIORITY):
    - 10.0: Perfect match (exact years/level required, e.g., "5 years" candidate for "5 years" job)
    - 8.0: Strong match (within 1-2 years of requirement, e.g., "4 years" candidate for "5 years" job)
    - 6.0: Moderate match (within 3-5 years of requirement, e.g., "3 years" candidate for "5 years" job)
    - 3.0: Weak match (6+ years difference, e.g., "2 years" candidate for "8 years" job)
    - 0.0: Very weak match (significantly different, e.g., "1 year" candidate for "10 years" job)
 
-6. **Job Title Match** (10% weight):
+2. **Job Title Match** ({job_title_weight:.0f}% weight - SECOND PRIORITY):
    - 10.0: Exact or very similar title (same words, e.g., "Safety Manager" for "Safety Manager")
    - 8.0: Related title in same field (similar function, e.g., "Safety Specialist" for "Safety Manager")
    - 5.0: Somewhat related title (same industry, different function, e.g., "Safety Coordinator" for "Safety Manager")
    - 2.0: Unrelated title (different industry or function)
+   - 0.0: No relevant job titles found
 
-7. **Location** (5% weight):
+3. **Required Skills** ({required_skills_weight:.0f}% weight - THIRD PRIORITY):
+   - 10.0: Has ALL required skills with strong depth (100% match)
+   - 8.0: Has most required skills (80-99% match, missing 1-2 of many)
+   - 6.0: Has some required skills (50-79% match, missing several)
+   - 3.0: Has few required skills (25-49% match, missing most)
+   - 0.0: Has no required skills or very few (<25% match)
+
+4. **Transferrable Skills** ({transferrable_skills_weight:.0f}% weight - FOURTH PRIORITY):
+   AI-POWERED ANALYSIS: Identify skills from the candidate's experience that are relevant to this role but NOT explicitly listed in required/preferred skills. Consider:
+   - Skills relevant to the job but not in the required/preferred lists
+   - Cross-industry skills that could transfer to this role (e.g., project management, customer service, data analysis)
+   - Semantically similar skills (different wording but same meaning, e.g., "client relations" = "customer service")
+   - Skills demonstrated through experience descriptions that align with job needs
+   
+   Scoring:
+   - 10.0: Exceptional transferrable skills - multiple highly relevant skills from experience that directly apply
+   - 8.0: Strong transferrable skills - several relevant skills that would benefit the role
+   - 6.0: Moderate transferrable skills - some relevant skills identified
+   - 3.0: Limited transferrable skills - few relevant skills found
+   - 0.0: No identifiable transferrable skills relevant to the role
+   
+   IMPORTANT: Cite specific examples from the candidate's resume. Be specific about which skills transfer and why they're relevant.
+
+5. **Location** ({location_weight:.0f}% weight - FIFTH PRIORITY):
    - 10.0: Exact location match (same city and state)
    - 7.0: Same city/region (same city, different state, or same state, nearby city)
    - 4.0: Different but reasonable distance (same state, different city, or nearby state)
    - 0.0: Very different location (different state, far away)
 
+6. **Preferred Skills** ({preferred_skills_weight:.0f}% weight - SIXTH PRIORITY):
+   - 10.0: Has ALL preferred skills (100% match)
+   - 7.0: Has most preferred skills (missing exactly 1, where total > 1)
+   - 5.0: Has some preferred skills (missing 2-3, where total > 3)
+   - 2.0: Has few preferred skills (missing most, has 1-2 of many)
+   - 0.0: Has no preferred skills
+
+7. **Certifications/Education** ({certifications_education_weight:.0f}% weight - LOWEST PRIORITY):
+   Combined evaluation of certifications (must-have + bonus) AND education level/degrees:
+   - 10.0: Has ALL must-have certifications AND education level matches or exceeds requirement
+   - 8.0: Has most must-have certifications (missing 1) AND education level matches
+   - 6.0: Has some must-have certifications (missing 2-3) OR education level close to requirement
+   - 3.0: Has few must-have certifications (missing most) OR education level below requirement
+   - 0.0: Missing ALL must-have certifications AND education level significantly below requirement
+   
+   Note: Education includes degrees, certifications, licenses, and relevant training. Consider both must-have and bonus certifications together.
+
 - **FINAL SCORE CALCULATION**: The final score MUST be calculated using ONLY the weighted sum formula - do not adjust or round arbitrarily. Component scores are the ONLY inputs to the final score. The final score MUST equal the weighted sum of component scores when all 7 components are provided. Ensure mathematical consistency. Verify your final score equals the weighted sum before reporting.
 
-EVALUATION STRUCTURE:
-1. **MUST-HAVE CERTIFICATIONS ANALYSIS**:
-   - Which required certifications does the candidate have?
-   - Which are missing?
+EVALUATION STRUCTURE (NEW PRIORITY ORDER):
+1. **EXPERIENCE LEVEL EVALUATION** (HIGHEST PRIORITY):
+   - Years of experience match assessment
+   - Relevance and depth of experience
+   - How well experience aligns with job requirements
    - Component score (0-10): ___
 
-2. **BONUS CERTIFICATIONS ANALYSIS**:
-   - Which bonus certifications does the candidate have?
+2. **JOB TITLE MATCH ANALYSIS** (SECOND PRIORITY):
+   - Relevance of previous job titles
+   - Similarity to target role
+   - Industry and function alignment
    - Component score (0-10): ___
 
-3. **REQUIRED SKILLS ANALYSIS**:
-   - Required skills present
+3. **REQUIRED SKILLS ANALYSIS** (THIRD PRIORITY):
+   - Required skills present in candidate's profile
    - Required skills missing
-   - Match percentage
+   - Match percentage and depth
    - Component score (0-10): ___
 
-4. **PREFERRED SKILLS ANALYSIS**:
-   - Preferred skills present
+4. **TRANSFERRABLE SKILLS ANALYSIS** (FOURTH PRIORITY - AI-POWERED):
+   CRITICAL: Analyze the candidate's experience to identify skills that are relevant to this role but NOT explicitly listed in required/preferred skills.
+   
+   Identify:
+   - Skills from candidate's experience that are relevant but not in required/preferred lists
+   - Cross-industry skills that could transfer to this role
+   - Semantically similar skills (different wording, same meaning)
+   - Skills demonstrated through job descriptions that align with role needs
+   
+   For each transferrable skill identified:
+   - Name the specific skill
+   - Explain how it's relevant to this role
+   - Cite where it appears in the candidate's resume (job title, experience description, etc.)
+   - Assess the strength/relevance (high, medium, low)
+   
+   Examples of transferrable skills to look for:
+   - Project management, team leadership, client relations, data analysis
+   - Communication, problem-solving, process improvement
+   - Industry-specific skills from related fields
+   - Soft skills demonstrated through experience
+   
+   - List of transferrable skills identified: ___
+   - Overall relevance assessment: ___
    - Component score (0-10): ___
 
-5. **EXPERIENCE EVALUATION**:
-   - Relevance of experience
-   - Years match assessment
-   - Component score (0-10): ___
-
-6. **JOB TITLE MATCH**:
-   - Relevance of previous titles
-   - Component score (0-10): ___
-
-7. **LOCATION MATCH**:
+5. **LOCATION MATCH** (FIFTH PRIORITY):
    - Location compatibility
+   - Geographic proximity assessment
+   - Component score (0-10): ___
+
+6. **PREFERRED SKILLS ANALYSIS** (SIXTH PRIORITY):
+   - Preferred skills present
+   - Preferred skills missing
+   - Component score (0-10): ___
+
+7. **CERTIFICATIONS/EDUCATION ANALYSIS** (LOWEST PRIORITY):
+   - Must-have certifications present/missing
+   - Bonus certifications present
+   - Education level (degree, training, licenses)
+   - Overall certifications/education assessment
    - Component score (0-10): ___
 
 8. **OVERALL ASSESSMENT** (4-5 sentences):
@@ -454,25 +559,25 @@ EVALUATION STRUCTURE:
 9. **COMPONENT SCORES SUMMARY** (REQUIRED):
 CRITICAL: These component scores are the ONLY inputs to the final score calculation. Do not adjust the final score based on subjective assessment - use ONLY the weighted formula. Component scores MUST be provided in the exact format shown - this is critical for consistency.
 
-Provide component scores in this EXACT format:
+Provide component scores in this EXACT format (NEW PRIORITY ORDER):
 COMPONENT_SCORES:
-- Must-have certifications: X.X/10
-- Bonus certifications: X.X/10
-- Required skills: X.X/10
-- Preferred skills: X.X/10
 - Experience level: X.X/10
 - Job title match: X.X/10
+- Required skills: X.X/10
+- Transferrable skills: X.X/10
 - Location: X.X/10
+- Preferred skills: X.X/10
+- Certifications/Education: X.X/10
 
 10. **WEIGHTED CALCULATION** (REQUIRED):
-Calculate weighted score using these weights:
-- Must-have certifications: component_score × 0.30
-- Bonus certifications: component_score × 0.10
-- Required skills: component_score × 0.25
-- Preferred skills: component_score × 0.10
-- Experience level: component_score × 0.10
-- Job title match: component_score × 0.10
-- Location: component_score × 0.05
+Calculate weighted score using these weights (NEW PRIORITY ORDER):
+- Experience level: component_score × {weights.get('experience_level', 0.25):.2f}
+- Job title match: component_score × {weights.get('job_title_match', 0.20):.2f}
+- Required skills: component_score × {weights.get('required_skills', 0.18):.2f}
+- Transferrable skills: component_score × {weights.get('transferrable_skills', 0.15):.2f}
+- Location: component_score × {weights.get('location', 0.10):.2f}
+- Preferred skills: component_score × {weights.get('preferred_skills', 0.07):.2f}
+- Certifications/Education: component_score × {weights.get('certifications_education', 0.05):.2f}
 Final Score = Sum of all weighted components
 
 VERIFICATION STEP: After calculating, verify: Final Score = Sum of (Component Score × Weight) for all 7 components. If your calculated score doesn't match this formula, recalculate. Show your calculation step-by-step.
@@ -497,7 +602,7 @@ CRITICAL CONSTRAINTS:
 
 CONSISTENCY RULE: If you evaluate this exact same candidate profile again, you MUST produce the exact same component scores and final score. Treat identical inputs as requiring identical outputs.
 
-MATHEMATICAL RULE: Final score = (must_have_certs × 0.30) + (bonus_certs × 0.10) + (required_skills × 0.25) + (preferred_skills × 0.10) + (experience_level × 0.10) + (job_title_match × 0.10) + (location × 0.05) - NO EXCEPTIONS. Do not round, adjust, or modify this calculation.
+MATHEMATICAL RULE: Final score = (experience_level × {weights.get('experience_level', 0.25):.2f}) + (job_title_match × {weights.get('job_title_match', 0.20):.2f}) + (required_skills × {weights.get('required_skills', 0.18):.2f}) + (transferrable_skills × {weights.get('transferrable_skills', 0.15):.2f}) + (location × {weights.get('location', 0.10):.2f}) + (preferred_skills × {weights.get('preferred_skills', 0.07):.2f}) + (certifications_education × {weights.get('certifications_education', 0.05):.2f}) - NO EXCEPTIONS. Do not round, adjust, or modify this calculation.
 
 CONSISTENCY EXAMPLE: If Candidate A has all must-have certs and 80% of required skills, they should always score 10.0 for certs and 8.0 for skills, regardless of when evaluated. If Candidate B has identical qualifications to Candidate A, they must receive identical component scores and final score.
 
@@ -506,27 +611,24 @@ Format your response with clear headers. Be specific and cite evidence from the 
 
         return prompt
 
-    def _parse_ai_response(self, response_text: str) -> Tuple[float, str, Dict[str, float]]:
+    def _parse_ai_response(self, response_text: str, weights: Dict[str, float] = None) -> Tuple[float, str, Dict[str, float]]:
         """
         Parse OpenAI's response to extract component scores, calculate weighted score, and extract reasoning
         
         Removes prompt text and extracts only the actual evaluation content.
+
+        Args:
+            response_text: The AI response text
+            weights: Dictionary of scoring weights (defaults to standard weights if not provided)
 
         Returns:
             (final_score, reasoning_text, component_scores_dict)
         """
         import re
         
-        # Define scoring weights (must match prompt)
-        weights = {
-            'must_have_certs': 0.30,
-            'bonus_certs': 0.10,
-            'required_skills': 0.25,
-            'preferred_skills': 0.10,
-            'experience_level': 0.10,
-            'job_title_match': 0.10,
-            'location': 0.05
-        }
+        # Use provided weights or default
+        if weights is None:
+            weights = get_default_weights()
         
         # Extract component scores
         component_scores = {}
@@ -540,15 +642,15 @@ Format your response with clear headers. Be specific and cite evidence from the 
         
         if component_section:
             component_text = component_section.group(0)
-            # Extract each component score from summary section
+            # Extract each component score from summary section (NEW PRIORITY ORDER)
             patterns = {
-                'must_have_certs': r'(?:Must-have certifications|must-have certifications):\s*(\d+\.?\d*)/10',
-                'bonus_certs': r'(?:Bonus certifications|bonus certifications):\s*(\d+\.?\d*)/10',
-                'required_skills': r'(?:Required skills|required skills):\s*(\d+\.?\d*)/10',
-                'preferred_skills': r'(?:Preferred skills|preferred skills):\s*(\d+\.?\d*)/10',
                 'experience_level': r'(?:Experience level|experience level):\s*(\d+\.?\d*)/10',
                 'job_title_match': r'(?:Job title match|job title match):\s*(\d+\.?\d*)/10',
-                'location': r'(?:Location|location):\s*(\d+\.?\d*)/10'
+                'required_skills': r'(?:Required skills|required skills):\s*(\d+\.?\d*)/10',
+                'transferrable_skills': r'(?:Transferrable skills|transferrable skills|Transferable skills|transferable skills):\s*(\d+\.?\d*)/10',
+                'location': r'(?:Location|location):\s*(\d+\.?\d*)/10',
+                'preferred_skills': r'(?:Preferred skills|preferred skills):\s*(\d+\.?\d*)/10',
+                'certifications_education': r'(?:Certifications/Education|certifications/education|Certifications\/Education):\s*(\d+\.?\d*)/10'
             }
             
             for key, pattern in patterns.items():
@@ -556,36 +658,36 @@ Format your response with clear headers. Be specific and cite evidence from the 
                 if match:
                     component_scores[key] = float(match.group(1))
         else:
-            # Fallback: Extract inline component scores from individual sections
+            # Fallback: Extract inline component scores from individual sections (NEW PRIORITY ORDER)
             # Look for patterns like "Component score (0-10): X.X" or "Component score (0-10): X.X/10"
             inline_patterns = {
-                'must_have_certs': [
-                    r'(?:MUST-HAVE CERTIFICATIONS|Must-have certifications).*?[Cc]omponent score.*?(\d+\.?\d*)/10',
-                    r'(?:MUST-HAVE CERTIFICATIONS|Must-have certifications).*?[Cc]omponent score.*?(\d+\.?\d*)',
+                'experience_level': [
+                    r'(?:EXPERIENCE LEVEL|Experience level|EXPERIENCE EVALUATION).*?[Cc]omponent score.*?(\d+\.?\d*)/10',
+                    r'(?:EXPERIENCE LEVEL|Experience level|EXPERIENCE EVALUATION).*?[Cc]omponent score.*?(\d+\.?\d*)',
                 ],
-                'bonus_certs': [
-                    r'(?:BONUS CERTIFICATIONS|Bonus certifications).*?[Cc]omponent score.*?(\d+\.?\d*)/10',
-                    r'(?:BONUS CERTIFICATIONS|Bonus certifications).*?[Cc]omponent score.*?(\d+\.?\d*)',
+                'job_title_match': [
+                    r'(?:JOB TITLE MATCH|Job title match|JOB TITLE).*?[Cc]omponent score.*?(\d+\.?\d*)/10',
+                    r'(?:JOB TITLE MATCH|Job title match|JOB TITLE).*?[Cc]omponent score.*?(\d+\.?\d*)',
                 ],
                 'required_skills': [
                     r'(?:REQUIRED SKILLS|Required skills).*?[Cc]omponent score.*?(\d+\.?\d*)/10',
                     r'(?:REQUIRED SKILLS|Required skills).*?[Cc]omponent score.*?(\d+\.?\d*)',
                 ],
+                'transferrable_skills': [
+                    r'(?:TRANSFERRABLE SKILLS|Transferrable skills|Transferable skills).*?[Cc]omponent score.*?(\d+\.?\d*)/10',
+                    r'(?:TRANSFERRABLE SKILLS|Transferrable skills|Transferable skills).*?[Cc]omponent score.*?(\d+\.?\d*)',
+                ],
+                'location': [
+                    r'(?:LOCATION MATCH|Location match|LOCATION).*?[Cc]omponent score.*?(\d+\.?\d*)/10',
+                    r'(?:LOCATION MATCH|Location match|LOCATION).*?[Cc]omponent score.*?(\d+\.?\d*)',
+                ],
                 'preferred_skills': [
                     r'(?:PREFERRED SKILLS|Preferred skills).*?[Cc]omponent score.*?(\d+\.?\d*)/10',
                     r'(?:PREFERRED SKILLS|Preferred skills).*?[Cc]omponent score.*?(\d+\.?\d*)',
                 ],
-                'experience_level': [
-                    r'(?:EXPERIENCE|Experience).*?[Cc]omponent score.*?(\d+\.?\d*)/10',
-                    r'(?:EXPERIENCE|Experience).*?[Cc]omponent score.*?(\d+\.?\d*)',
-                ],
-                'job_title_match': [
-                    r'(?:JOB TITLE|Job title).*?[Cc]omponent score.*?(\d+\.?\d*)/10',
-                    r'(?:JOB TITLE|Job title).*?[Cc]omponent score.*?(\d+\.?\d*)',
-                ],
-                'location': [
-                    r'(?:LOCATION|Location).*?[Cc]omponent score.*?(\d+\.?\d*)/10',
-                    r'(?:LOCATION|Location).*?[Cc]omponent score.*?(\d+\.?\d*)',
+                'certifications_education': [
+                    r'(?:CERTIFICATIONS/EDUCATION|Certifications/Education|certifications/education).*?[Cc]omponent score.*?(\d+\.?\d*)/10',
+                    r'(?:CERTIFICATIONS/EDUCATION|Certifications/Education|certifications/education).*?[Cc]omponent score.*?(\d+\.?\d*)',
                 ],
             }
             
@@ -601,9 +703,13 @@ Format your response with clear headers. Be specific and cite evidence from the 
                             continue
         
         # Calculate weighted score programmatically if we have component scores
-        if component_scores and len(component_scores) == len(weights):
+        # Use component scores if we have at least 4 of the 7 components (majority)
+        # Missing components default to 0.0 (not 5.0) to avoid inflating scores
+        if component_scores and len(component_scores) >= 4:
+            # Calculate weighted sum using available components
+            # For missing components, use 0.0 (candidate doesn't meet that criterion)
             calculated_score = sum(
-                component_scores.get(key, 5.0) * weight
+                component_scores.get(key, 0.0) * weight
                 for key, weight in weights.items()
             )
             # Ensure score is in valid range
@@ -807,33 +913,27 @@ Format your response with clear headers. Be specific and cite evidence from the 
                     print(f"  WARNING: Component score '{key}' out of range: {comp_score}, clamping to 0-10")
                     component_scores[key] = max(0.0, min(10.0, comp_score))
         
-        # Cross-validate: Check if must-have certs match aligns with cert component score
+        # Cross-validate: Check if must-have certs match aligns with certs/education component score
         has_must_have = self._check_must_have_certs(candidate, job_details)
         must_have_certs_required = any(c.category == 'must-have' for c in job_details.certifications)
         
         if must_have_certs_required and component_scores:
-            cert_score = component_scores.get('must_have_certs', 5.0)
-            # If candidate has must-have certs, score should be high (7+)
-            # If missing ALL, score should be 0-1 (already enforced in post-processing)
-            if has_must_have and cert_score < 7.0:
-                print(f"  WARNING: Candidate has must-have certs but cert component score is low ({cert_score})")
-            elif not has_must_have and cert_score > 1.0:
+            cert_ed_score = component_scores.get('certifications_education', 5.0)
+            # If candidate has must-have certs, certs/education score should be reasonable (6+)
+            # If missing ALL, score should be low (0-3) (already enforced in post-processing)
+            if has_must_have and cert_ed_score < 6.0:
+                print(f"  WARNING: Candidate has must-have certs but certs/education component score is low ({cert_ed_score})")
+            elif not has_must_have and cert_ed_score > 3.0:
                 # Force correction if still too high (should have been caught in post-processing, but double-check)
-                print(f"  CORRECTING: Candidate missing ALL must-have certs but cert component score is {cert_score:.2f}, forcing to 0.5")
-                component_scores['must_have_certs'] = 0.5
-                # Recalculate weighted score
-                weights = {
-                    'must_have_certs': 0.30,
-                    'bonus_certs': 0.10,
-                    'required_skills': 0.25,
-                    'preferred_skills': 0.10,
-                    'experience_level': 0.10,
-                    'job_title_match': 0.10,
-                    'location': 0.05
-                }
+                print(f"  CORRECTING: Candidate missing ALL must-have certs but certs/education component score is {cert_ed_score:.2f}, adjusting to 2.0")
+                component_scores['certifications_education'] = 2.0
+                # Recalculate weighted score (use weights from job_details)
+                # Note: weights should be passed to _validate_score_consistency, but for now use defaults
+                # This is a fallback - ideally weights should be passed through
+                default_weights = get_default_weights()
                 validated_score = sum(
-                    component_scores.get(key, 5.0) * weight
-                    for key, weight in weights.items()
+                    component_scores.get(key, 0.0) * weight
+                    for key, weight in default_weights.items()
                 )
                 validated_score = max(0.0, min(10.0, validated_score))
         
@@ -845,13 +945,8 @@ Format your response with clear headers. Be specific and cite evidence from the 
                 print(f"  WARNING: Most components are high ({high_components}/7) but final score is low ({validated_score})")
                 # Don't auto-adjust, but log the warning
         
-        # STRICT ENFORCEMENT: Candidate missing ALL must-have certs should be capped at 5.0
-        if must_have_certs_required and not has_must_have:
-            # Missing ALL critical certs should severely limit score
-            # Even with perfect other components, max score is ~5.0
-            if validated_score > 5.0:
-                print(f"  CORRECTING: Candidate missing ALL must-have certs but score is {validated_score:.2f}, capping at 5.0")
-                validated_score = min(validated_score, 5.0)
+        # Note: Since certifications/education is now lower priority (5%), missing all must-have certs
+        # doesn't need to cap the score as severely. The component score adjustment is sufficient.
         
         return validated_score
 

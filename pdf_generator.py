@@ -24,15 +24,38 @@ from reportlab.pdfgen import canvas
 
 from models import JobDetails, CandidateScore
 from pathlib import Path
+from ui.theme import LIGHT_TOKENS, BRAND_COLORS
 
 
 class PDFGenerator:
     """Generates professional PDF reports for candidate rankings"""
 
-    # Fixed logo path - always use the same logo for consistency
-    LOGO_PATH = Path(__file__).parent / "responsableLOGO-color-2048px.jpg"
+    # Fixed logo path - CROSSROADS Professional Services logo
+    LOGO_PATH = Path(__file__).parent / "Services Logo Full Color3840px copy.png"
     LOGO_WIDTH = 2.5 * inch
     LOGO_HEIGHT = 1.0 * inch
+    
+    # CROSSROADS Brand Colors (from design tokens)
+    BRAND_BLUE = colors.HexColor(BRAND_COLORS['blue'])
+    BRAND_BROWN = colors.HexColor(BRAND_COLORS['brown'])
+    BRAND_BLACK = colors.HexColor(BRAND_COLORS['black'])
+    
+    # Typography from design tokens (converted to ReportLab units)
+    # Spacing: convert rem to points (assuming 1rem = 12pt base)
+    SPACING_XS = 3  # 0.25rem * 12
+    SPACING_SM = 6  # 0.5rem * 12
+    SPACING_MD = 12  # 1rem * 12
+    SPACING_LG = 18  # 1.5rem * 12
+    SPACING_XL = 24  # 2rem * 12
+    
+    # Font sizes from tokens
+    FONT_SIZE_XS = 9   # 0.75rem * 12
+    FONT_SIZE_SM = 10.5  # 0.875rem * 12
+    FONT_SIZE_BASE = 12  # 1rem * 12
+    FONT_SIZE_LG = 13.5  # 1.125rem * 12
+    FONT_SIZE_XL = 15   # 1.25rem * 12
+    FONT_SIZE_2XL = 18  # 1.5rem * 12
+    FONT_SIZE_3XL = 22.5  # 1.875rem * 12
 
     def __init__(self, logo_path: str = None):
         """
@@ -47,62 +70,82 @@ class PDFGenerator:
         self._setup_custom_styles()
 
     def _setup_custom_styles(self):
-        """Setup custom paragraph styles with consistent font sizes"""
-        # Title style - 20pt (standardized)
+        """Setup custom paragraph styles with CROSSROADS branding using design tokens"""
+        # Title style - using FONT_SIZE_3XL from tokens
         self.styles.add(ParagraphStyle(
             name='CustomTitle',
             parent=self.styles['Heading1'],
-            fontSize=20,
-            textColor=colors.HexColor('#1a1a1a'),
-            spaceAfter=30,
+            fontSize=self.FONT_SIZE_3XL,
+            textColor=self.BRAND_BROWN,
+            spaceAfter=self.SPACING_XL,
             alignment=TA_CENTER,
-            fontName='Helvetica-Bold'
+            fontName='Times-Bold',
+            leading=self.FONT_SIZE_3XL * 1.25  # line-height-tight
         ))
 
-        # Section header - 14pt (standardized)
+        # Section header - using FONT_SIZE_XL from tokens
         self.styles.add(ParagraphStyle(
             name='SectionHeader',
             parent=self.styles['Heading2'],
-            fontSize=14,
-            textColor=colors.HexColor('#2c3e50'),
-            spaceAfter=12,
-            spaceBefore=20,
-            fontName='Helvetica-Bold',
+            fontSize=self.FONT_SIZE_XL,
+            textColor=self.BRAND_BROWN,
+            spaceAfter=self.SPACING_MD,
+            spaceBefore=self.SPACING_LG,
+            fontName='Times-Bold',
+            leading=self.FONT_SIZE_XL * 1.25,
             borderWidth=1,
-            borderColor=colors.HexColor('#3498db'),
-            borderPadding=5,
-            backColor=colors.HexColor('#ecf0f1')
+            borderColor=self.BRAND_BLUE,
+            borderPadding=self.SPACING_SM,
+            backColor=colors.HexColor(LIGHT_TOKENS['colors']['surface_elevated'])
         ))
 
-        # Body text - 10pt (keep)
+        # Body text - using FONT_SIZE_SM from tokens
         self.styles.add(ParagraphStyle(
             name='CustomBody',
             parent=self.styles['Normal'],
-            fontSize=10,
-            leading=14,
-            alignment=TA_JUSTIFY
+            fontSize=self.FONT_SIZE_SM,
+            leading=self.FONT_SIZE_SM * 1.5,  # line-height-normal
+            alignment=TA_JUSTIFY,
+            fontName='Times-Roman',
+            textColor=colors.HexColor(LIGHT_TOKENS['colors']['text_primary'])
         ))
 
-        # Candidate name - 11pt (standardized)
+        # Candidate name - using FONT_SIZE_LG from tokens
         self.styles.add(ParagraphStyle(
             name='CandidateName',
             parent=self.styles['Heading3'],
-            fontSize=11,
-            textColor=colors.HexColor('#2c3e50'),
-            fontName='Helvetica-Bold',
+            fontSize=self.FONT_SIZE_LG,
+            textColor=self.BRAND_BROWN,  # Brown for emphasis
+            fontName='Times-Bold',  # Serif bold
             spaceAfter=6
         ))
 
-        # Rationale style - 9pt (increased from 8pt for better readability)
+        # Rationale style - 9pt with serif
         self.styles.add(ParagraphStyle(
             name='RationaleStyle',
             parent=self.styles['Normal'],
             fontSize=9,
             leading=12,
             alignment=TA_LEFT,
-            textColor=colors.HexColor('#2c3e50'),
+            textColor=colors.HexColor('#333333'),
+            fontName='Times-Roman',  # Serif font
             wordWrap='LTR',
             splitLongWords=True
+        ))
+        
+        # Bullet point style - optimized for scannability with serif
+        self.styles.add(ParagraphStyle(
+            name='BulletStyle',
+            parent=self.styles['Normal'],
+            fontSize=10,
+            leading=14,
+            alignment=TA_LEFT,
+            textColor=colors.HexColor('#333333'),
+            fontName='Times-Roman',  # Serif font
+            leftIndent=0,
+            bulletIndent=0,
+            spaceBefore=2,
+            spaceAfter=2
         ))
 
     def generate(self, job_details: JobDetails,
@@ -135,9 +178,25 @@ class PDFGenerator:
         story.append(self._create_header())
         story.append(Spacer(1, 0.3*inch))
 
-        # Title
+        # Title - CROSSROADS branded
         title = Paragraph("CANDIDATE RANKING REPORT", self.styles['CustomTitle'])
         story.append(title)
+        story.append(Spacer(1, 0.1*inch))
+        
+        # Add CROSSROADS branding subtitle
+        subtitle = Paragraph(
+            "<i>CROSSROADS Professional Services</i>",
+            ParagraphStyle(
+                'SubtitleStyle',
+                parent=self.styles['Normal'],
+                fontSize=12,
+                textColor=self.BRAND_BLUE,  # CROSSROADS blue
+                alignment=TA_CENTER,
+                fontName='Times-Italic',  # Serif italic
+                spaceAfter=10
+            )
+        )
+        story.append(subtitle)
         story.append(Spacer(1, 0.2*inch))
 
         # Metadata
@@ -177,7 +236,7 @@ class PDFGenerator:
         story.append(Spacer(1, 0.3*inch))
         story.append(Paragraph("OVERALL NOTES", self.styles['SectionHeader']))
         story.append(Spacer(1, 0.1*inch))
-        story.append(self._create_overall_notes(top_candidates, all_candidates_count))
+        story.append(self._create_overall_notes(top_candidates, all_candidates_count, job_details))
 
         # Build PDF
         doc.build(story)
@@ -225,13 +284,13 @@ class PDFGenerator:
 
         # Fallback: Create a simple text-based logo if image not found
         logo_text = Paragraph(
-            "<b>ResponsAble Safety Staffing</b><br/>Safety Staffing On Demand",
+            "<b>CROSSROADS</b><br/><i>Professional Services</i>",
             ParagraphStyle(
                 'LogoStyle',
                 parent=self.styles['Normal'],
-                fontSize=12,  # Standardized (reduced from 14pt)
-                textColor=colors.HexColor('#2c3e50'),
-                fontName='Helvetica-Bold',
+                fontSize=14,
+                textColor=self.BRAND_BROWN,  # Brown for CROSSROADS
+                fontName='Times-Bold',  # Serif font
                 alignment=TA_LEFT,
                 spaceAfter=0.1*inch
             )
@@ -248,93 +307,127 @@ class PDFGenerator:
 
         table = Table(data, colWidths=[1.5*inch, 5*inch])
         table.setStyle(TableStyle([
-            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-            ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 0), (-1, -1), 10),  # Standardized to 10pt
-            ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#2c3e50')),
+            ('FONTNAME', (0, 0), (0, -1), 'Times-Bold'),  # Serif bold
+            ('FONTNAME', (1, 0), (1, -1), 'Times-Roman'),  # Serif
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('TEXTCOLOR', (0, 0), (-1, -1), self.BRAND_BROWN),  # Brown for labels
+            ('TEXTCOLOR', (1, 0), (1, -1), colors.HexColor('#333333')),  # Dark gray for values
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
         ]))
 
         return table
 
     def _create_job_summary(self, job_details: JobDetails):
-        """Create job summary section"""
+        """Create job summary section with scannable bullet points"""
         elements = []
 
-        # Job title and equivalents
-        equiv_text = ", ".join(job_details.equivalent_titles[:5])
-        if len(job_details.equivalent_titles) > 5:
-            equiv_text += f" (+{len(job_details.equivalent_titles) - 5} more)"
-
-        elements.append(Paragraph(
-            f"<b>Position:</b> {job_details.job_title}",
-            self.styles['CustomBody']
-        ))
-
+        bullets = []
+        
+        # Job title
+        bullets.append(f"• <b>Position:</b> {job_details.job_title}")
+        
+        # Equivalent titles
         if job_details.equivalent_titles:
-            elements.append(Spacer(1, 0.05*inch))
-            elements.append(Paragraph(
-                f"<b>Equivalent Titles:</b> {equiv_text}",
-                self.styles['CustomBody']
-            ))
+            equiv_text = ", ".join(job_details.equivalent_titles[:5])
+            if len(job_details.equivalent_titles) > 5:
+                equiv_text += f" (+{len(job_details.equivalent_titles) - 5} more)"
+            bullets.append(f"• <b>Equivalent Titles:</b> {equiv_text}")
 
         # Experience level
         if job_details.experience_level:
-            elements.append(Spacer(1, 0.05*inch))
-            elements.append(Paragraph(
-                f"<b>Experience Level:</b> {job_details.experience_level}",
-                self.styles['CustomBody']
-            ))
+            bullets.append(f"• <b>Experience Level:</b> {job_details.experience_level}")
 
         # Certifications - truncate long lists
-        MAX_JOB_CERTS_DISPLAY = 8
+        MAX_JOB_CERTS_DISPLAY = 6
         must_have_certs = [c.name for c in job_details.certifications if c.category == 'must-have']
         bonus_certs = [c.name for c in job_details.certifications if c.category == 'bonus']
 
         if must_have_certs:
-            elements.append(Spacer(1, 0.05*inch))
             if len(must_have_certs) > MAX_JOB_CERTS_DISPLAY:
                 cert_text = ', '.join(must_have_certs[:MAX_JOB_CERTS_DISPLAY]) + f" (+{len(must_have_certs) - MAX_JOB_CERTS_DISPLAY} more)"
             else:
                 cert_text = ', '.join(must_have_certs)
-            elements.append(Paragraph(
-                f"<b>Must-Have Certifications:</b> {cert_text}",
-                self.styles['CustomBody']
-            ))
+            bullets.append(f"• <b>Must-Have Certifications:</b> {cert_text}")
 
         if bonus_certs:
-            elements.append(Spacer(1, 0.05*inch))
             if len(bonus_certs) > MAX_JOB_CERTS_DISPLAY:
                 cert_text = ', '.join(bonus_certs[:MAX_JOB_CERTS_DISPLAY]) + f" (+{len(bonus_certs) - MAX_JOB_CERTS_DISPLAY} more)"
             else:
                 cert_text = ', '.join(bonus_certs)
-            elements.append(Paragraph(
-                f"<b>Bonus Certifications:</b> {cert_text}",
-                self.styles['CustomBody']
-            ))
+            bullets.append(f"• <b>Bonus Certifications:</b> {cert_text}")
 
         # Required skills
         if job_details.required_skills:
-            elements.append(Spacer(1, 0.05*inch))
-            elements.append(Paragraph(
-                f"<b>Required Skills:</b> {', '.join(job_details.required_skills[:10])}",
-                self.styles['CustomBody']
-            ))
+            skills_text = ', '.join(job_details.required_skills[:8])
+            if len(job_details.required_skills) > 8:
+                skills_text += f" (+{len(job_details.required_skills) - 8} more)"
+            bullets.append(f"• <b>Required Skills:</b> {skills_text}")
 
         # Preferred skills
         if job_details.preferred_skills:
-            elements.append(Spacer(1, 0.05*inch))
-            elements.append(Paragraph(
-                f"<b>Preferred Skills:</b> {', '.join(job_details.preferred_skills[:10])}",
-                self.styles['CustomBody']
-            ))
+            skills_text = ', '.join(job_details.preferred_skills[:8])
+            if len(job_details.preferred_skills) > 8:
+                skills_text += f" (+{len(job_details.preferred_skills) - 8} more)"
+            bullets.append(f"• <b>Preferred Skills:</b> {skills_text}")
 
         # Location
+        bullets.append(f"• <b>Location:</b> {job_details.location}")
+        
+        # Industry template if used
+        if job_details.industry_template and job_details.industry_template != "general":
+            bullets.append(f"• <b>Scoring Profile:</b> {job_details.industry_template.title()} template")
+
+        # Add all bullets from earlier
+        for bullet in bullets:
+            elements.append(Paragraph(bullet, self.styles['CustomBody']))
+            elements.append(Spacer(1, 0.04*inch))
+        
+        # Scoring weights/profile - show the weighting system being used
+        elements.append(Spacer(1, 0.1*inch))
+        elements.append(Paragraph("<b>Scoring Weights (Universal Standard):</b>", self.styles['CustomBody']))
         elements.append(Spacer(1, 0.05*inch))
-        elements.append(Paragraph(
-            f"<b>Location:</b> {job_details.location}",
-            self.styles['CustomBody']
-        ))
+        
+        # Get scoring weights (default to universal standard if not set)
+        from industry_templates import get_default_weights
+        weights = job_details.scoring_profile if job_details.scoring_profile else get_default_weights()
+        
+        # Sort weights by importance (highest first)
+        sorted_weights = sorted(weights.items(), key=lambda x: x[1], reverse=True)
+        
+        weight_bullets = []
+        for key, weight in sorted_weights:
+            weight_pct = weight * 100
+            # Format the key name nicely (NEW PRIORITY ORDER)
+            key_name = key.replace('_', ' ').title()
+            if key == 'experience_level':
+                key_name = 'Experience Level'
+            elif key == 'job_title_match':
+                key_name = 'Job Title Match'
+            elif key == 'required_skills':
+                key_name = 'Required Skills'
+            elif key == 'transferrable_skills':
+                key_name = 'Transferrable Skills'
+            elif key == 'location':
+                key_name = 'Location'
+            elif key == 'preferred_skills':
+                key_name = 'Preferred Skills'
+            elif key == 'certifications_education':
+                key_name = 'Certifications/Education'
+            # Legacy support for old weight keys
+            elif key == 'must_have_certs':
+                key_name = 'Must-Have Certifications (Legacy)'
+            elif key == 'bonus_certs':
+                key_name = 'Bonus Certifications (Legacy)'
+            
+            # Highlight top 3 most important criteria
+            if len(weight_bullets) < 3:
+                weight_bullets.append(f"• <b>{key_name}:</b> {weight_pct:.0f}% (High Priority)")
+            else:
+                weight_bullets.append(f"• {key_name}: {weight_pct:.0f}%")
+        
+        for bullet in weight_bullets:
+            elements.append(Paragraph(bullet, self.styles['CustomBody']))
+            elements.append(Spacer(1, 0.03*inch))
 
         return KeepTogether(elements)
 
@@ -348,111 +441,252 @@ class PDFGenerator:
 
     def _create_candidate_detail(self, rank: int, candidate: CandidateScore,
                                 job_details: JobDetails):
-        """Create detailed candidate section"""
+        """Create detailed candidate section with scannable bullet points, prioritized by scoring weights"""
         elements = []
 
-        # Rank and name
+        # Rank and name with score - ALWAYS displayed
         name_text = f"{rank}. {candidate.name} — Score: {candidate.fit_score:.2f}/10"
         elements.append(Paragraph(name_text, self.styles['CandidateName']))
+        elements.append(Spacer(1, 0.08*inch))
 
-        # Contact info
-        contact_data = [
-            ['Email:', candidate.email, 'Phone:', candidate.phone]
-        ]
+        # Contact info - ALWAYS displayed (show "Not provided" if missing)
+        contact_info = []
+        email_display = candidate.email if candidate.email else "Not provided"
+        phone_display = candidate.phone if candidate.phone else "Not provided"
+        
+        contact_info.append(f"<b>Email:</b> {email_display}")
+        contact_info.append(f"<b>Phone:</b> {phone_display}")
+        
+        contact_text = " • ".join(contact_info)
+        elements.append(Paragraph(contact_text, self.styles['CustomBody']))
+        elements.append(Spacer(1, 0.1*inch))
 
-        # Calculate column widths to fit page (page width ~7.5 inches, margins ~1.5 inches total = 6 inches usable)
-        # Use 0.7, 2.3, 0.7, 2.3 inches for better balance
-        contact_table = Table(contact_data, colWidths=[0.7*inch, 2.3*inch, 0.7*inch, 2.3*inch])
-        contact_table.setStyle(TableStyle([
-            ('FONTNAME', (0, 0), (0, 0), 'Helvetica-Bold'),
-            ('FONTNAME', (2, 0), (2, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 10),  # Standardized to 10pt
-            ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#34495e')),
-            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ('ALIGN', (0, 0), (0, -1), 'LEFT'),
-            ('ALIGN', (1, 0), (1, -1), 'LEFT'),
-            ('ALIGN', (2, 0), (2, -1), 'LEFT'),
-            ('ALIGN', (3, 0), (3, -1), 'LEFT'),
-            ('LEFTPADDING', (0, 0), (-1, -1), 6),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 6),
-            ('TOPPADDING', (0, 0), (-1, -1), 6),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-        ]))
-
-        elements.append(contact_table)
+        # Get scoring weights to prioritize information
+        from industry_templates import get_default_weights
+        weights = job_details.scoring_profile if job_details.scoring_profile else get_default_weights()
+        
+        # Key Qualifications as bullet points - ordered by weight importance
+        elements.append(Paragraph("<b>Key Qualifications (by importance):</b>", self.styles['CustomBody']))
         elements.append(Spacer(1, 0.05*inch))
-
-        # Certifications - truncate long lists
-        MAX_CERTS_DISPLAY = 8
+        
+        # Build qualification items with their weights (NEW PRIORITY ORDER)
+        qual_items = []
+        
+        # 1. Experience Level (HIGHEST PRIORITY)
+        exp_weight = weights.get('experience_level', 0.25)
+        exp_years = candidate.experience_match.get('years', 0)
+        if exp_years > 0:
+            qual_items.append((exp_weight, f"• <b>Experience:</b> {exp_years} years"))
+        else:
+            qual_items.append((exp_weight, f"• <b>Experience:</b> Not specified"))
+        
+        # 2. Job Title Match (SECOND PRIORITY)
+        title_weight = weights.get('job_title_match', 0.20)
+        titles = candidate.experience_match.get('titles', [])
+        if titles:
+            title_list = ', '.join(titles[:3])
+            if len(titles) > 3:
+                title_list += f" (+{len(titles) - 3} more)"
+            qual_items.append((title_weight, f"• <b>Job Title Match:</b> {title_list}"))
+        else:
+            qual_items.append((title_weight, f"• <b>Job Title Match:</b> No relevant titles"))
+        
+        # 3. Required Skills (THIRD PRIORITY)
+        req_skills_weight = weights.get('required_skills', 0.18)
+        req_skills_list = candidate.skills_match.get('candidate_skills', [])
+        required_skills = job_details.required_skills or []
+        matched_skills = [s for s in req_skills_list if any(req.lower() in s.lower() or s.lower() in req.lower() for req in required_skills)]
+        if matched_skills:
+            skills_display = ', '.join(matched_skills[:5])
+            if len(matched_skills) > 5:
+                skills_display += f" (+{len(matched_skills) - 5} more)"
+            qual_items.append((req_skills_weight, f"• <b>Required Skills:</b> {skills_display}"))
+        else:
+            qual_items.append((req_skills_weight, f"• <b>Required Skills:</b> Limited match"))
+        
+        # 4. Transferrable Skills (FOURTH PRIORITY - NEW)
+        transferrable_weight = weights.get('transferrable_skills', 0.15)
+        transferrable_skills_list = candidate.transferrable_skills_match.get('transferrable_skills', [])
+        if transferrable_skills_list:
+            skills_display = ', '.join(transferrable_skills_list[:5])
+            if len(transferrable_skills_list) > 5:
+                skills_display += f" (+{len(transferrable_skills_list) - 5} more)"
+            qual_items.append((transferrable_weight, f"• <b>Transferrable Skills:</b> {skills_display}"))
+        else:
+            qual_items.append((transferrable_weight, f"• <b>Transferrable Skills:</b> Limited transferrable skills"))
+        
+        # 5. Location (FIFTH PRIORITY)
+        location_weight = weights.get('location', 0.10)
+        if candidate.location_match:
+            qual_items.append((location_weight, f"• <b>Location:</b> ✓ Matches job location"))
+        else:
+            qual_items.append((location_weight, f"• <b>Location:</b> ✗ Does not match job location"))
+        
+        # 6. Preferred Skills (SIXTH PRIORITY)
+        pref_skills_weight = weights.get('preferred_skills', 0.07)
+        pref_skills_list = candidate.skills_match.get('candidate_skills', [])
+        preferred_skills = job_details.preferred_skills or []
+        matched_pref_skills = [s for s in pref_skills_list if any(pref.lower() in s.lower() or s.lower() in pref.lower() for pref in preferred_skills)]
+        if matched_pref_skills:
+            skills_display = ', '.join(matched_pref_skills[:5])
+            if len(matched_pref_skills) > 5:
+                skills_display += f" (+{len(matched_pref_skills) - 5} more)"
+            qual_items.append((pref_skills_weight, f"• <b>Preferred Skills:</b> {skills_display}"))
+        else:
+            qual_items.append((pref_skills_weight, f"• <b>Preferred Skills:</b> Limited match"))
+        
+        # 7. Certifications/Education (LOWEST PRIORITY - COMBINED)
+        cert_ed_weight = weights.get('certifications_education', 0.05)
         if candidate.certifications:
+            MAX_CERTS_DISPLAY = 3
             if len(candidate.certifications) > MAX_CERTS_DISPLAY:
                 cert_list = ', '.join(candidate.certifications[:MAX_CERTS_DISPLAY])
-                cert_text = f"<b>Certifications:</b> {cert_list} (+{len(candidate.certifications) - MAX_CERTS_DISPLAY} more)"
+                qual_items.append((cert_ed_weight, f"• <b>Certifications/Education:</b> {cert_list} (+{len(candidate.certifications) - MAX_CERTS_DISPLAY} more)"))
             else:
-                cert_text = f"<b>Certifications:</b> {', '.join(candidate.certifications)}"
+                qual_items.append((cert_ed_weight, f"• <b>Certifications/Education:</b> {', '.join(candidate.certifications)}"))
         else:
-            cert_text = "<b>Certifications:</b> None listed"
-
-        elements.append(Paragraph(cert_text, self.styles['CustomBody']))
+            qual_items.append((cert_ed_weight, f"• <b>Certifications/Education:</b> None listed"))
+        
+        # Sort by weight (highest first) and display
+        qual_items.sort(key=lambda x: x[0], reverse=True)
+        for _, bullet in qual_items:
+            elements.append(Paragraph(bullet, self.styles['CustomBody']))
+            elements.append(Spacer(1, 0.03*inch))
+        
+        elements.append(Spacer(1, 0.08*inch))
+        
+        # Summary - concise 1-2 sentence fit assessment
+        elements.append(Paragraph("<b>Summary:</b>", self.styles['CustomBody']))
         elements.append(Spacer(1, 0.05*inch))
-
-        # Rationale - clean and format properly
-        cleaned_rationale = self._clean_rationale_text(candidate.rationale)
-
-        # Truncate very long rationale text (allow 4-5 sentences, ~1500 chars)
-        # Ensure truncation happens at sentence boundaries
-        MAX_RATIONALE_CHARS = 1500
-        if cleaned_rationale and len(cleaned_rationale) > MAX_RATIONALE_CHARS:
-            # Truncate at the last complete sentence before the limit
-            truncated = cleaned_rationale[:MAX_RATIONALE_CHARS]
-            # Find the last sentence boundary (period, exclamation, question mark)
-            last_period = truncated.rfind('.')
-            last_exclamation = truncated.rfind('!')
-            last_question = truncated.rfind('?')
-            last_sentence_end = max(last_period, last_exclamation, last_question)
-            
-            # Only truncate at sentence boundary if we found one and it's reasonable (at least 1000 chars)
-            if last_sentence_end > 1000:
-                cleaned_rationale = truncated[:last_sentence_end + 1]
-            else:
-                # Fallback: truncate at word boundary if no sentence boundary found
-                if ' ' in truncated:
-                    truncated = truncated.rsplit(' ', 1)[0]
-                cleaned_rationale = truncated + "..."
-
-        # Wrap rationale in a table with proper formatting to prevent overflow
-        rationale_width = 6.5 * inch  # Fit within page margins
-        rationale_data = [[Paragraph(f"<b>Rationale:</b>", self.styles['CustomBody'])]]
-        rationale_table = Table(rationale_data, colWidths=[rationale_width])
-        rationale_table.setStyle(TableStyle([
-            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-            ('LEFTPADDING', (0, 0), (-1, -1), 0),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 0),
-            ('TOPPADDING', (0, 0), (-1, -1), 0),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-        ]))
-        elements.append(rationale_table)
-
-        # Add rationale content in a properly formatted table
-        if cleaned_rationale:
-            rationale_content_data = [[Paragraph(cleaned_rationale, self.styles['RationaleStyle'])]]
-            rationale_content_table = Table(rationale_content_data, colWidths=[rationale_width])
-            rationale_content_table.setStyle(TableStyle([
-                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                ('LEFTPADDING', (0, 0), (-1, -1), 0),
-                ('RIGHTPADDING', (0, 0), (-1, -1), 0),
-                ('TOPPADDING', (0, 0), (-1, -1), 0),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-            ]))
-            elements.append(rationale_content_table)
-        else:
-            # Fallback if rationale is empty after cleaning
-            elements.append(Paragraph("No detailed rationale available.", self.styles['RationaleStyle']))
+        
+        # Generate concise 1-2 sentence summary
+        summary_text = self._generate_concise_summary(candidate, job_details)
+        elements.append(Paragraph(summary_text, self.styles['RationaleStyle']))
+        elements.append(Spacer(1, 0.05*inch))
 
         # Create border box
         return KeepTogether(elements)
+
+    def _generate_concise_summary(self, candidate: CandidateScore, job_details: JobDetails) -> str:
+        """
+        Generate a concise 1-2 sentence summary about the candidate's fit for the role.
+        
+        Args:
+            candidate: CandidateScore object with evaluation data
+            job_details: JobDetails object with job requirements
+            
+        Returns:
+            Concise 1-2 sentence summary string
+        """
+        import re
+        
+        # Clean the rationale first
+        cleaned_rationale = self._clean_rationale_text(candidate.rationale)
+        
+        # Extract key information from candidate data
+        score = candidate.fit_score
+        exp_years = candidate.experience_match.get('years', 0)
+        has_must_have_certs = candidate.certification_match.get('has_must_have', False)
+        required_skills_match = candidate.skills_match.get('required_match_rate', 0.0)
+        location_match = candidate.location_match
+        job_titles = candidate.experience_match.get('titles', [])
+        
+        # Build summary based on score and key qualifications
+        summary_parts = []
+        
+        # Overall assessment based on score
+        if score >= 8.0:
+            assessment = "excellent fit"
+        elif score >= 6.5:
+            assessment = "strong candidate"
+        elif score >= 5.0:
+            assessment = "viable candidate"
+        else:
+            assessment = "limited fit"
+        
+        # First sentence: Overall fit with key strengths
+        strengths = []
+        if exp_years > 0:
+            strengths.append(f"{exp_years} years of experience")
+        if job_titles:
+            strengths.append("relevant job titles")
+        if has_must_have_certs:
+            strengths.append("required certifications")
+        if required_skills_match >= 0.7:
+            strengths.append("strong skills match")
+        elif required_skills_match >= 0.5:
+            strengths.append("adequate skills match")
+        
+        if strengths:
+            strength_text = ", ".join(strengths[:2])  # Limit to 2 key strengths
+            first_sentence = f"{candidate.name} presents an {assessment} for the {job_details.job_title} position with {strength_text}."
+        else:
+            first_sentence = f"{candidate.name} presents an {assessment} for the {job_details.job_title} position."
+        
+        summary_parts.append(first_sentence)
+        
+        # Second sentence: Key gaps or additional qualifications (if needed)
+        gaps = []
+        if not has_must_have_certs and any(c.category == 'must-have' for c in job_details.certifications):
+            gaps.append("missing required certifications")
+        if required_skills_match < 0.5 and job_details.required_skills:
+            gaps.append("limited required skills match")
+        if not location_match:
+            gaps.append("location mismatch")
+        
+        # Additional qualifications
+        bonuses = []
+        if len(candidate.certifications) > 0 and not has_must_have_certs:
+            bonuses.append("additional certifications")
+        transferrable_skills = candidate.transferrable_skills_match.get('transferrable_skills', [])
+        if transferrable_skills and len(transferrable_skills) >= 3:
+            bonuses.append("strong transferrable skills")
+        
+        # Build second sentence if there are notable gaps or bonuses
+        if gaps and score < 7.0:
+            # Mention gaps for lower-scoring candidates
+            gap_text = gaps[0]  # Focus on primary gap
+            second_sentence = f"Primary consideration: {gap_text}."
+            summary_parts.append(second_sentence)
+        elif bonuses and score >= 6.5:
+            # Mention bonuses for stronger candidates
+            bonus_text = bonuses[0]
+            second_sentence = f"Additional qualifications include {bonus_text}."
+            summary_parts.append(second_sentence)
+        elif score < 5.0:
+            # For low scores, provide context
+            second_sentence = "Significant gaps in key requirements limit overall fit."
+            summary_parts.append(second_sentence)
+        
+        # If we couldn't build a good summary from structured data, extract from rationale
+        if len(summary_parts) < 2 and cleaned_rationale:
+            # Extract first 1-2 meaningful sentences from cleaned rationale
+            sentences = re.split(r'(?<=[.!?])\s+', cleaned_rationale.strip())
+            meaningful_sentences = [s.strip() for s in sentences if len(s.strip()) > 30 and len(s.strip()) < 200]
+            
+            # Look for overall assessment sentences
+            for sentence in meaningful_sentences[:2]:
+                # Skip if it's a detail sentence (too specific)
+                if any(word in sentence.lower() for word in ['component', 'score', 'calculation', 'weighted', 'breakdown']):
+                    continue
+                # Prefer sentences with overall assessment words
+                if any(word in sentence.lower() for word in ['fit', 'candidate', 'recommend', 'suitable', 'qualified', 'strong', 'excellent', 'good', 'viable']):
+                    if len(summary_parts) == 1:
+                        summary_parts.append(sentence)
+                        break
+        
+        # Ensure we have at least one sentence
+        if not summary_parts:
+            summary_parts.append(f"{candidate.name} scored {score:.1f}/10 for the {job_details.job_title} position.")
+        
+        # Join sentences (limit to 2 sentences max)
+        summary = " ".join(summary_parts[:2])
+        
+        # Ensure summary ends with proper punctuation
+        if not summary.rstrip().endswith(('.', '!', '?')):
+            summary = summary.rstrip() + "."
+        
+        return summary
 
     def _clean_rationale_text(self, rationale: str) -> str:
         """
@@ -542,9 +776,17 @@ class PDFGenerator:
                 continue
             
             # Remove lines with score patterns like "X.X/10" or "Score (0-10)"
-            if re.search(r'\d+\.?\d*\s*/\s*10|Score\s*\(0-10\)', line_stripped, re.IGNORECASE):
-                if not re.search(r'\d+\.\d+/10', line_stripped):  # Keep actual scores in text
-                    continue
+            # But be more careful - only remove if it's clearly a prompt/calculation line
+            if re.search(r'Score\s*\(0-10\)', line_stripped, re.IGNORECASE):
+                continue
+            # Remove lines that are just score calculations (e.g., "8.0 × 0.15 = 1.2")
+            if re.search(r'^\s*\d+\.?\d*\s*[×x*]\s*\d+\.?\d*\s*=\s*\d+\.?\d*\s*$', line_stripped):
+                continue
+            # Remove lines with "FINAL_SCORE" or "Final Score" patterns
+            if re.search(r'FINAL[_\s]?SCORE\s*:?\s*\d+\.?\d*/10', line_stripped, re.IGNORECASE):
+                continue
+            if re.search(r'\*\*FINAL[_\s]?SCORE\*\*', line_stripped, re.IGNORECASE):
+                continue
             
             # Remove lines with colons followed by underscores or placeholders
             if re.search(r':\s*(?:___|___|\.\.\.|placeholder)', line_stripped, re.IGNORECASE):
@@ -558,6 +800,15 @@ class PDFGenerator:
             # Remove WEIGHTED CALCULATION section
             if 'WEIGHTED CALCULATION' in line_stripped.upper() or re.search(r'WEIGHTED\s+CALCULATION', line_stripped, re.IGNORECASE):
                 skip_until_content = True
+                continue
+            
+            # Remove "Score Breakdown" or "Score Calculation" sections
+            if re.search(r'Score\s+(?:Breakdown|Calculation|Breakdown and Calculation)', line_stripped, re.IGNORECASE):
+                skip_until_content = True
+                continue
+            
+            # Remove lines that are score calculations (e.g., "Transferrable skills: 8.0 × 0.15 = 1.2")
+            if re.search(r'^\s*\w+.*?:\s*\d+\.?\d*\s*[×x*]\s*\d+\.?\d*\s*=\s*\d+\.?\d*\s*$', line_stripped, re.IGNORECASE):
                 continue
             
             # Remove lines starting with question/instruction words
@@ -678,12 +929,17 @@ class PDFGenerator:
         if not cleaned_text or (not content_found and len(cleaned_text) < 50):
             # Fallback: return original but remove only the most obvious prompt elements
             fallback = rationale
-            # Remove FINAL_SCORE line
-            fallback = re.sub(r'FINAL_SCORE:\s*\d+\.?\d*/10.*', '', fallback, flags=re.IGNORECASE | re.MULTILINE)
+            # Remove FINAL_SCORE line (all variations including markdown)
+            fallback = re.sub(r'\*\*?FINAL[_\s]?SCORE\*\*?\s*:?\s*\d+\.?\d*/10.*', '', fallback, flags=re.IGNORECASE | re.MULTILINE)
+            fallback = re.sub(r'FINAL[_\s]?SCORE\s*:?\s*\d+\.?\d*/10.*', '', fallback, flags=re.IGNORECASE | re.MULTILINE)
+            # Remove "Score Breakdown and Calculation" sections
+            fallback = re.sub(r'Score\s+Breakdown\s+and\s+Calculation:.*?(?=FINAL_SCORE|Summary|\Z)', '', fallback, flags=re.DOTALL | re.IGNORECASE)
+            # Remove weighted calculation lines (e.g., "Transferrable skills: 8.0 × 0.15 = 1.2")
+            fallback = re.sub(r'^\s*\w+.*?:\s*\d+\.?\d*\s*[×x*]\s*\d+\.?\d*\s*=\s*\d+\.?\d*\s*$', '', fallback, flags=re.MULTILINE | re.IGNORECASE)
             # Remove COMPONENT_SCORES section
-            fallback = re.sub(r'COMPONENT_SCORES:.*?(?=WEIGHTED CALCULATION|FINAL_SCORE|\Z)', '', fallback, flags=re.DOTALL | re.IGNORECASE)
+            fallback = re.sub(r'COMPONENT_SCORES:.*?(?=WEIGHTED CALCULATION|FINAL_SCORE|Score Breakdown|\Z)', '', fallback, flags=re.DOTALL | re.IGNORECASE)
             # Remove WEIGHTED CALCULATION section
-            fallback = re.sub(r'WEIGHTED CALCULATION:.*?(?=FINAL_SCORE|\Z)', '', fallback, flags=re.DOTALL | re.IGNORECASE)
+            fallback = re.sub(r'WEIGHTED\s+CALCULATION:.*?(?=FINAL_SCORE|Score Breakdown|\Z)', '', fallback, flags=re.DOTALL | re.IGNORECASE)
             # Remove obvious section headers (all caps lines ending with colon)
             fallback = re.sub(r'^[A-Z\s]{15,}:\s*$', '', fallback, flags=re.MULTILINE)
             # Clean up multiple blank lines
@@ -702,15 +958,15 @@ class PDFGenerator:
         MAX_CHART_CANDIDATES = 10
         chart_candidates = top_candidates[:MAX_CHART_CANDIDATES]
 
-        # Abbreviated criteria labels (no rotation needed)
+        # Abbreviated criteria labels (NEW PRIORITY ORDER)
         criteria = [
-            'Must\nCerts',
-            'Bonus\nCerts',
-            'Req\nSkills',
-            'Pref\nSkills',
             'Exp\nLevel',
             'Title\nMatch',
-            'Location'
+            'Req\nSkills',
+            'Transfer\nSkills',
+            'Location',
+            'Pref\nSkills',
+            'Certs/\nEdu'
         ]
 
         # Create figure - adjust size based on number of candidates
@@ -752,31 +1008,44 @@ class PDFGenerator:
             ax.text(0.5, row + 0.5, candidate_names[i], ha='center', va='center',
                     fontsize=9)
 
-            # Evaluation criteria
+            # Evaluation criteria (NEW PRIORITY ORDER)
+            # Get certifications/education score
+            cert_ed_score = candidate.component_scores.get('certifications_education', 0.0) if candidate.component_scores else 0.0
+            if cert_ed_score == 0.0:
+                # Fallback: derive from certification_match
+                has_must_have = candidate.certification_match.get('has_must_have', False)
+                has_certs = len(candidate.certifications) > 0
+                cert_ed_score = 8.0 if (has_must_have and has_certs) else (6.0 if has_certs else 2.0)
+            
             evaluations = [
-                candidate.certification_match['has_must_have'],
-                candidate.certification_match['has_bonus'],
-                candidate.skills_match['required_match_rate'] >= 0.7,
-                candidate.skills_match['preferred_match_rate'] >= 0.5,
-                candidate.experience_match['level_match'] >= 0.7,
-                self._job_title_match(candidate.experience_match),
-                candidate.location_match
+                candidate.experience_match['level_match'] >= 0.7,  # 1. Experience Level
+                self._job_title_match(candidate.experience_match),  # 2. Job Title Match
+                candidate.skills_match['required_match_rate'] >= 0.7,  # 3. Required Skills
+                candidate.transferrable_skills_match.get('match_rate', 0.0) >= 0.6,  # 4. Transferrable Skills
+                candidate.location_match,  # 5. Location
+                candidate.skills_match['preferred_match_rate'] >= 0.5,  # 6. Preferred Skills
+                cert_ed_score >= 6.0  # 7. Certifications/Education
             ]
 
             for j, is_match in enumerate(evaluations, 1):
                 if is_match:
-                    # Green Y for Yes
+                    # CROSSROADS blue Y for Yes
                     ax.text(j + 0.5, row + 0.5, 'Y', ha='center', va='center',
-                           color='green', fontsize=12, fontweight='bold')
+                           color='#00A8CC', fontsize=12, fontweight='bold')
                 else:
-                    # Red N for No
+                    # Brown-tinted red N for No
                     ax.text(j + 0.5, row + 0.5, 'N', ha='center', va='center',
-                           color='red', fontsize=12, fontweight='bold')
+                           color='#C85A3A', fontsize=12, fontweight='bold')
 
-            # Score - standardized to 10pt
-            score_color = 'darkgreen' if candidate.fit_score >= 8 else \
-                         'green' if candidate.fit_score >= 6.5 else \
-                         'orange' if candidate.fit_score >= 5 else 'red'
+            # Score - use CROSSROADS blue for high scores, brown for medium, orange/red for low
+            if candidate.fit_score >= 8:
+                score_color = '#00A8CC'  # CROSSROADS blue for excellent
+            elif candidate.fit_score >= 6.5:
+                score_color = '#4A90E2'  # Lighter blue for good
+            elif candidate.fit_score >= 5:
+                score_color = '#D4A574'  # Brown-tinted orange for viable
+            else:
+                score_color = '#C85A3A'  # Brown-tinted red for poor
 
             ax.text(num_criteria + 1.5, row + 0.5, f"{candidate.fit_score:.1f}",
                    ha='center', va='center', fontsize=10, fontweight='bold',
@@ -787,10 +1056,10 @@ class PDFGenerator:
         ax.set_ylim(0, num_candidates + 1)
         ax.axis('off')
 
-        # Legend - use Y/N instead of Unicode symbols
+        # Legend - use Y/N with CROSSROADS colors
         legend_elements = [
-            mpatches.Patch(color='green', label='Y = Meets Criteria'),
-            mpatches.Patch(color='red', label='N = Does Not Meet')
+            mpatches.Patch(color='#00A8CC', label='Y = Meets Criteria'),  # CROSSROADS blue
+            mpatches.Patch(color='#C85A3A', label='N = Does Not Meet')  # Brown-tinted red
         ]
         ax.legend(handles=legend_elements, loc='upper left', bbox_to_anchor=(0, -0.05),
                  ncol=2, fontsize=9)
@@ -824,9 +1093,11 @@ class PDFGenerator:
         return len(experience_match.get('titles', [])) > 0
 
     def _create_overall_notes(self, top_candidates: List[CandidateScore],
-                             all_candidates_count: int):
-        """Create overall notes section"""
+                             all_candidates_count: int, job_details: JobDetails = None):
+        """Create overall notes section with scannable bullet points, weight-aware"""
         elements = []
+
+        bullets = []
 
         # Summary statistics
         if top_candidates:
@@ -834,56 +1105,139 @@ class PDFGenerator:
             max_score = max(c.fit_score for c in top_candidates)
             min_score = min(c.fit_score for c in top_candidates)
 
-            elements.append(Paragraph(
-                f"<b>Summary Statistics:</b> Average score: {avg_score:.2f}, "
-                f"Highest: {max_score:.2f}, Lowest: {min_score:.2f}",
-                self.styles['CustomBody']
-            ))
-            elements.append(Spacer(1, 0.1*inch))
+            bullets.append(f"• <b>Average Score:</b> {avg_score:.2f}/10")
+            bullets.append(f"• <b>Score Range:</b> {min_score:.2f} - {max_score:.2f}/10")
+            
+            # Score interpretation based on universal standard
+            excellent = sum(1 for c in top_candidates if c.fit_score >= 8.0)
+            good = sum(1 for c in top_candidates if 6.5 <= c.fit_score < 8.0)
+            viable = sum(1 for c in top_candidates if 5.0 <= c.fit_score < 6.5)
+            
+            if excellent > 0:
+                bullets.append(f"• <b>Excellent Fit (8.0+):</b> {excellent} candidate(s) - highly recommended")
+            if good > 0:
+                bullets.append(f"• <b>Good Fit (6.5-7.9):</b> {good} candidate(s) - minor gaps")
+            if viable > 0:
+                bullets.append(f"• <b>Viable (5.0-6.4):</b> {viable} candidate(s) - may need additional screening")
 
         # Excluded candidates note
         excluded = all_candidates_count - len(top_candidates)
         if excluded > 0:
-            elements.append(Paragraph(
-                f"<b>Excluded Candidates:</b> {excluded} candidate(s) excluded from top list "
-                f"due to low fit scores (below 5.0 threshold).",
-                self.styles['CustomBody']
-            ))
+            bullets.append(f"• <b>Excluded:</b> {excluded} candidate(s) below 5.0 threshold")
+
+        # Add statistics bullets
+        for bullet in bullets:
+            elements.append(Paragraph(bullet, self.styles['CustomBody']))
+            elements.append(Spacer(1, 0.05*inch))
+
+        # Key Insights - weight-aware
+        if top_candidates and job_details:
             elements.append(Spacer(1, 0.1*inch))
+            elements.append(Paragraph("<b>Key Insights (by scoring weights):</b>", self.styles['CustomBody']))
+            elements.append(Spacer(1, 0.05*inch))
+            
+            from industry_templates import get_default_weights
+            weights = job_details.scoring_profile if job_details.scoring_profile else get_default_weights()
+            
+            insight_bullets = []
+            
+            # Check highest-weighted criteria first (NEW PRIORITY ORDER)
+            exp_weight = weights.get('experience_level', 0.25)
+            if exp_weight >= 0.20:  # Highest priority
+                low_exp = sum(1 for c in top_candidates
+                            if c.experience_match.get('level_match', 0.0) < 0.7)
+                if low_exp > 0:
+                    insight_bullets.append(
+                        f"• <b>Experience Level ({exp_weight*100:.0f}% weight):</b> {low_exp} candidate(s) below optimal experience level (highest priority)"
+                    )
+            
+            title_weight = weights.get('job_title_match', 0.20)
+            if title_weight >= 0.15:  # Second priority
+                low_titles = sum(1 for c in top_candidates
+                               if not self._job_title_match(c.experience_match))
+                if low_titles > 0:
+                    insight_bullets.append(
+                        f"• <b>Job Title Match ({title_weight*100:.0f}% weight):</b> {low_titles} candidate(s) with limited title relevance (high priority)"
+                    )
+            
+            req_skills_weight = weights.get('required_skills', 0.18)
+            if req_skills_weight >= 0.15:  # Third priority
+                low_skills = sum(1 for c in top_candidates
+                               if c.skills_match['required_match_rate'] < 0.7)
+                if low_skills > 0:
+                    insight_bullets.append(
+                        f"• <b>Required Skills ({req_skills_weight*100:.0f}% weight):</b> {low_skills} candidate(s) below 70% match (high priority)"
+                    )
+            
+            transferrable_weight = weights.get('transferrable_skills', 0.15)
+            if transferrable_weight >= 0.10:  # Fourth priority
+                low_transferrable = sum(1 for c in top_candidates
+                                      if c.transferrable_skills_match.get('match_rate', 0.0) < 0.6)
+                if low_transferrable > 0:
+                    insight_bullets.append(
+                        f"• <b>Transferrable Skills ({transferrable_weight*100:.0f}% weight):</b> {low_transferrable} candidate(s) with limited transferrable skills"
+                    )
+            
+            cert_ed_weight = weights.get('certifications_education', 0.05)
+            if cert_ed_weight >= 0.05:  # Lowest priority but still check
+                missing_certs = sum(1 for c in top_candidates
+                                  if not c.certification_match['has_must_have'])
+                if missing_certs > 0:
+                    insight_bullets.append(
+                        f"• <b>Certifications/Education ({cert_ed_weight*100:.0f}% weight):</b> {missing_certs} of {len(top_candidates)} missing must-have certifications (lower priority)"
+                    )
+            
+            # High performers
+            high_scores = sum(1 for c in top_candidates if c.fit_score >= 7.0)
+            if high_scores > 0:
+                insight_bullets.append(
+                    f"• <b>Strong Candidates:</b> {high_scores} candidate(s) scored 7.0+ (excellent fit)"
+                )
+            
+            if not insight_bullets:
+                insight_bullets.append("• All top candidates meet key requirements based on scoring weights")
+            
+            for bullet in insight_bullets:
+                elements.append(Paragraph(bullet, self.styles['CustomBody']))
+                elements.append(Spacer(1, 0.05*inch))
 
-        # Trends
-        if top_candidates:
-            # Check certification gaps
-            missing_certs = sum(1 for c in top_candidates
-                              if not c.certification_match['has_must_have'])
-
-            if missing_certs > 0:
-                elements.append(Paragraph(
-                    f"<b>Certification Gap:</b> {missing_certs} out of {len(top_candidates)} "
-                    f"top candidate(s) missing required certifications. Consider candidates "
-                    f"willing to obtain certifications.",
-                    self.styles['CustomBody']
-                ))
-                elements.append(Spacer(1, 0.1*inch))
-
-            # Skills analysis
-            low_skills = sum(1 for c in top_candidates
-                           if c.skills_match['required_match_rate'] < 0.7)
-
-            if low_skills > 0:
-                elements.append(Paragraph(
-                    f"<b>Skills Gap:</b> {low_skills} candidate(s) show gaps in required skills. "
-                    f"May require training or onboarding support.",
-                    self.styles['CustomBody']
-                ))
-                elements.append(Spacer(1, 0.1*inch))
-
-        # Recommendations
-        elements.append(Paragraph(
-            "<b>Recommendations:</b> Prioritize candidates with scores above 7.0 for initial "
-            "interviews. Candidates scoring 5.0-7.0 may be viable with additional screening. "
-            "Focus on must-have certifications and required skills during interview process.",
-            self.styles['CustomBody']
-        ))
+        # Recommendations - weight-aware
+        elements.append(Spacer(1, 0.1*inch))
+        elements.append(Paragraph("<b>Recommendations:</b>", self.styles['CustomBody']))
+        elements.append(Spacer(1, 0.05*inch))
+        
+        rec_bullets = [
+            "• Prioritize candidates with scores ≥7.0 for initial interviews (excellent fit)",
+            "• Candidates scoring 5.0-7.0 may be viable with additional screening",
+        ]
+        
+        if job_details:
+            from industry_templates import get_default_weights
+            weights = job_details.scoring_profile if job_details.scoring_profile else get_default_weights()
+            
+            # Get top 3 most important criteria (NEW PRIORITY ORDER)
+            sorted_weights = sorted(weights.items(), key=lambda x: x[1], reverse=True)
+            top_criteria = [w[0] for w in sorted_weights[:3]]
+            
+            focus_areas = []
+            if 'experience_level' in top_criteria:
+                focus_areas.append("experience level")
+            if 'job_title_match' in top_criteria:
+                focus_areas.append("job title relevance")
+            if 'required_skills' in top_criteria:
+                focus_areas.append("required skills")
+            if 'transferrable_skills' in top_criteria:
+                focus_areas.append("transferrable skills")
+            
+            if focus_areas:
+                rec_bullets.append(f"• Focus interview questions on: {', '.join(focus_areas)} (highest weighted criteria)")
+            else:
+                rec_bullets.append("• Focus on highest-weighted criteria during interviews")
+        else:
+            rec_bullets.append("• Focus on experience level, job title match, and required skills during interviews")
+        
+        for bullet in rec_bullets:
+            elements.append(Paragraph(bullet, self.styles['CustomBody']))
+            elements.append(Spacer(1, 0.05*inch))
 
         return KeepTogether(elements)

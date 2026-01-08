@@ -1,0 +1,261 @@
+/**
+ * CROSSROADS Professional Services Theme System
+ * CSS variables for light and dark modes
+ * Generated from design tokens
+ */
+
+/* Light mode (default) */
+:root,
+:root[data-theme="light"] {
+  /* Brand colors */
+  --brand-blue: #00A8CC;
+  --brand-green: #00A651;
+  --brand-brown: #6B4423;
+  --brand-black: #000000;
+  --brand-dark-gray: #4A4A4A;
+
+  /* Semantic colors */
+  --color-primary: #00A8CC;
+  --color-accent: #00A651;
+  --color-success: #00A651;
+  --color-warning: #F39C12;
+  --color-danger: #E74C3C;
+  --color-info: #00A8CC;
+
+  /* Surfaces */
+  --color-surface: #FFFFFF;
+  --color-surface-elevated: #F8FAFC;
+  --color-surface-hover: #F1F5F9;
+
+  /* Borders */
+  --color-border: #E5E7EB;
+  --color-border-hover: #00A651;
+  --color-border-focus: #00A8CC;
+
+  /* Text */
+  --color-text-primary: #6B4423;
+  --color-text-secondary: #4A4A4A;
+  --color-text-muted: #64748B;
+  --color-text-inverse: #FFFFFF;
+
+  /* Overlays */
+  --color-overlay: rgba(0, 0, 0, 0.5);
+  --color-overlay-light: rgba(0, 0, 0, 0.1);
+
+  /* Focus ring */
+  --color-focus-ring: #00A8CC40;
+
+  /* Spacing scale */
+  --spacing-xs: 0.25rem;
+  --spacing-sm: 0.5rem;
+  --spacing-md: 1rem;
+  --spacing-lg: 1.5rem;
+  --spacing-xl: 2rem;
+  --spacing-2xl: 3rem;
+  --spacing-3xl: 4rem;
+
+  /* Typography */
+  --font-family-serif: 'Times New Roman', 'Times', serif;
+  --font-family-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.875rem;
+  --font-size-base: 1rem;
+  --font-size-lg: 1.125rem;
+  --font-size-xl: 1.25rem;
+  --font-size-2xl: 1.5rem;
+  --font-size-3xl: 1.875rem;
+  --font-size-4xl: 2.25rem;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --line-height-tight: 1.25;
+  --line-height-normal: 1.5;
+  --line-height-relaxed: 1.75;
+
+  /* Border radius */
+  --radius-none: 0;
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-full: 9999px;
+
+  /* Shadows */
+  --shadow-none: none;
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+
+  /* Z-index scale */
+  --z-base: 0;
+  --z-dropdown: 1000;
+  --z-sticky: 1020;
+  --z-fixed: 1030;
+  --z-modal-backdrop: 1040;
+  --z-modal: 1050;
+  --z-popover: 1060;
+  --z-tooltip: 1070;
+
+  /* Score colors */
+  --score-excellent: #00A651;
+  --score-good: #F39C12;
+  --score-poor: #E74C3C;
+}
+
+/* Dark mode */
+:root[data-theme="dark"] {
+  /* Semantic colors (dark mode optimized) */
+  --color-primary: #00A8CC;
+  --color-accent: #00A651;
+  --color-success: #4ADE80;
+  --color-warning: #FBBF24;
+  --color-danger: #F87171;
+  --color-info: #60A5FA;
+
+  /* Surfaces (dark gray, not pure black) */
+  --color-surface: #0F1115;
+  --color-surface-elevated: #151821;
+  --color-surface-hover: #1A1D26;
+
+  /* Borders */
+  --color-border: #2A2F3A;
+  --color-border-hover: #00A651;
+  --color-border-focus: #00A8CC;
+
+  /* Text (desaturated for readability) */
+  --color-text-primary: #E6EAF2;
+  --color-text-secondary: #CBD5E1;
+  --color-text-muted: #A2A8B5;
+  --color-text-inverse: #0F1115;
+
+  /* Overlays */
+  --color-overlay: rgba(0, 0, 0, 0.7);
+  --color-overlay-light: rgba(0, 0, 0, 0.3);
+
+  /* Focus ring */
+  --color-focus-ring: #00A8CC60;
+
+  /* Shadows (darker for dark mode) */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 10px 10px -5px rgba(0, 0, 0, 0.3);
+}
+
+/* Auto dark mode based on OS preference (if no explicit theme set) */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    /* Same as dark mode above */
+    --color-primary: #00A8CC;
+    --color-accent: #00A651;
+    --color-success: #4ADE80;
+    --color-warning: #FBBF24;
+    --color-danger: #F87171;
+    --color-info: #60A5FA;
+    --color-surface: #0F1115;
+    --color-surface-elevated: #151821;
+    --color-surface-hover: #1A1D26;
+    --color-border: #2A2F3A;
+    --color-border-hover: #00A651;
+    --color-border-focus: #00A8CC;
+    --color-text-primary: #E6EAF2;
+    --color-text-secondary: #CBD5E1;
+    --color-text-muted: #A2A8B5;
+    --color-text-inverse: #0F1115;
+    --color-overlay: rgba(0, 0, 0, 0.7);
+    --color-overlay-light: rgba(0, 0, 0, 0.3);
+    --color-focus-ring: #00A8CC60;
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
+    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 10px 10px -5px rgba(0, 0, 0, 0.3);
+  }
+}
+
+/* Base styles using tokens */
+body {
+  background-color: var(--color-surface);
+  color: var(--color-text-primary);
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-normal);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* Focus styles for accessibility */
+*:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* Smooth transitions for theme changes */
+* {
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+/* Accessibility: Ensure minimum touch target size */
+button, a, [role="button"] {
+  min-height: 40px;
+  min-width: 40px;
+}
+
+/* Skip to main content link for screen readers */
+.skip-to-main {
+  position: absolute;
+  left: -9999px;
+  z-index: 999;
+}
+
+.skip-to-main:focus {
+  left: 50%;
+  transform: translateX(-50%);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
+  text-decoration: none;
+  border-radius: var(--radius-md);
+}
+
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+  /* Stack columns on mobile */
+  [data-testid="column"] {
+    width: 100% !important;
+    flex: 1 1 100% !important;
+  }
+  
+  /* Reduce padding on mobile */
+  .main .block-container {
+    padding: var(--spacing-sm) !important;
+  }
+  
+  /* Make buttons full width on mobile */
+  button[kind="primary"],
+  div[data-testid="stButton"] > button {
+    width: 100% !important;
+  }
+  
+  /* Adjust font sizes for mobile */
+  .main-header {
+    font-size: var(--font-size-2xl) !important;
+  }
+  
+  .section-header {
+    font-size: var(--font-size-xl) !important;
+  }
+  
+  /* Sticky action bar for mobile */
+  .sticky-action-bar {
+    position: sticky;
+    bottom: 0;
+    background: var(--color-surface);
+    padding: var(--spacing-md);
+    box-shadow: var(--shadow-lg);
+    z-index: var(--z-sticky);
+    border-top: 1px solid var(--color-border);
+  }
+}
+

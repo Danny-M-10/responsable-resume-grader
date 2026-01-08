@@ -8,9 +8,11 @@ set -e
 # Configuration
 AWS_REGION="us-east-2"
 ECR_REPOSITORY="recruiting-candidate-ranker"
-ECS_CLUSTER="recruiting-candidate-ranker"
-ECS_SERVICE="recruiting-candidate-ranker"
-IMAGE_TAG=$(git rev-parse --short HEAD)
+# Deploy to internal_recruiting_candidate_ranker (correct domain)
+# Do NOT fallback to recruiting-candidate-ranker to preserve the clone instance
+ECS_CLUSTER="internal_recruiting_candidate_ranker"
+ECS_SERVICE="internal_recruiting_candidate_ranker"
+IMAGE_TAG=$(git rev-parse --short HEAD 2>/dev/null || echo "latest")
 
 echo "=========================================="
 echo "Deploying to AWS ECS"
@@ -62,12 +64,32 @@ echo ""
 
 # Step 4: Download current task definition
 echo "Step 4: Downloading current task definition..."
-aws ecs describe-task-definition \
-    --task-definition $ECS_SERVICE \
+# Try the service name first, then fallback to recruiting-candidate-ranker for initial setup only
+TASK_DEF_NAME=$ECS_SERVICE
+if ! aws ecs describe-task-definition \
+    --task-definition $TASK_DEF_NAME \
     --query taskDefinition \
     --region $AWS_REGION \
-    > task-definition.json
-echo "✓ Task definition downloaded"
+    > task-definition.json 2>/dev/null; then
+    echo "Task definition $TASK_DEF_NAME not found, using recruiting-candidate-ranker as template..."
+    TASK_DEF_NAME="recruiting-candidate-ranker"
+    aws ecs describe-task-definition \
+        --task-definition $TASK_DEF_NAME \
+        --query taskDefinition \
+        --region $AWS_REGION \
+        > task-definition.json
+    # Update the family name to match the new service (use hyphens, not underscores)
+    python3 << 'FAMILY_UPDATE'
+import json
+with open('task-definition.json', 'r') as f:
+    task_def = json.load(f)
+# ECS task definition family names must use hyphens, not underscores
+task_def['family'] = 'internal-recruiting-candidate-ranker'
+with open('task-definition.json', 'w') as f:
+    json.dump(task_def, f, indent=2)
+FAMILY_UPDATE
+fi
+echo "✓ Task definition downloaded (family: $TASK_DEF_NAME)"
 echo ""
 
 # Step 5: Update task definition with new image
@@ -84,6 +106,10 @@ for container in task_def.get('containerDefinitions', []):
     if container['name'] == 'app':
         container['image'] = '$FULL_IMAGE_NAME'
         print(f"Updated container 'app' image to: {container['image']}")
+
+# Ensure family name uses hyphens (not underscores) for ECS compatibility
+if 'family' in task_def:
+    task_def['family'] = task_def['family'].replace('_', '-')
 
 # Remove fields that can't be in new task definition
 task_def.pop('taskDefinitionArn', None)
@@ -111,16 +137,38 @@ NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
 echo "✓ New task definition registered: $NEW_TASK_DEF_ARN"
 echo ""
 
-# Step 7: Update ECS service
-echo "Step 7: Updating ECS service..."
-aws ecs update-service \
-    --cluster $ECS_CLUSTER \
-    --service $ECS_SERVICE \
-    --task-definition $NEW_TASK_DEF_ARN \
-    --region $AWS_REGION \
-    --force-new-deployment \
-    > /dev/null
-echo "✓ ECS service updated"
+# Step 7: Update or create ECS service
+echo "Step 7: Updating or creating ECS service..."
+# Check if service exists
+if aws ecs describe-services --cluster $ECS_CLUSTER --services $ECS_SERVICE --region $AWS_REGION --query 'services[0].status' --output text 2>/dev/null | grep -q "ACTIVE"; then
+    # Service exists, update it
+    aws ecs update-service \
+        --cluster $ECS_CLUSTER \
+        --service $ECS_SERVICE \
+        --task-definition $NEW_TASK_DEF_ARN \
+        --region $AWS_REGION \
+        --force-new-deployment \
+        > /dev/null
+    echo "✓ ECS service updated"
+else
+    # Service doesn't exist, create it using the same config as recruiting-candidate-ranker
+    echo "Service doesn't exist, creating new service..."
+    # Get network config from existing service as template
+    NETWORK_CONFIG=$(aws ecs describe-services --cluster recruiting-candidate-ranker --services recruiting-candidate-ranker --region $AWS_REGION --query 'services[0].networkConfiguration' --output json 2>/dev/null)
+    LOAD_BALANCER=$(aws ecs describe-services --cluster recruiting-candidate-ranker --services recruiting-candidate-ranker --region $AWS_REGION --query 'services[0].loadBalancers[0]' --output json 2>/dev/null)
+    
+    # Create service (without load balancer for now - can be added later if needed)
+    aws ecs create-service \
+        --cluster $ECS_CLUSTER \
+        --service-name $ECS_SERVICE \
+        --task-definition $NEW_TASK_DEF_ARN \
+        --desired-count 1 \
+        --launch-type FARGATE \
+        --network-configuration "$NETWORK_CONFIG" \
+        --region $AWS_REGION \
+        > /dev/null
+    echo "✓ ECS service created"
+fi
 echo ""
 
 # Step 8: Wait for service to stabilize
