@@ -212,19 +212,28 @@ async def init_db_async():
         for index_name, table_name, column_name in indexes:
             try:
                 if is_postgres:
-                    # Check if index exists in PostgreSQL
-                    result = await conn.execute(text("""
+                    # For PostgreSQL, check if index exists first
+                    check_result = await conn.execute(text("""
                         SELECT 1 FROM pg_indexes 
                         WHERE indexname = :index_name AND tablename = :table_name
                     """), {"index_name": index_name, "table_name": table_name})
-                    if not result.fetchone():
+                    row = check_result.fetchone()
+                    if not row:
+                        # Index doesn't exist, create it
                         await conn.execute(text(f"CREATE INDEX {index_name} ON {table_name}({column_name})"))
                 else:
                     # SQLite supports IF NOT EXISTS
                     await conn.execute(text(f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name}({column_name})"))
             except Exception as e:
-                # Index might already exist, ignore
-                logger.debug(f"Index creation (may already exist): {e}")
+                # Index might already exist or check failed, try to create anyway
+                try:
+                    if is_postgres:
+                        await conn.execute(text(f"CREATE INDEX {index_name} ON {table_name}({column_name})"))
+                    else:
+                        await conn.execute(text(f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name}({column_name})"))
+                except Exception as e2:
+                    # Index likely already exists, ignore
+                    logger.debug(f"Index {index_name} creation skipped (may already exist): {e2}")
         
         # Note: Using engine.begin() auto-commits when context exits
     
