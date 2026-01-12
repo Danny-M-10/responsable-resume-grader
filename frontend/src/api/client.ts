@@ -6,6 +6,8 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ||
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
+  // Set timeout to 10 minutes (600000ms) for long-running operations like file uploads
+  timeout: 600000, // 10 minutes
 })
 
 // Request interceptor to add auth token and set Content-Type appropriately
