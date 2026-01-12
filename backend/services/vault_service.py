@@ -4,7 +4,7 @@ Async vault service for managing file assets
 import json
 import uuid
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 import logging
