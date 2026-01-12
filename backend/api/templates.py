@@ -8,7 +8,8 @@ from industry_templates import get_industry_templates
 router = APIRouter()
 
 
-@router.get("/")
+@router.get("", response_model=Dict[str, Dict])
+@router.get("/", response_model=Dict[str, Dict])
 async def list_templates() -> Dict[str, Dict]:
     """
     List all available industry templates

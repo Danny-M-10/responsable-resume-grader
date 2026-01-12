@@ -8,6 +8,17 @@ from typing import Dict, Set
 
 logger = logging.getLogger(__name__)
 
+# #region agent log
+def _log_debug(hypothesis_id, location, message, data=None):
+    """Log debug info to CloudWatch via standard logger"""
+    try:
+        import json
+        data_str = json.dumps(data or {}) if data else "{}"
+        logger.info(f"[HYP-{hypothesis_id}] {location}: {message} | {data_str}")
+    except Exception as e:
+        logger.error(f"Failed to log debug info: {e}")
+# #endregion agent log
+
 # Store active WebSocket connections
 active_connections: Dict[str, Set[WebSocket]] = {}
 
@@ -21,11 +32,17 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str = "default"):
         client_id: Client identifier for grouping connections (default: "default")
     """
     await websocket.accept()
+    # #region agent log
+    _log_debug("B", "progress.py:30", "WebSocket accepted", {"client_id": client_id})
+    # #endregion agent log
     
     if client_id not in active_connections:
         active_connections[client_id] = set()
     
     active_connections[client_id].add(websocket)
+    # #region agent log
+    _log_debug("B", "progress.py:36", "WebSocket added to active connections", {"client_id": client_id, "total_connections": len(active_connections[client_id])})
+    # #endregion agent log
     logger.info(f"WebSocket connected: {client_id}, total connections: {len(active_connections[client_id])}")
     
     try:
@@ -35,11 +52,18 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str = "default"):
             # Echo back or handle client messages if needed
             await websocket.send_text(json.dumps({"type": "pong", "message": "Connection alive"}))
     except WebSocketDisconnect:
-        active_connections[client_id].discard(websocket)
-        logger.info(f"WebSocket disconnected: {client_id}, remaining connections: {len(active_connections.get(client_id, set()))}")
-        if not active_connections[client_id]:
-            del active_connections[client_id]
+        # #region agent log
+        _log_debug("B", "progress.py:45", "WebSocket disconnected", {"client_id": client_id})
+        # #endregion agent log
+        if client_id in active_connections:
+            active_connections[client_id].discard(websocket)
+            logger.info(f"WebSocket disconnected: {client_id}, remaining connections: {len(active_connections.get(client_id, set()))}")
+            if not active_connections[client_id]:
+                del active_connections[client_id]
     except Exception as e:
+        # #region agent log
+        _log_debug("B", "progress.py:52", "WebSocket error", {"client_id": client_id, "error": str(e)})
+        # #endregion agent log
         logger.error(f"WebSocket error: {e}")
         if client_id in active_connections:
             active_connections[client_id].discard(websocket)
@@ -59,7 +83,13 @@ async def send_progress_update(client_id: str, step: str, progress: float, curre
         total: Total items
         message: Optional message
     """
+    # #region agent log
+    _log_debug("B", "progress.py:58", "send_progress_update called", {"client_id": client_id, "step": step, "progress": progress, "has_connections": client_id in active_connections, "connection_count": len(active_connections.get(client_id, set()))})
+    # #endregion agent log
     if client_id not in active_connections:
+        # #region agent log
+        _log_debug("B", "progress.py:64", "No active connections for client_id", {"client_id": client_id})
+        # #endregion agent log
         return
     
     update = {
@@ -77,7 +107,13 @@ async def send_progress_update(client_id: str, step: str, progress: float, curre
     for connection in active_connections[client_id]:
         try:
             await connection.send_text(message_text)
+            # #region agent log
+            _log_debug("B", "progress.py:81", "Progress update sent successfully", {"client_id": client_id, "step": step})
+            # #endregion agent log
         except Exception as e:
+            # #region agent log
+            _log_debug("B", "progress.py:85", "Failed to send progress update", {"client_id": client_id, "error": str(e)})
+            # #endregion agent log
             logger.error(f"Failed to send progress update: {e}")
             disconnected.add(connection)
     

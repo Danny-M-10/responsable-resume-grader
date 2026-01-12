@@ -77,15 +77,23 @@ async def save_asset_async(
 async def list_assets_async(
     user_id: str,
     kind: str,
-    db: AsyncSession
+    db: AsyncSession,
+    search: Optional[str] = None,
+    tags: Optional[List[str]] = None,
+    skills: Optional[List[str]] = None,
+    name: Optional[str] = None
 ) -> List[Dict[str, Any]]:
     """
-    List assets for user by kind
+    List assets for user by kind with optional filters
     
     Args:
         user_id: User ID
         kind: Asset kind ('job_description' or 'resume')
         db: Database session
+        search: Full-text search query
+        tags: List of tags to filter by (must have ALL)
+        skills: List of skills to filter by (must have ANY)
+        name: Filter by candidate name (partial match)
         
     Returns:
         List of asset dictionaries
@@ -111,7 +119,48 @@ async def list_assets_async(
             "created_at": row[4]
         })
     
-    return assets
+    # Apply filters
+    filtered_assets = assets
+    search_lower = search.lower() if search else None
+    name_lower = name.lower() if name else None
+    tags = tags or []
+    skills = skills or []
+    
+    if search_lower:
+        # Full-text search across relevant fields
+        filtered_assets = [
+            asset for asset in filtered_assets
+            if (
+                search_lower in asset["original_name"].lower() or
+                search_lower in asset["metadata"].get("name", "").lower() or
+                any(search_lower in str(skill).lower() for skill in asset["metadata"].get("skills", [])) or
+                any(search_lower in str(tag).lower() for tag in asset["metadata"].get("tags", [])) or
+                any(search_lower in str(cert).lower() for cert in asset["metadata"].get("certifications", []))
+            )
+        ]
+    
+    if tags:
+        # Must have ALL specified tags
+        filtered_assets = [
+            asset for asset in filtered_assets
+            if all(tag.lower() in [t.lower() for t in asset["metadata"].get("tags", [])] for tag in tags)
+        ]
+    
+    if skills:
+        # Must have ANY of the specified skills (case-insensitive)
+        filtered_assets = [
+            asset for asset in filtered_assets
+            if any(skill.lower() in [str(s).lower() for s in asset["metadata"].get("skills", [])] for skill in skills)
+        ]
+    
+    if name_lower:
+        # Partial match on candidate name (case-insensitive)
+        filtered_assets = [
+            asset for asset in filtered_assets
+            if name_lower in asset["metadata"].get("name", "").lower()
+        ]
+    
+    return filtered_assets
 
 
 async def get_asset_async(
@@ -178,6 +227,53 @@ async def delete_asset_async(
     await db.commit()
     
     return result.rowcount > 0
+
+
+async def update_asset_tags_async(
+    asset_id: str,
+    tags: List[str],
+    user_id: str,
+    db: AsyncSession
+) -> Dict[str, Any]:
+    """
+    Update tags for an asset
+    
+    Args:
+        asset_id: Asset ID
+        tags: List of tags
+        user_id: User ID (for authorization)
+        db: Database session
+        
+    Returns:
+        Updated asset dictionary or empty dict if not found
+    """
+    # First, get the asset to check ownership and get current metadata
+    asset = await get_asset_async(asset_id, db)
+    
+    if not asset or asset["user_id"] != user_id:
+        return {}
+    
+    # Update metadata with tags
+    metadata = asset["metadata"]
+    metadata["tags"] = tags
+    
+    # Update in database
+    await db.execute(
+        text("""
+            UPDATE file_assets
+            SET metadata_json = :metadata_json
+            WHERE id = :asset_id AND user_id = :user_id
+        """),
+        {
+            "asset_id": asset_id,
+            "user_id": user_id,
+            "metadata_json": json.dumps(metadata)
+        }
+    )
+    await db.commit()
+    
+    # Return updated asset
+    return await get_asset_async(asset_id, db)
 
 
 def load_asset_content(asset: Dict[str, Any]) -> bytes:

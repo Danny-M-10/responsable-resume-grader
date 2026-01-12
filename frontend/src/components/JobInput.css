@@ -12,9 +12,9 @@
 .job-input-section h3 {
   margin-top: 0;
   margin-bottom: 1.5rem;
-  color: #0066CC;
+  color: var(--color-brand-blue);
   font-size: 1.5rem;
-  border-bottom: 2px solid #00A651;
+  border-bottom: 2px solid var(--color-brand-blue);
   padding-bottom: 0.5rem;
 }
 
@@ -54,8 +54,8 @@
   align-items: center;
   gap: 0.5rem;
   padding: 1rem;
-  background: linear-gradient(135deg, #f5f7fa 0%, #e8f5e9 100%);
-  border: 2px solid #00A651;
+  background: linear-gradient(135deg, #f5f7fa 0%, #e8f0f5 100%);
+  border: 2px solid var(--color-brand-blue);
   border-radius: 8px;
   margin-bottom: 1rem;
 }
@@ -100,7 +100,7 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0.75rem 1.5rem;
-  background-color: #0066CC;
+  background-color: var(--color-brand-blue);
   color: white;
   border-radius: 4px;
   cursor: pointer;
@@ -109,7 +109,7 @@
 }
 
 .upload-label:hover {
-  background-color: #0052A3;
+  background-color: #0099b8;
 }
 
 .upload-help {
@@ -127,7 +127,7 @@
 
 .extracted-info h4 {
   margin-top: 0;
-  color: #0066CC;
+  color: var(--color-brand-blue);
 }
 
 .info-grid {
@@ -199,8 +199,8 @@
 .form-group textarea:focus,
 .form-group select:focus {
   outline: none;
-  border-color: #00A651;
-  box-shadow: 0 0 0 2px rgba(0, 166, 81, 0.2);
+  border-color: var(--color-brand-blue);
+  box-shadow: 0 0 0 2px rgba(0, 168, 204, 0.2);
 }
 
 .certifications-section,
@@ -246,12 +246,12 @@
 }
 
 .add-btn {
-  background-color: #00A651;
+  background-color: var(--color-brand-blue);
   color: white;
 }
 
 .add-btn:hover {
-  background-color: #008A42;
+  background-color: #0099b8;
 }
 
 .remove-btn {

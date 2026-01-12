@@ -6,18 +6,22 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ||
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
 })
 
-// Request interceptor to add auth token
+// Request interceptor to add auth token and set Content-Type appropriately
 apiClient.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('auth_token')
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
+    
+    // Only set Content-Type for non-FormData requests
+    // FormData requests should let axios set multipart/form-data with boundary automatically
+    if (!(config.data instanceof FormData) && !config.headers['Content-Type']) {
+      config.headers['Content-Type'] = 'application/json'
+    }
+    
     return config
   },
   (error) => {

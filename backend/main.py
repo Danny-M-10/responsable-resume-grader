@@ -1,11 +1,13 @@
 """
 FastAPI Application Entry Point
 """
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from fastapi.exceptions import RequestValidationError
+from fastapi.exception_handlers import request_validation_exception_handler
 import logging
 import os
 from pathlib import Path
@@ -30,13 +32,17 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting up FastAPI application...")
     await init_db()
-    # Initialize database tables
+    # Initialize database tables - CRITICAL: Must succeed
     try:
+        logger.info("Initializing database tables...")
         await init_db_async()
-        logger.info("Database tables initialized")
+        logger.info("✓ Database tables initialized successfully")
     except Exception as e:
-        logger.error(f"Failed to initialize database tables: {e}")
-        # Don't fail startup, tables might already exist
+        logger.error(f"✗ CRITICAL: Failed to initialize database tables: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        # Don't fail startup, but log the error prominently
+        # Tables might already exist, or we need to fix the issue
     logger.info("FastAPI application started successfully")
     yield
     # Shutdown
@@ -50,7 +56,8 @@ app = FastAPI(
     title="CROSSROADS Professional Services - Candidate Ranking API",
     description="Universal Recruiting Tool API",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
+    redirect_slashes=True  # Automatically redirect trailing slashes
 )
 
 # CORS middleware
@@ -66,6 +73,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Custom exception handler for validation errors (422) to log details
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    # #region agent log
+    logger.error(f"[HYP-E] RequestValidationError on {request.method} {request.url.path}")
+    logger.error(f"[HYP-E] Validation errors: {exc.errors()}")
+    logger.error(f"[HYP-E] Request URL: {request.url}")
+    logger.error(f"[HYP-E] Request headers: {dict(request.headers)}")
+    # #endregion
+    return await request_validation_exception_handler(request, exc)
 
 # Include routers
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])

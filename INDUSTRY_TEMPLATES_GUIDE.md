@@ -168,6 +168,40 @@ The Universal Recruiting Tool includes pre-configured industry templates that op
 
 ---
 
+### 7. Operations Template
+
+**Best For**: Operations managers, operations coordinators, and operations analysts
+
+**Scoring Weights**:
+- Experience Level: 30% (highest priority)
+- Job Title Match: 22%
+- Required Skills: 22%
+- Transferrable Skills: 15%
+- Location: 6%
+- Preferred Skills: 3%
+- Certifications/Education: 2%
+
+**Description**: Emphasizes experience, operational skills, and process management. Operations roles prioritize proven experience, management skills, and process improvement abilities. Certifications like PMP and Lean Six Sigma are nice-to-have but not essential, unlike roles in healthcare or construction where certifications are critical.
+
+**Key Features**:
+- Recognizes operations terminology (process improvement, operational excellence, continuous improvement)
+- Common certifications: PMP (Project Management Professional), Lean Six Sigma, Six Sigma, Lean Manufacturing, Kaizen, ISO 9001, Operational Excellence, APICS, Supply Chain Management
+- Emphasizes management and leadership skills
+- Values analytical and problem-solving abilities
+
+**Example Use Cases**:
+- Operations Managers
+- Operations Coordinators
+- Operations Analysts
+- Process Improvement Specialists
+- Supply Chain Managers
+- Business Operations Managers
+- Roles where hands-on experience and practical skills matter more than credentials
+
+**Research Basis**: This template is based on industry research showing that operations roles value proven experience (30-45% for management roles), with communication skills appearing in 46.42% of operations manager job postings and management skills in 32.67%. Analysis skills, leadership, and supervising experience are also highly valued.
+
+---
+
 ## How to Use Templates
 
 ### In the Web Interface
@@ -243,6 +277,7 @@ The system automatically detects industry from job descriptions and suggests app
 - **Construction keywords**: construction, safety, OSHA, trade → suggests Construction template
 - **Finance keywords**: finance, accounting, banking, CPA → suggests Finance template
 - **Sales keywords**: sales, account manager, business development → suggests Sales template
+- **Operations keywords**: operations, process improvement, operational excellence, supply chain → suggests Operations template
 
 ## Best Practices
 
@@ -263,6 +298,7 @@ The system automatically detects industry from job descriptions and suggests app
 | Construction | 35% | 20% | 20% | Safety/trade roles |
 | Finance | 30% | 20% | 20% | Financial roles |
 | Sales | 10% | 20% | 30% | Sales roles |
+| Operations | 2% | 22% (required) + 15% (transferrable) | 30% | Operations roles |
 
 ## Troubleshooting
 

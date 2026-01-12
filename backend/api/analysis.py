@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 import uuid
+import json
 from datetime import datetime
 from sqlalchemy import text
 
@@ -38,32 +39,36 @@ async def start_analysis(
     # Create analysis record
     analysis_id = str(uuid.uuid4())
     created_at = datetime.utcnow().isoformat() + "Z"
-    client_id = str(uuid.uuid4())
+    # Use client_id from request if provided, otherwise generate one
+    client_id = config.client_id if config.client_id else str(uuid.uuid4())
     
     await db.execute(
         text("""
-            INSERT INTO analyses (id, user_id, job_id, status, config, created_at, updated_at)
-            VALUES (:id, :user_id, :job_id, :status, :config, :created_at, :updated_at)
+            INSERT INTO analyses (id, user_id, job_id, status, config, client_id, created_at, updated_at)
+            VALUES (:id, :user_id, :job_id, :status, :config, :client_id, :created_at, :updated_at)
         """),
         {
             "id": analysis_id,
             "user_id": user_id,
             "job_id": config.job_id,
             "status": "processing",
-            "config": str(config.dict()),
+            "config": json.dumps(config.dict()),  # Store as JSON string
+            "client_id": client_id,
             "created_at": created_at,
             "updated_at": created_at
         }
     )
     await db.commit()
     
-    # Start background task
+    # Start background task (pass analysis_id and user_id)
     background_tasks.add_task(
         run_analysis_async,
+        analysis_id,
         config.job_id,
         config.candidate_ids,
         config.dict(),
-        client_id
+        client_id,
+        user_id
     )
     
     return AnalysisResponse(
@@ -73,8 +78,53 @@ async def start_analysis(
         status="processing",
         results=None,
         created_at=datetime.fromisoformat(created_at.replace("Z", "+00:00")),
-        updated_at=datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+        updated_at=datetime.fromisoformat(created_at.replace("Z", "+00:00")),
+        client_id=client_id  # Return client_id so frontend knows which one to listen on
     )
+
+
+# IMPORTANT: Empty string routes must come BEFORE path parameter routes
+# to ensure /api/analysis matches this route instead of /{analysis_id}
+@router.get("", response_model=List[AnalysisResponse], include_in_schema=True)
+@router.get("/", response_model=List[AnalysisResponse], include_in_schema=True)
+async def list_analyses(
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    List all analyses for current user
+    
+    Args:
+        user_id: Current user ID
+        db: Database session
+        
+    Returns:
+        List of analyses
+    """
+    result = await db.execute(
+        text("""
+            SELECT id, user_id, job_id, status, results, client_id, created_at, updated_at
+            FROM analyses
+            WHERE user_id = :user_id
+            ORDER BY created_at DESC
+        """),
+        {"user_id": user_id}
+    )
+    rows = result.fetchall()
+    
+    return [
+        AnalysisResponse(
+            id=row[0],
+            user_id=row[1],
+            job_id=row[2],
+            status=row[3],
+            results=None,
+            client_id=row[5],  # client_id column (index 5)
+            created_at=datetime.fromisoformat(row[6].replace("Z", "+00:00")),
+            updated_at=datetime.fromisoformat(row[7].replace("Z", "+00:00"))
+        )
+        for row in rows
+    ]
 
 
 @router.get("/{analysis_id}", response_model=AnalysisResponse)
@@ -96,7 +146,7 @@ async def get_analysis(
     """
     result = await db.execute(
         text("""
-            SELECT id, user_id, job_id, status, results, created_at, updated_at
+            SELECT id, user_id, job_id, status, results, client_id, created_at, updated_at
             FROM analyses
             WHERE id = :analysis_id AND user_id = :user_id
         """),
@@ -110,52 +160,29 @@ async def get_analysis(
             detail="Analysis not found"
         )
     
+    # Parse results from database (stored as JSON string)
+    results_data = None
+    if row[4]:  # results column (index 4)
+        try:
+            if isinstance(row[4], str):
+                results_data = json.loads(row[4])
+            else:
+                # If already a dict/list, use as-is
+                results_data = row[4]
+        except (json.JSONDecodeError, TypeError) as e:
+            # If parsing fails, log error but don't fail the request
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Failed to parse analysis results for {analysis_id}: {e}")
+            results_data = None
+    
     return AnalysisResponse(
         id=row[0],
         user_id=row[1],
         job_id=row[2],
         status=row[3],
-        results=None,  # TODO: Parse stored results
-        created_at=datetime.fromisoformat(row[5].replace("Z", "+00:00")),
-        updated_at=datetime.fromisoformat(row[6].replace("Z", "+00:00"))
+        results=results_data,  # Return parsed results from database
+        client_id=row[5],  # client_id column (index 5)
+        created_at=datetime.fromisoformat(row[6].replace("Z", "+00:00")),
+        updated_at=datetime.fromisoformat(row[7].replace("Z", "+00:00"))
     )
-
-
-@router.get("/", response_model=List[AnalysisResponse])
-async def list_analyses(
-    user_id: str = Depends(get_current_user_id),
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    List all analyses for current user
-    
-    Args:
-        user_id: Current user ID
-        db: Database session
-        
-    Returns:
-        List of analyses
-    """
-    result = await db.execute(
-        text("""
-            SELECT id, user_id, job_id, status, results, created_at, updated_at
-            FROM analyses
-            WHERE user_id = :user_id
-            ORDER BY created_at DESC
-        """),
-        {"user_id": user_id}
-    )
-    rows = result.fetchall()
-    
-    return [
-        AnalysisResponse(
-            id=row[0],
-            user_id=row[1],
-            job_id=row[2],
-            status=row[3],
-            results=None,
-            created_at=datetime.fromisoformat(row[5].replace("Z", "+00:00")),
-            updated_at=datetime.fromisoformat(row[6].replace("Z", "+00:00"))
-        )
-        for row in rows
-    ]

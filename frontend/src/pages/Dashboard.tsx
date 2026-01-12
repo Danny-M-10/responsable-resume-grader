@@ -1,7 +1,6 @@
 import React, { useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import JobInput, { JobInputData } from '../components/JobInput'
-import Vault from '../components/Vault'
 import ResumeUpload, { UploadedFile } from '../components/ResumeUpload'
 import ScoringConfig, { ScoringConfigData } from '../components/ScoringConfig'
 import AnalysisProgress from '../components/AnalysisProgress'
@@ -10,6 +9,7 @@ import { analysisService } from '../services/analysisService'
 import { resumeService } from '../services/resumeService'
 import { vaultService } from '../services/vaultService'
 import { AlertCircle } from 'lucide-react'
+import { debugLog } from '../utils/debugLog'
 import './Dashboard.css'
 
 const Dashboard: React.FC = () => {
@@ -78,7 +78,11 @@ const Dashboard: React.FC = () => {
 
     // Validate form
     const errors = validateForm()
+    console.log('[Dashboard] Validation errors:', errors)
+    console.log('[Dashboard] Job data state:', { jobTitle: jobData.jobTitle, location: jobData.location, jobDescription: jobData.jobDescription?.substring(0, 50) + '...', hasJobId: !!jobData.jobId })
+    console.log('[Dashboard] Resume state:', { uploadedFilesCount: uploadedFiles.length, selectedVaultResumeIdsCount: selectedVaultResumeIds.length })
     if (errors.length > 0) {
+      console.log('[Dashboard] Setting validation errors:', errors)
       setValidationErrors(errors)
       return
     }
@@ -133,7 +137,7 @@ const Dashboard: React.FC = () => {
 
       setCandidateIds(newCandidateIds)
 
-      // Step 3: Start analysis
+      // Step 3: Start analysis (pass clientId so backend uses the same one)
       const analysisResponse = await analysisService.startAnalysis({
         job_id: jobId,
         candidate_ids: newCandidateIds,
@@ -141,8 +145,12 @@ const Dashboard: React.FC = () => {
         custom_scoring_weights: scoringConfig.customWeights as Record<string, number> | undefined,
         dealbreakers: scoringConfig.dealbreakers.length > 0 ? scoringConfig.dealbreakers : undefined,
         bias_reduction_enabled: scoringConfig.biasReductionEnabled,
+        client_id: clientId,  // Pass clientId to backend
       })
 
+      // Use client_id from response (backend may have generated one if we didn't send it)
+      const finalClientId = analysisResponse.client_id || clientId
+      setAnalysisClientId(finalClientId)
       setCurrentAnalysisId(analysisResponse.id)
     } catch (err: any) {
       setError(err.response?.data?.detail || err.message || 'Failed to process candidates')
@@ -165,10 +173,6 @@ const Dashboard: React.FC = () => {
 
   return (
     <div className="dashboard">
-      <div className="dashboard-header">
-        <h1>CROSSROADS Professional Services</h1>
-        <p className="subtitle">Universal Recruiting Tool</p>
-      </div>
 
       {validationErrors.length > 0 && (
         <div className="validation-errors">
@@ -191,18 +195,25 @@ const Dashboard: React.FC = () => {
         </div>
       )}
 
-      {/* Vault Section */}
-      <Vault
-        onJobSelect={handleVaultJobSelect}
-        onResumeSelect={setSelectedVaultResumeIds}
-        selectedJobId={selectedVaultJobId}
-        selectedResumeIds={selectedVaultResumeIds}
-      />
-
       {/* Job Input Section */}
       <JobInput
         value={jobData}
-        onChange={setJobData}
+        onChange={(data) => {
+          // #region agent log
+          debugLog({location:'Dashboard.tsx:195',message:'setJobData called',data:{hasJobTitle:!!data.jobTitle,hasLocation:!!data.location,hasParsedData:!!data.parsedData,hasJobId:!!data.jobId,certificationsLength:data.certifications?.length},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'C'});
+          // #endregion
+          try {
+            setJobData(data)
+            // #region agent log
+            debugLog({location:'Dashboard.tsx:199',message:'setJobData completed',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'C'});
+            // #endregion
+          } catch (err: any) {
+            // #region agent log
+            debugLog({location:'Dashboard.tsx:201',message:'setJobData error',data:{errorMessage:err?.message,errorStack:err?.stack?.substring(0,200)},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'C'});
+            // #endregion
+            throw err
+          }
+        }}
         onVaultAssetSelect={handleVaultJobSelect}
         selectedVaultJobId={selectedVaultJobId}
       />

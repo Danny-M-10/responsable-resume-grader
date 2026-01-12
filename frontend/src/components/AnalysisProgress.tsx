@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
 import { ProgressWebSocket } from '../api/websocket'
 import { Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
 import './AnalysisProgress.css'
@@ -27,6 +27,8 @@ const AnalysisProgress: React.FC<AnalysisProgressProps> = ({
   const [progressData, setProgressData] = useState<ProgressData | null>(null)
   const [error, setError] = useState<string>('')
   const [completed, setCompleted] = useState(false)
+  // Use ref to track completed state for onClose callback without causing re-renders
+  const completedRef = useRef(false)
 
   useEffect(() => {
     if (!clientId) return
@@ -41,6 +43,7 @@ const AnalysisProgress: React.FC<AnalysisProgressProps> = ({
       // Check if complete
       if (data.progress >= 1.0 || data.step === 'complete') {
         setCompleted(true)
+        completedRef.current = true  // Update ref to track latest state
         if (onComplete) {
           setTimeout(() => onComplete(), 1000)
         }
@@ -56,8 +59,8 @@ const AnalysisProgress: React.FC<AnalysisProgressProps> = ({
     })
 
     websocket.onClose(() => {
-      // Only show error if not completed
-      if (!completed) {
+      // Only show error if not completed (use ref to get latest value)
+      if (!completedRef.current) {
         const errorMsg = 'Connection closed. Analysis may still be running.'
         setError(errorMsg)
       }
@@ -68,7 +71,10 @@ const AnalysisProgress: React.FC<AnalysisProgressProps> = ({
     return () => {
       websocket.disconnect()
     }
-  }, [clientId, onComplete, onError, completed])
+    // Note: completed is intentionally NOT in the dependency array to avoid circular re-renders
+    // Use completedRef to access the latest completed state in callbacks
+    // The effect should only re-run when clientId or callbacks change
+  }, [clientId, onComplete, onError])
 
   if (!progressData && !error && !completed) {
     return (

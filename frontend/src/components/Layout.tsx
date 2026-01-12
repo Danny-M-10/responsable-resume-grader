@@ -3,6 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
 import { Moon, Sun } from 'lucide-react'
+import crossroadsLogo from '../assets/crossroads-logo.png'
 import './Layout.css'
 
 interface LayoutProps {
@@ -19,11 +20,14 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       <header className="layout-header">
         <div className="header-content">
           <div className="logo-section">
-            <h1 className="logo">
-              <span className="logo-brown">CROSSROADS</span>
-              <span className="logo-blue"> Professional Services</span>
-            </h1>
-            <p className="subtitle">Universal Recruiting Tool</p>
+            <img src={crossroadsLogo} alt="Crossroads Professional Services" className="logo-image" />
+            <div className="logo-text">
+              <h1 className="logo">
+                <span className="logo-brown">CROSSROADS</span>
+                <span className="logo-blue"> Professional Services</span>
+              </h1>
+              <p className="subtitle">Universal Recruiting Tool</p>
+            </div>
           </div>
           <div className="header-actions">
             <button
@@ -60,6 +64,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
             >
               History
+            </NavLink>
+            <NavLink
+              to="/vault"
+              className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+            >
+              Vault
             </NavLink>
           </nav>
         </aside>

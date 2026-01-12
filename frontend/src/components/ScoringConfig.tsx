@@ -71,10 +71,20 @@ const ScoringConfig: React.FC<ScoringConfigProps> = ({ value, onChange }) => {
 
   const loadTemplates = async () => {
     try {
+      setLoading(true)
       const loadedTemplates = await templateService.listTemplates()
-      setTemplates(loadedTemplates)
-    } catch (err) {
+      if (loadedTemplates && Object.keys(loadedTemplates).length > 0) {
+        setTemplates(loadedTemplates)
+        // Ensure a default template is selected if none is set
+        if (!value.industryTemplate && Object.keys(loadedTemplates).includes('general')) {
+          handleTemplateChange('general')
+        }
+      } else {
+        console.error('Templates API returned empty result')
+      }
+    } catch (err: any) {
       console.error('Failed to load templates:', err)
+      console.error('Error details:', err.response?.data || err.message)
     } finally {
       setLoading(false)
     }
@@ -179,14 +189,19 @@ const ScoringConfig: React.FC<ScoringConfigProps> = ({ value, onChange }) => {
               </label>
               <select
                 id="industry-template"
-                value={value.industryTemplate}
+                value={value.industryTemplate || ''}
                 onChange={(e) => handleTemplateChange(e.target.value)}
+                disabled={Object.keys(templates).length === 0}
               >
-                {Object.entries(templates).map(([name, template]) => (
-                  <option key={name} value={name}>
-                    {template.name} - {template.description}
-                  </option>
-                ))}
+                {Object.keys(templates).length === 0 ? (
+                  <option value="">Loading templates...</option>
+                ) : (
+                  Object.entries(templates).map(([name, template]) => (
+                    <option key={name} value={name}>
+                      {template.name} - {template.description}
+                    </option>
+                  ))
+                )}
               </select>
               {currentTemplate && (
                 <p className="template-description">{currentTemplate.description}</p>

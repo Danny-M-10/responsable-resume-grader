@@ -7,6 +7,7 @@ export interface AnalysisConfig {
   custom_scoring_weights?: Record<string, number>
   dealbreakers?: string[]
   bias_reduction_enabled?: boolean
+  client_id?: string  // Client ID for WebSocket progress updates
 }
 
 export interface AnalysisResponse {
@@ -17,6 +18,7 @@ export interface AnalysisResponse {
   results: any | null
   created_at: string
   updated_at: string
+  client_id?: string  // Client ID for WebSocket progress updates
 }
 
 export const analysisService = {

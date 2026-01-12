@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { jobService, JobParsed } from '../services/jobService'
 import { vaultService, Asset } from '../services/vaultService'
 import { Upload, Loader2 } from 'lucide-react'
+import { debugLog } from '../utils/debugLog'
 import './JobInput.css'
 
 export interface Certification {
@@ -86,6 +87,9 @@ const JobInput: React.FC<JobInputProps> = ({
   }
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    // #region agent log
+    debugLog({location:'JobInput.tsx:88',message:'handleFileUpload entry',data:{hasFile:!!event.target.files?.[0],fileName:event.target.files?.[0]?.name},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A'});
+    // #endregion
     const file = event.target.files?.[0]
     if (!file) return
 
@@ -94,27 +98,56 @@ const JobInput: React.FC<JobInputProps> = ({
     setParsing(true)
 
     try {
+      // #region agent log
+      debugLog({location:'JobInput.tsx:97',message:'Calling uploadJob',data:{fileName:file.name,fileSize:file.size,fileType:file.type},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A'});
+      // #endregion
       const jobResponse = await jobService.uploadJob(file)
+      // #region agent log
+      debugLog({location:'JobInput.tsx:100',message:'uploadJob response received',data:{hasParsedData:!!jobResponse.parsed_data,hasId:!!jobResponse.id,parsedDataType:typeof jobResponse.parsed_data,parsedDataKeys:jobResponse.parsed_data?Object.keys(jobResponse.parsed_data):null},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'B'});
+      // #endregion
       if (jobResponse.parsed_data) {
-        onChange({
-          jobTitle: jobResponse.parsed_data.job_title,
-          location: jobResponse.parsed_data.location,
-          certifications: (jobResponse.parsed_data.certifications || []).map((c: any) => ({
-            name: c.name || c,
-            category: (c.category || 'must-have') as 'must-have' | 'bonus',
-          })),
-          jobDescription: jobResponse.parsed_data.full_description || '',
-          parsedData: jobResponse.parsed_data,
-          jobId: jobResponse.id,
-        })
+        // #region agent log
+        debugLog({location:'JobInput.tsx:102',message:'Before onChange call',data:{hasFullDescription:!!jobResponse.parsed_data.full_description,certificationsType:typeof jobResponse.parsed_data.certifications,isCertificationsArray:Array.isArray(jobResponse.parsed_data.certifications)},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'C'});
+        // #endregion
+        try {
+          onChange({
+            jobTitle: jobResponse.parsed_data.job_title,
+            location: jobResponse.parsed_data.location,
+            certifications: (jobResponse.parsed_data.certifications || []).map((c: any) => ({
+              name: c.name || c,
+              category: (c.category || 'must-have') as 'must-have' | 'bonus',
+            })),
+            jobDescription: jobResponse.parsed_data.full_description || '',
+            parsedData: jobResponse.parsed_data,
+            jobId: jobResponse.id,
+          })
+          // #region agent log
+          debugLog({location:'JobInput.tsx:113',message:'onChange completed successfully',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'C'});
+          // #endregion
+        } catch (onChangeErr: any) {
+          // #region agent log
+          debugLog({location:'JobInput.tsx:115',message:'onChange error caught',data:{errorMessage:onChangeErr?.message,errorStack:onChangeErr?.stack?.substring(0,200),errorName:onChangeErr?.name},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'C'});
+          // #endregion
+          throw onChangeErr
+        }
+      } else {
+        // #region agent log
+        debugLog({location:'JobInput.tsx:119',message:'parsed_data is null/undefined',data:{responseId:jobResponse.id,responseKeys:Object.keys(jobResponse)},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'B'});
+        // #endregion
       }
     } catch (err: any) {
+      // #region agent log
+      debugLog({location:'JobInput.tsx:122',message:'Error caught in handleFileUpload',data:{errorMessage:err?.message,errorStack:err?.stack?.substring(0,300),errorName:err?.name,hasResponse:!!err?.response,responseStatus:err?.response?.status,responseDetail:err?.response?.data?.detail},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A'});
+      // #endregion
       setError(err.response?.data?.detail || 'Failed to parse job description')
     } finally {
       setUploading(false)
       setParsing(false)
       // Reset file input
       event.target.value = ''
+      // #region agent log
+      debugLog({location:'JobInput.tsx:129',message:'handleFileUpload finally block',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A'});
+      // #endregion
     }
   }
 

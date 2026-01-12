@@ -1,10 +1,11 @@
 """
 Jobs API endpoints
 """
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 import uuid
+import json
 from datetime import datetime
 from sqlalchemy import text
 
@@ -19,6 +20,7 @@ router = APIRouter()
 @router.post("/upload", response_model=JobResponse, status_code=status.HTTP_201_CREATED)
 async def upload_job(
     file: UploadFile = File(...),
+    client_id: Optional[str] = Query(None),
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
@@ -58,7 +60,7 @@ async def upload_job(
                 "user_id": user_id,
                 "title": parsed_data.get("job_title", ""),
                 "location": parsed_data.get("location", ""),
-                "parsed_data": str(parsed_data),  # Store as string for now
+                "parsed_data": json.dumps(parsed_data),  # Store as JSON string
                 "created_at": created_at,
                 "updated_at": created_at
             }
@@ -109,6 +111,9 @@ async def create_job_manual(
     created_at = datetime.utcnow().isoformat() + "Z"
     
     # Create a minimal parsed_data structure
+    # Include certifications if provided
+    certifications_list = job_data.certifications if job_data.certifications else []
+    
     parsed_data = {
         "job_title": job_data.title,
         "location": job_data.location or "",
@@ -116,7 +121,7 @@ async def create_job_manual(
         "required_skills": [],
         "preferred_skills": [],
         "experience_level": "",
-        "certifications": [],
+        "certifications": certifications_list,
     }
     
     try:
@@ -130,7 +135,7 @@ async def create_job_manual(
                 "user_id": user_id,
                 "title": job_data.title,
                 "location": job_data.location or "",
-                "parsed_data": str(parsed_data),
+                "parsed_data": json.dumps(parsed_data),  # Store as JSON string
                 "created_at": created_at,
                 "updated_at": created_at
             }

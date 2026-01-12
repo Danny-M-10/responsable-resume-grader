@@ -22,7 +22,7 @@ const ResumeUpload: React.FC<ResumeUploadProps> = ({
   selectedVaultResumeIds = [],
   onVaultResumesChange,
 }) => {
-  const [uploading] = useState(false)
+  const [uploading, setUploading] = useState(false)
   const [vaultResumes, setVaultResumes] = useState<Asset[]>([])
   const [loadingVault, setLoadingVault] = useState(false)
 
@@ -42,18 +42,24 @@ const ResumeUpload: React.FC<ResumeUploadProps> = ({
     }
   }
 
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files
     if (!files) return
 
-    const newFiles: UploadedFile[] = Array.from(files).map((file) => ({
-      file,
-      id: Math.random().toString(36).substring(7),
-      size: file.size,
-    }))
+    setUploading(true)
+    try {
+      const newFiles: UploadedFile[] = Array.from(files).map((file) => ({
+        file,
+        id: Math.random().toString(36).substring(7),
+        size: file.size,
+      }))
 
-    onFilesChange([...uploadedFiles, ...newFiles])
-    event.target.value = ''
+      onFilesChange([...uploadedFiles, ...newFiles])
+    } finally {
+      setUploading(false)
+      // Reset file input to allow selecting the same file again
+      event.target.value = ''
+    }
   }
 
   const handleRemoveFile = (id: string) => {

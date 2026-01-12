@@ -12,7 +12,7 @@
 
 .history-header h1 {
   margin: 0 0 0.5rem 0;
-  color: #0066CC;
+  color: var(--color-brand-blue);
 }
 
 .history-header p {
@@ -72,7 +72,7 @@
 .go-to-dashboard-btn {
   margin-top: 1rem;
   padding: 0.75rem 1.5rem;
-  background: linear-gradient(135deg, #0066CC 0%, #00A651 100%);
+  background: var(--color-brand-blue);
   color: white;
   border: none;
   border-radius: 4px;
@@ -104,7 +104,7 @@
 
 .analysis-card:hover {
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-  border-color: #00A651;
+  border-color: var(--color-brand-blue);
 }
 
 .analysis-card-header {
@@ -171,7 +171,7 @@
 
 .view-results-btn {
   padding: 0.5rem 1rem;
-  background-color: #0066CC;
+  background-color: var(--color-brand-blue);
   color: white;
   border: none;
   border-radius: 4px;
@@ -181,7 +181,7 @@
 }
 
 .view-results-btn:hover {
-  background-color: #0052A3;
+  background-color: #0099b8;
 }
 
 .analysis-summary {

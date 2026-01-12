@@ -79,14 +79,15 @@ const Results: React.FC = () => {
 
     setDownloadingReport(true)
     try {
-      // Generate report if not already generated
-      if (!reportId) {
+      // Generate report if not already generated, use the generated report ID
+      let reportToDownload = reportId
+      if (!reportToDownload) {
         const report = await reportService.generateReport(analysisId)
+        reportToDownload = report.id
         setReportId(report.id)
       }
 
-      // Download report
-      const reportToDownload = reportId || (await reportService.generateReport(analysisId)).id
+      // Download report using the determined report ID
       await reportService.downloadReport(reportToDownload)
     } catch (err: any) {
       setError(err.response?.data?.detail || err.message || 'Failed to download report')

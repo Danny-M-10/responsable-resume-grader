@@ -1,9 +1,11 @@
 """
 Vault API endpoints for managing saved job descriptions and resumes
 """
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Query
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Query, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
+from pydantic import BaseModel
+import logging
 
 from backend.models.schemas import AssetResponse, AssetListResponse
 from backend.database.connection import get_db
@@ -15,9 +17,16 @@ from backend.services.vault_service import (
     delete_asset_async,
     load_asset_content
 )
+from backend.services.resume_service import parse_resume_file_async
 from fastapi.responses import Response
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
+
+
+class UpdateTagsRequest(BaseModel):
+    tags: List[str]
 
 
 @router.post("/assets", response_model=AssetResponse, status_code=status.HTTP_201_CREATED)
@@ -44,13 +53,34 @@ async def save_asset(
     filename = file.filename or "file"
     
     try:
+        # Parse resume if it's a resume file
+        metadata = {"source": "vault"}
+        if kind == "resume":
+            try:
+                parsed_data = await parse_resume_file_async(content, filename, client_id="vault_save")
+                # Extract key fields from parsed data to store in metadata
+                if parsed_data:
+                    metadata["name"] = parsed_data.get("name", "")
+                    metadata["email"] = parsed_data.get("email", "")
+                    metadata["phone"] = parsed_data.get("phone", "")
+                    metadata["skills"] = parsed_data.get("skills", [])
+                    metadata["certifications"] = parsed_data.get("certifications", [])
+                    metadata["location"] = parsed_data.get("location", "")
+                    metadata["years_of_experience"] = parsed_data.get("years_of_experience")
+                    # Initialize tags array if not present
+                    metadata.setdefault("tags", [])
+            except Exception as parse_error:
+                # Log parsing error but don't fail the save
+                logger.warning(f"Failed to parse resume {filename}: {parse_error}", exc_info=True)
+                # Save with minimal metadata (source and file_hash will be added)
+        
         # Save asset
         asset_id = await save_asset_async(
             user_id=user_id,
             kind=kind,
             original_name=filename,
             content=content,
-            metadata={"source": "vault"},
+            metadata=metadata,
             db=db
         )
         
@@ -214,6 +244,44 @@ async def download_asset(
         content=content,
         media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
+
+@router.put("/assets/{asset_id}/tags", response_model=AssetResponse)
+async def update_asset_tags(
+    asset_id: str,
+    request: UpdateTagsRequest = Body(...),
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Update tags for an asset
+    
+    Args:
+        asset_id: Asset ID
+        request: Request body with tags list
+        user_id: Current user ID
+        db: Database session
+        
+    Returns:
+        Updated asset information
+    """
+    from backend.services.vault_service import update_asset_tags_async
+    
+    asset = await update_asset_tags_async(asset_id, request.tags, user_id, db)
+    
+    if not asset:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Asset not found or access denied"
+        )
+    
+    return AssetResponse(
+        id=asset["id"],
+        original_name=asset["original_name"],
+        stored_path=asset["stored_path"],
+        metadata=asset["metadata"],
+        created_at=asset["created_at"]
     )
 
 

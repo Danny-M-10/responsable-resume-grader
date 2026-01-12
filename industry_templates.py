@@ -21,6 +21,7 @@ def get_industry_templates() -> Dict[str, ScoringProfile]:
         'construction': get_construction_template(),
         'finance': get_finance_template(),
         'sales': get_sales_template(),
+        'operations': get_operations_template(),
     }
 
 
@@ -193,6 +194,42 @@ def get_sales_template() -> ScoringProfile:
             'common_certifications': [
                 'Salesforce Certified', 'HubSpot Certified', 'SPIN Selling',
                 'Challenger Sale', 'Sandler Training'
+            ]
+        }
+    )
+
+
+def get_operations_template() -> ScoringProfile:
+    """
+    Operations template - emphasizes experience, operational skills, and process management
+    Based on industry research: Operations roles prioritize proven experience, management skills,
+    and process improvement abilities. Certifications are nice-to-have but not essential.
+    """
+    return ScoringProfile(
+        name='operations',
+        description='Emphasizes experience, operational skills, and process management. Ideal for operations managers, operations coordinators, and operations analysts.',
+        weights={
+            'experience_level': 0.30,  # Highest priority - operations values proven experience (30-45% for management roles)
+            'job_title_match': 0.22,  # Operations titles are specific and relevant
+            'required_skills': 0.22,  # Critical operational skills (process improvement, analysis, management)
+            'transferrable_skills': 0.15,  # Leadership, communication, problem-solving highly valued
+            'location': 0.06,  # Lower priority - operations can often be remote/hybrid
+            'preferred_skills': 0.03,  # Nice to have but less critical
+            'certifications_education': 0.02  # Certifications are bonus, not essential (PMP, Lean, Six Sigma)
+        },
+        required_criteria=['experience', 'management_skills'],
+        industry_specific_rules={
+            'skill_synonyms': {
+                'operations': ['operations management', 'process improvement', 'operational excellence'],
+                'process': ['process improvement', 'continuous improvement', 'lean', 'six sigma', 'kaizen'],
+                'management': ['team management', 'supervising', 'leadership', 'organizational management'],
+                'analysis': ['data analysis', 'business analysis', 'operations analysis', 'metrics'],
+                'communication': ['interpersonal skills', 'stakeholder management', 'cross-functional collaboration'],
+            },
+            'common_certifications': [
+                'PMP', 'Project Management Professional', 'Lean Six Sigma', 'Six Sigma',
+                'Lean Manufacturing', 'Kaizen', 'ISO 9001', 'Operational Excellence',
+                'APICS', 'Supply Chain Management', 'Process Improvement'
             ]
         }
     )

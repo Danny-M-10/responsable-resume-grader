@@ -36,6 +36,7 @@ class JobUpload(BaseModel):
     title: Optional[str] = None
     location: Optional[str] = None
     description: Optional[str] = None
+    certifications: Optional[List[Dict[str, str]]] = None
 
 
 class JobParsed(BaseModel):
@@ -48,6 +49,7 @@ class JobParsed(BaseModel):
     industry_context: Optional[str] = None
     soft_skills: Optional[List[str]] = None
     technical_stack: Optional[List[str]] = None
+    full_description: Optional[str] = None
 
 
 class JobResponse(BaseModel):
@@ -93,6 +95,7 @@ class AnalysisConfig(BaseModel):
     custom_scoring_weights: Optional[Dict[str, float]] = None
     dealbreakers: Optional[List[str]] = None
     bias_reduction_enabled: bool = False
+    client_id: Optional[str] = None  # Client ID for WebSocket progress updates
 
 
 class AnalysisResponse(BaseModel):
@@ -103,6 +106,7 @@ class AnalysisResponse(BaseModel):
     results: Optional[Dict[str, Any]] = None
     created_at: datetime
     updated_at: datetime
+    client_id: Optional[str] = None  # Client ID for WebSocket progress updates
 
     class Config:
         from_attributes = True

@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import crossroadsLogo from '../assets/crossroads-logo.png'
 import './Login.css'
 
 const Login: React.FC = () => {
@@ -29,10 +30,13 @@ const Login: React.FC = () => {
   return (
     <div className="login-container">
       <div className="login-card">
-        <h1 className="login-title">
-          <span className="logo-brown">CROSSROADS</span>
-          <span className="logo-blue"> Professional Services</span>
-        </h1>
+        <div className="login-logo-section">
+          <img src={crossroadsLogo} alt="Crossroads Professional Services" className="login-logo" />
+          <h1 className="login-title">
+            <span className="logo-brown">CROSSROADS</span>
+            <span className="logo-blue"> Professional Services</span>
+          </h1>
+        </div>
         <p className="login-subtitle">Universal Recruiting Tool</p>
         <form onSubmit={handleSubmit} className="login-form">
           {error && <div className="error-message">{error}</div>}

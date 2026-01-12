@@ -17,12 +17,33 @@
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
 }
 
+.login-logo-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.login-logo {
+  height: 80px;
+  width: auto;
+  object-fit: contain;
+  max-width: 250px;
+}
+
+@media (max-width: 480px) {
+  .login-logo {
+    height: 60px;
+  }
+}
+
 .login-title {
   font-family: 'Times New Roman', Times, serif;
   font-size: 1.5rem;
   font-weight: bold;
   text-align: center;
-  margin-bottom: 0.5rem;
+  margin: 0;
 }
 
 .logo-brown {

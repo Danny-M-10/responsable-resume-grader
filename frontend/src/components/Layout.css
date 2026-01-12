@@ -20,6 +20,25 @@
 
 .logo-section {
   display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.logo-image {
+  height: 60px;
+  width: auto;
+  object-fit: contain;
+  max-width: 200px;
+}
+
+@media (max-width: 768px) {
+  .logo-image {
+    height: 50px;
+  }
+}
+
+.logo-text {
+  display: flex;
   flex-direction: column;
 }
 

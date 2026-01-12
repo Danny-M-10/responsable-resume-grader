@@ -14,8 +14,26 @@ export class ProgressWebSocket {
   constructor(clientId: string = "default") {
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const wsHost = window.location.hostname
-    // In production, use same host/port; in dev, use port 8000
-    const wsPort = import.meta.env.PROD ? window.location.port : (import.meta.env.VITE_WS_PORT || '8000')
+    
+    // Determine WebSocket port:
+    // 1. If VITE_WS_PORT is explicitly set, use it (works for all environments)
+    // 2. In development, default to backend port 8000
+    // 3. In production, use window.location.port if non-empty (same port as frontend)
+    //    If window.location.port is empty (default ports 80/443), assume same port as frontend
+    //    (reverse proxy/load balancer scenario) - no port suffix needed
+    let wsPort: string | undefined
+    if (import.meta.env.VITE_WS_PORT) {
+      wsPort = import.meta.env.VITE_WS_PORT
+    } else if (import.meta.env.PROD) {
+      // In production: use window.location.port if available, otherwise assume same port as frontend
+      wsPort = window.location.port || undefined
+    } else {
+      // In development: default to backend port 8000
+      wsPort = '8000'
+    }
+    
+    // Only include port suffix if we have a specific port (and it's not default)
+    // Empty string means default port, which should not include :port in the URL
     const portSuffix = wsPort ? `:${wsPort}` : ''
     this.url = `${wsProtocol}//${wsHost}${portSuffix}/ws/progress?client_id=${clientId}`
   }

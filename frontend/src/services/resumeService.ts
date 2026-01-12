@@ -4,6 +4,7 @@ export interface ResumeUploadResponse {
   message: string
   candidate_ids: string[]
   parsed_data: any[]
+  client_id?: string  // Client ID for WebSocket progress updates
 }
 
 export const resumeService = {
@@ -13,10 +14,8 @@ export const resumeService = {
       formData.append('files', file)
     })
 
+    // Don't set Content-Type header - axios automatically sets it with boundary for FormData
     const response = await apiClient.post<ResumeUploadResponse>('/api/resumes/upload', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
       params: clientId ? { client_id: clientId } : undefined,
     })
     return response.data

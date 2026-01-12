@@ -33,6 +33,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy all Python code (backend + existing modules)
 COPY *.py ./
+# Ensure migration script is included
+COPY migrate_analyses.py ./
 COPY backend/ ./backend/
 COPY models.py ./
 COPY config.py ./

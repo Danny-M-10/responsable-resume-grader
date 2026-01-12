@@ -13,7 +13,7 @@
   --color-background-primary: #ffffff;
   --color-background-secondary: #f8f9fa;
   --color-border: #dee2e6;
-  --color-border-hover: var(--color-brand-green);
+  --color-border-hover: var(--color-brand-blue);
   --color-surface: #ffffff;
   --color-surface-elevated: #F8FAFC;
 }
@@ -26,7 +26,7 @@
   --color-background-primary: #1a1a1a;
   --color-background-secondary: #2d2d2d;
   --color-border: #4a4a4a;
-  --color-border-hover: var(--color-brand-green);
+  --color-border-hover: var(--color-brand-blue);
   --color-surface: #1a1a1a;
   --color-surface-elevated: #151821;
 }

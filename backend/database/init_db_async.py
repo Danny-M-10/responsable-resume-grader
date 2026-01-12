@@ -14,6 +14,7 @@ async def init_db_async():
     Initialize all database tables asynchronously.
     Safe to run multiple times (uses IF NOT EXISTS).
     """
+    # Use begin() for auto-commit on successful completion
     async with engine.begin() as conn:
         # Create users table
         await conn.execute(text("""
@@ -50,17 +51,23 @@ async def init_db_async():
         """))
         
         # Create jobs table (matches FastAPI API)
-        await conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS jobs (
-                id TEXT PRIMARY KEY,
-                user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                title TEXT NOT NULL,
-                location TEXT,
-                parsed_data TEXT,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            )
-        """))
+        # Note: Must be created after users table exists
+        try:
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS jobs (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    title TEXT NOT NULL,
+                    location TEXT,
+                    parsed_data TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+            """))
+            logger.debug("✓ jobs table created/verified")
+        except Exception as e:
+            logger.error(f"Failed to create jobs table: {e}")
+            raise
         
         # Create job_descriptions table (for compatibility with old schema)
         await conn.execute(text("""
@@ -81,33 +88,44 @@ async def init_db_async():
         """))
         
         # Create candidates table
-        await conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS candidates (
-                id TEXT PRIMARY KEY,
-                user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                name TEXT NOT NULL,
-                email TEXT,
-                phone TEXT,
-                resume_path TEXT,
-                parsed_data TEXT,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            )
-        """))
+        try:
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS candidates (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    name TEXT NOT NULL,
+                    email TEXT,
+                    phone TEXT,
+                    resume_path TEXT,
+                    parsed_data TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+            """))
+            logger.debug("✓ candidates table created/verified")
+        except Exception as e:
+            logger.error(f"Failed to create candidates table: {e}")
+            # Don't raise - verification will catch and fix it
         
         # Create analyses table
-        await conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS analyses (
-                id TEXT PRIMARY KEY,
-                user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                job_id TEXT NOT NULL,
-                status TEXT NOT NULL,
-                config TEXT,
-                results TEXT,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            )
-        """))
+        try:
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS analyses (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    job_id TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    config TEXT,
+                    results TEXT,
+                    client_id TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+            """))
+            logger.debug("✓ analyses table created/verified")
+        except Exception as e:
+            logger.error(f"Failed to create analyses table: {e}")
+            # Don't raise - verification will catch and fix it
         
         # Create reports table
         await conn.execute(text("""
@@ -235,6 +253,124 @@ async def init_db_async():
                     # Index likely already exists, ignore
                     logger.debug(f"Index {index_name} creation skipped (may already exist): {e2}")
         
-        # Note: Using engine.begin() auto-commits when context exits
+        # engine.begin() auto-commits when context exits successfully
+    
+    # Verify critical tables exist
+    # Check database type to use appropriate query
+    db_url = os.environ.get("DATABASE_URL", "")
+    is_postgres = "postgres" in db_url.lower()
+    
+    async with engine.begin() as conn:
+        if is_postgres:
+            # PostgreSQL uses information_schema
+            result = await conn.execute(text("""
+                SELECT table_name 
+                FROM information_schema.tables 
+                WHERE table_schema = 'public' 
+                AND table_name IN ('users', 'jobs', 'file_assets', 'analyses', 'candidates')
+            """))
+        else:
+            # SQLite uses sqlite_master
+            result = await conn.execute(text("""
+                SELECT name as table_name 
+                FROM sqlite_master 
+                WHERE type = 'table' 
+                AND name IN ('users', 'jobs', 'file_assets', 'analyses', 'candidates')
+            """))
+        existing_tables = {row[0] for row in result.fetchall()}
+        expected_tables = {'users', 'jobs', 'file_assets', 'analyses', 'candidates'}
+        missing_tables = expected_tables - existing_tables
+        
+        if missing_tables:
+            logger.error(f"CRITICAL: Missing tables after initialization: {missing_tables}")
+            logger.error("Attempting to create missing tables...")
+            
+            # Re-attempt to create missing tables
+            for table_name in missing_tables:
+                if table_name == 'jobs':
+                    await conn.execute(text("""
+                        CREATE TABLE IF NOT EXISTS jobs (
+                            id TEXT PRIMARY KEY,
+                            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                            title TEXT NOT NULL,
+                            location TEXT,
+                            parsed_data TEXT,
+                            created_at TEXT NOT NULL,
+                            updated_at TEXT NOT NULL
+                        )
+                    """))
+                elif table_name == 'candidates':
+                    await conn.execute(text("""
+                        CREATE TABLE IF NOT EXISTS candidates (
+                            id TEXT PRIMARY KEY,
+                            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                            name TEXT NOT NULL,
+                            email TEXT,
+                            phone TEXT,
+                            resume_path TEXT,
+                            parsed_data TEXT,
+                            created_at TEXT NOT NULL,
+                            updated_at TEXT NOT NULL
+                        )
+                    """))
+                elif table_name == 'analyses':
+                    await conn.execute(text("""
+                        CREATE TABLE IF NOT EXISTS analyses (
+                            id TEXT PRIMARY KEY,
+                            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                            job_id TEXT NOT NULL,
+                            status TEXT NOT NULL,
+                            config TEXT,
+                            results TEXT,
+                            client_id TEXT,
+                            created_at TEXT NOT NULL,
+                            updated_at TEXT NOT NULL
+                        )
+                    """))
+                elif table_name == 'file_assets':
+                    await conn.execute(text("""
+                        CREATE TABLE IF NOT EXISTS file_assets (
+                            id TEXT PRIMARY KEY,
+                            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                            kind TEXT NOT NULL CHECK (kind IN ('job_description','resume')),
+                            original_name TEXT NOT NULL,
+                            stored_path TEXT NOT NULL,
+                            metadata_json TEXT,
+                            created_at TEXT NOT NULL
+                        )
+                    """))
+            # engine.begin() auto-commits when context exits successfully
+            logger.warning(f"Re-created missing tables: {missing_tables}")
+        else:
+            logger.info(f"✓ Verified all critical tables exist: {sorted(existing_tables)}")
+        
+        # Migration: Add client_id column to analyses table if it doesn't exist
+        try:
+            # Check if client_id column exists in analyses table
+            is_postgres = 'postgresql' in str(engine.url).lower()
+            if is_postgres:
+                # PostgreSQL: Check information_schema.columns
+                col_check = await conn.execute(text("""
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'analyses' AND column_name = 'client_id'
+                """))
+                has_column = col_check.fetchone() is not None
+            else:
+                # SQLite: Check table schema
+                table_info = await conn.execute(text("PRAGMA table_info(analyses)"))
+                columns = [row[1] for row in table_info.fetchall()]
+                has_column = 'client_id' in columns
+            
+            if not has_column:
+                logger.info("Adding client_id column to analyses table (migration)...")
+                await conn.execute(text("ALTER TABLE analyses ADD COLUMN client_id TEXT"))
+                await conn.commit()
+                logger.info("✓ Successfully added client_id column to analyses table")
+            else:
+                logger.debug("✓ client_id column already exists in analyses table")
+        except Exception as e:
+            logger.warning(f"Failed to add client_id column to analyses table (may already exist): {e}")
+            # Don't fail initialization if migration fails - column might already exist
     
     logger.info("Database tables initialized successfully")

@@ -13,7 +13,7 @@
 
 .dashboard-header h1 {
   margin-bottom: 0.5rem;
-  color: #0066CC;
+  color: var(--color-brand-blue);
   font-size: 2rem;
 }
 
@@ -63,7 +63,7 @@
   padding: 1rem 3rem;
   font-size: 1.2rem;
   font-weight: 600;
-  background: linear-gradient(135deg, #0066CC 0%, #00A651 100%);
+  background: var(--color-brand-blue);
   color: white;
   border: none;
   border-radius: 8px;

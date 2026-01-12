@@ -356,7 +356,7 @@ JSON:
                     job_data['technical_stack'] = []
                 if 'full_description' not in job_data:
                     job_data['full_description'] = content
-                
+
                 # Ensure skills are not empty or invalid - filter out single-word garbage
                 # Strict filtering: reject abbreviations, single letters, and invalid short words
                 invalid_abbreviations = ['ai', 'go', 'aws', 'it', 'hr', 'pr', 'ml', 'nlp', 'api', 'ui', 'ux', 'qa', 'pm']
@@ -405,7 +405,7 @@ JSON:
                         skill.strip() for skill in job_data['preferred_skills']
                         if is_valid_skill(skill)
                     ]
-                
+
                 # Filter soft_skills and technical_stack similarly
                 if 'soft_skills' in job_data:
                     job_data['soft_skills'] = [
