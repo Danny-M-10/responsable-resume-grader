@@ -87,11 +87,9 @@ const Results: React.FC = () => {
     }
   }
 
-  const viableCandidates = candidates.filter((c) => c.score >= 5.0)
-  const topCandidates = viableCandidates.slice(0, 10)
   const avgScore =
-    viableCandidates.length > 0
-      ? viableCandidates.reduce((sum, c) => sum + c.score, 0) / viableCandidates.length
+    candidates.length > 0
+      ? candidates.reduce((sum, c) => sum + c.score, 0) / candidates.length
       : 0
 
   if (loading) {
@@ -155,25 +153,21 @@ const Results: React.FC = () => {
           <div className="metric-label">Total Candidates</div>
         </div>
         <div className="metric-card">
-          <div className="metric-value">{topCandidates.length}</div>
-          <div className="metric-label">Top Candidates (≥5.0)</div>
-        </div>
-        <div className="metric-card">
           <div className="metric-value">{avgScore.toFixed(2)}</div>
-          <div className="metric-label">Average Score (Viable)</div>
+          <div className="metric-label">Average Score</div>
         </div>
       </div>
 
       {/* Candidates List */}
       <div className="candidates-section">
-        <h2>Top Candidates (Viable Only)</h2>
-        {topCandidates.length === 0 ? (
+        <h2>All Candidates</h2>
+        {candidates.length === 0 ? (
           <div className="no-candidates">
-            <p>No viable candidates (score ≥ 5.0) to display.</p>
+            <p>No candidates to display.</p>
           </div>
         ) : (
           <div className="candidates-list">
-            {topCandidates.map((candidate) => (
+            {candidates.map((candidate) => (
               <CandidateCard key={candidate.id} candidate={candidate} />
             ))}
           </div>
