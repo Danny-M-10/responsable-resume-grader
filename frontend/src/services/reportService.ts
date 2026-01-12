@@ -31,4 +31,21 @@ export const reportService = {
     document.body.removeChild(link)
     window.URL.revokeObjectURL(url)
   },
+
+  async downloadAnalysisPdf(analysisId: string): Promise<void> {
+    const response = await apiClient.get(`/api/analysis/${analysisId}/download-pdf`, {
+      responseType: 'blob',
+    })
+
+    // Create blob and download
+    const blob = new Blob([response.data], { type: 'application/pdf' })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `candidate_report_${analysisId}.pdf`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+  },
 }

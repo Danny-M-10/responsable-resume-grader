@@ -109,15 +109,22 @@ const Dashboard: React.FC = () => {
       // Step 2: Upload and parse resumes
       const newCandidateIds: string[] = []
 
-      // Upload new files
+      // Upload new files (always included if provided)
       if (uploadedFiles.length > 0) {
         const files = uploadedFiles.map((uf) => uf.file)
         const uploadResponse = await resumeService.uploadResumes(files, clientId)
         newCandidateIds.push(...uploadResponse.candidate_ids)
+        console.log('[Dashboard] Uploaded files processed:', {
+          fileCount: uploadedFiles.length,
+          candidateIdsCount: uploadResponse.candidate_ids.length,
+        })
       }
 
-      // Load resumes from vault
+      // Load resumes from vault (only if selected)
       if (selectedVaultResumeIds.length > 0) {
+        console.log('[Dashboard] Processing vault resumes:', {
+          selectedCount: selectedVaultResumeIds.length,
+        })
         for (const assetId of selectedVaultResumeIds) {
           try {
             const asset = await vaultService.getAsset(assetId)
@@ -130,6 +137,12 @@ const Dashboard: React.FC = () => {
           }
         }
       }
+
+      console.log('[Dashboard] Total candidate IDs for analysis:', {
+        totalCount: newCandidateIds.length,
+        fromUploaded: uploadedFiles.length > 0 ? 'yes' : 'no',
+        fromVault: selectedVaultResumeIds.length > 0 ? selectedVaultResumeIds.length : 0,
+      })
 
       if (newCandidateIds.length === 0) {
         throw new Error('No candidates were successfully processed')
@@ -163,7 +176,11 @@ const Dashboard: React.FC = () => {
     setProcessing(false)
     // Navigate to results page
     if (currentAnalysisId) {
+      console.log('[Dashboard] Analysis complete, navigating to results:', currentAnalysisId)
       navigate(`/results/${currentAnalysisId}`)
+    } else {
+      console.error('[Dashboard] Analysis complete but no analysis ID available')
+      setError('Analysis completed but could not navigate to results page')
     }
   }
 

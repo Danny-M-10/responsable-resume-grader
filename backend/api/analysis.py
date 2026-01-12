@@ -2,12 +2,14 @@
 Analysis API endpoints
 """
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 import uuid
 import json
 from datetime import datetime
 from sqlalchemy import text
+from pathlib import Path
 
 from backend.models.schemas import AnalysisConfig, AnalysisResponse
 from backend.database.connection import get_db
@@ -185,4 +187,75 @@ async def get_analysis(
         client_id=row[5],  # client_id column (index 5)
         created_at=datetime.fromisoformat(row[6].replace("Z", "+00:00")),
         updated_at=datetime.fromisoformat(row[7].replace("Z", "+00:00"))
+    )
+
+
+@router.get("/{analysis_id}/download-pdf")
+async def download_analysis_pdf(
+    analysis_id: str,
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Download PDF report for analysis
+    
+    Args:
+        analysis_id: Analysis ID
+        user_id: Current user ID
+        db: Database session
+        
+    Returns:
+        PDF file
+    """
+    result = await db.execute(
+        text("""
+            SELECT results
+            FROM analyses
+            WHERE id = :analysis_id AND user_id = :user_id
+        """),
+        {"analysis_id": analysis_id, "user_id": user_id}
+    )
+    row = result.fetchone()
+    
+    if not row:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Analysis not found"
+        )
+    
+    # Parse results JSON to get PDF path
+    results_data = None
+    if row[0]:
+        try:
+            if isinstance(row[0], str):
+                results_data = json.loads(row[0])
+            else:
+                results_data = row[0]
+        except (json.JSONDecodeError, TypeError) as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to parse analysis results for PDF download {analysis_id}: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to parse analysis results"
+            )
+    
+    if not results_data or "pdf_path" not in results_data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="PDF report not found for this analysis"
+        )
+    
+    pdf_path = results_data["pdf_path"]
+    
+    if not Path(pdf_path).exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="PDF file not found on server"
+        )
+    
+    return FileResponse(
+        pdf_path,
+        media_type="application/pdf",
+        filename=f"candidate_report_{analysis_id}.pdf"
     )

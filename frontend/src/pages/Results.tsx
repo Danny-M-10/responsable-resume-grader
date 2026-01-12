@@ -15,7 +15,6 @@ const Results: React.FC = () => {
   const [, setAnalysis] = useState<any>(null)
   const [candidates, setCandidates] = useState<Candidate[]>([])
   const [downloadingReport, setDownloadingReport] = useState(false)
-  const [reportId, setReportId] = useState<string>('')
 
   useEffect(() => {
     if (analysisId) {
@@ -79,16 +78,8 @@ const Results: React.FC = () => {
 
     setDownloadingReport(true)
     try {
-      // Generate report if not already generated, use the generated report ID
-      let reportToDownload = reportId
-      if (!reportToDownload) {
-        const report = await reportService.generateReport(analysisId)
-        reportToDownload = report.id
-        setReportId(report.id)
-      }
-
-      // Download report using the determined report ID
-      await reportService.downloadReport(reportToDownload)
+      // Download PDF directly from analysis results
+      await reportService.downloadAnalysisPdf(analysisId)
     } catch (err: any) {
       setError(err.response?.data?.detail || err.message || 'Failed to download report')
     } finally {
