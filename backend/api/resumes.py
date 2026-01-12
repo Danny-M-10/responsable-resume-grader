@@ -99,6 +99,11 @@ async def upload_resumes(
         }
     except Exception as e:
         await db.rollback()
+        import traceback
+        import logging
+        logger = logging.getLogger(__name__)
+        error_traceback = traceback.format_exc()
+        logger.error(f"Failed to parse resumes: {str(e)}\nTraceback:\n{error_traceback}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to parse resumes: {str(e)}"
