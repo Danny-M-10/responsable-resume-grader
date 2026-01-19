@@ -9,6 +9,59 @@
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
+.progress-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.connection-status {
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.status-connected {
+  color: #10b981;
+}
+
+.status-connected::before {
+  content: '●';
+  margin-right: 0.25rem;
+  animation: pulse 2s infinite;
+}
+
+.status-disconnected {
+  color: #ef4444;
+}
+
+.status-disconnected::before {
+  content: '○';
+  margin-right: 0.25rem;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.progress-time {
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+  color: #6b7280;
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.last-update {
+  color: #9ca3af;
+}
+
 .progress-header {
   margin-bottom: 1.5rem;
 }

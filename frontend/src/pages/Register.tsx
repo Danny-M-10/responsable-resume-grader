@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import crossroadsLogo from '../assets/crossroads-logo.png'
+import responsableLogo from '../assets/responsable-logo.jpg'
 import './Login.css' // Reuse Login styles
 
 const Register: React.FC = () => {
@@ -43,10 +43,9 @@ const Register: React.FC = () => {
     <div className="login-container">
       <div className="login-card">
         <div className="login-logo-section">
-          <img src={crossroadsLogo} alt="Crossroads Professional Services" className="login-logo" />
+          <img src={responsableLogo} alt="ResponsAble" className="login-logo" />
           <h1 className="login-title">
-            <span className="logo-brown">CROSSROADS</span>
-            <span className="logo-blue"> Professional Services</span>
+            <span className="logo-blue">RESPONS</span><span className="logo-green">ABLE</span>
           </h1>
         </div>
         <p className="login-subtitle">Create an account</p>

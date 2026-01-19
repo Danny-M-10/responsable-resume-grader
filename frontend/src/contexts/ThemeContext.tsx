@@ -12,7 +12,7 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined)
 export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [theme, setTheme] = useState<Theme>(() => {
     // Get from localStorage or OS preference
-    const saved = localStorage.getItem('crossroads-theme') as Theme | null
+    const saved = localStorage.getItem('responsable-theme') as Theme | null
     if (saved) return saved
     
     // Check OS preference
@@ -25,7 +25,7 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   useEffect(() => {
     // Apply theme to document
     document.documentElement.setAttribute('data-theme', theme)
-    localStorage.setItem('crossroads-theme', theme)
+    localStorage.setItem('responsable-theme', theme)
   }, [theme])
 
   const toggleTheme = () => {

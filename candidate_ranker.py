@@ -1137,25 +1137,40 @@ class CandidateRankerApp:
         return top_candidates
 
     def _generate_report(self, top_candidates: List[CandidateScore]) -> str:
-        """Generate PDF report"""
-        from storage import ensure_storage_dir
-        
+        """Generate PDF report and upload to S3"""
+        from storage import save_bytes, USE_S3
+        import tempfile
+        import os as _os
+
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_filename = f"Candidate_Ranking_Report_{timestamp}.pdf"
-        
-        # Use storage directory for persistent PDF storage
-        storage_dir = ensure_storage_dir()
-        output_path = str(storage_dir / output_filename)
 
-        # Generate PDF
-        self.pdf_generator.generate(
-            job_details=self.job_details,
-            top_candidates=top_candidates,
-            all_candidates_count=len(self.candidate_scores),
-            output_path=output_path
-        )
+        # Generate PDF to temporary file first
+        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp_file:
+            tmp_path = tmp_file.name
 
-        return output_path
+        try:
+            # Generate PDF to temp file
+            self.pdf_generator.generate(
+                job_details=self.job_details,
+                top_candidates=top_candidates,
+                all_candidates_count=len(self.candidate_scores),
+                output_path=tmp_path
+            )
+
+            # Read the generated PDF and save to S3/storage
+            with open(tmp_path, 'rb') as f:
+                pdf_content = f.read()
+
+            # Use the storage module to save (will use S3 if configured)
+            stored_path, _ = save_bytes(pdf_content, output_filename)
+            logger.info(f"PDF report saved to: {stored_path}")
+
+            return stored_path
+        finally:
+            # Clean up temp file
+            if _os.path.exists(tmp_path):
+                _os.remove(tmp_path)
 
     def _persist_run(self, user_id: str, pdf_path: str, job_source_asset_id: str,
                      resume_assets: List[Dict[str, Any]], top_candidates: List[CandidateScore]) -> None:

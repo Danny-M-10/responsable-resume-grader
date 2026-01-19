@@ -20,7 +20,7 @@ def _safe_json_loads(json_str: str) -> Dict[str, Any]:
         return {}
     try:
         return json.loads(json_str)
-    except:
+    except (json.JSONDecodeError, TypeError):
         return {}
 
 
@@ -30,11 +30,12 @@ async def save_asset_async(
     original_name: str,
     content: bytes,
     metadata: Dict[str, Any] = None,
-    db: AsyncSession = None
+    db: AsyncSession = None,
+    auto_commit: bool = False
 ) -> str:
     """
     Save asset to vault asynchronously
-    
+
     Args:
         user_id: User ID
         kind: Asset kind ('job_description' or 'resume')
@@ -42,18 +43,19 @@ async def save_asset_async(
         content: File content as bytes
         metadata: Optional metadata dictionary
         db: Database session
-        
+        auto_commit: Whether to commit the transaction (default False for transaction safety)
+
     Returns:
         Asset ID
     """
     stored_path, file_hash = save_bytes(content, original_name)
     asset_id = str(uuid.uuid4())
-    from datetime import datetime
-    now = datetime.utcnow().isoformat() + "Z"
-    
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
     metadata_dict = metadata or {}
     metadata_dict["file_hash"] = file_hash
-    
+
     await db.execute(
         text("""
             INSERT INTO file_assets (id, user_id, kind, original_name, stored_path, metadata_json, created_at)
@@ -69,8 +71,12 @@ async def save_asset_async(
             "created_at": now
         }
     )
-    await db.commit()
-    
+
+    # Only commit if explicitly requested (for standalone operations)
+    # For operations within a larger transaction, let the caller commit
+    if auto_commit:
+        await db.commit()
+
     return asset_id
 
 
@@ -278,17 +284,22 @@ async def update_asset_tags_async(
 
 def load_asset_content(asset: Dict[str, Any]) -> bytes:
     """
-    Load asset file content
-    
+    Load asset file content from S3 or local storage
+
     Args:
         asset: Asset dictionary with stored_path
-        
+
     Returns:
         File content as bytes
     """
     if not asset:
         return b""
-    path = asset.get("stored_path")
-    if not path or not Path(path).exists():
+
+    stored_path = asset.get("stored_path")
+    if not stored_path:
         return b""
-    return Path(path).read_bytes()
+
+    # Use the storage module's load_bytes function which handles both S3 and local
+    from storage import load_bytes
+    content = load_bytes(stored_path)
+    return content if content else b""

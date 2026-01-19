@@ -23,6 +23,7 @@ export interface ScoringConfigData {
 interface ScoringConfigProps {
   value: ScoringConfigData
   onChange: (config: ScoringConfigData) => void
+  disabled?: boolean
 }
 
 const DEFAULT_WEIGHTS: ScoringWeights = {
@@ -45,7 +46,7 @@ const WEIGHT_LABELS: Record<keyof ScoringWeights, string> = {
   certifications_education: 'Certifications/Education',
 }
 
-const ScoringConfig: React.FC<ScoringConfigProps> = ({ value, onChange }) => {
+const ScoringConfig: React.FC<ScoringConfigProps> = ({ value, onChange, disabled = false }) => {
   const [templates, setTemplates] = useState<Record<string, Template>>({})
   const [loading, setLoading] = useState(true)
   const [useCustomWeights, setUseCustomWeights] = useState(false)
@@ -67,7 +68,7 @@ const ScoringConfig: React.FC<ScoringConfigProps> = ({ value, onChange }) => {
         })
       }
     }
-  }, [value.industryTemplate, templates])
+  }, [value.industryTemplate, templates, useCustomWeights])
 
   const loadTemplates = async () => {
     try {
@@ -136,6 +137,11 @@ const ScoringConfig: React.FC<ScoringConfigProps> = ({ value, onChange }) => {
         ...value,
         customWeights: (template?.weights as unknown as ScoringWeights) || DEFAULT_WEIGHTS,
       })
+    } else if (!enabled && value.customWeights) {
+      onChange({
+        ...value,
+        customWeights: undefined,
+      })
     }
   }
 
@@ -171,7 +177,7 @@ const ScoringConfig: React.FC<ScoringConfigProps> = ({ value, onChange }) => {
   const weightsSum = Object.values(displayWeights).reduce((sum, val) => sum + val, 0)
 
   return (
-    <div className="scoring-config">
+    <div className={`scoring-config ${disabled ? 'disabled' : ''}`}>
       <div className="scoring-config-section">
         <h3>Scoring Configuration</h3>
 
@@ -191,7 +197,7 @@ const ScoringConfig: React.FC<ScoringConfigProps> = ({ value, onChange }) => {
                 id="industry-template"
                 value={value.industryTemplate || ''}
                 onChange={(e) => handleTemplateChange(e.target.value)}
-                disabled={Object.keys(templates).length === 0}
+                disabled={Object.keys(templates).length === 0 || disabled}
               >
                 {Object.keys(templates).length === 0 ? (
                   <option value="">Loading templates...</option>
@@ -215,6 +221,7 @@ const ScoringConfig: React.FC<ScoringConfigProps> = ({ value, onChange }) => {
                   type="checkbox"
                   checked={useCustomWeights}
                   onChange={(e) => handleUseCustomWeightsToggle(e.target.checked)}
+                  disabled={disabled}
                 />
                 <span>Use Custom Scoring Weights</span>
               </label>
@@ -246,7 +253,7 @@ const ScoringConfig: React.FC<ScoringConfigProps> = ({ value, onChange }) => {
                             parseFloat(e.target.value) / 100
                           )
                         }
-                        disabled={!useCustomWeights}
+                        disabled={!useCustomWeights || disabled}
                       />
                       <span className="weight-value">
                         {useCustomWeights ? (
@@ -262,6 +269,7 @@ const ScoringConfig: React.FC<ScoringConfigProps> = ({ value, onChange }) => {
                                 parseFloat(e.target.value || '0') / 100
                               )
                             }
+                            disabled={disabled}
                           />
                         ) : (
                           `${(weight * 100).toFixed(1)}%`
@@ -308,11 +316,13 @@ const ScoringConfig: React.FC<ScoringConfigProps> = ({ value, onChange }) => {
                       handleAddDealbreaker()
                     }
                   }}
+                  disabled={disabled}
                 />
                 <button
                   type="button"
                   onClick={handleAddDealbreaker}
                   className="add-btn"
+                  disabled={disabled}
                 >
                   Add
                 </button>
@@ -326,6 +336,7 @@ const ScoringConfig: React.FC<ScoringConfigProps> = ({ value, onChange }) => {
                         type="button"
                         onClick={() => handleRemoveDealbreaker(index)}
                         className="remove-btn"
+                        disabled={disabled}
                       >
                         ×
                       </button>
@@ -342,6 +353,7 @@ const ScoringConfig: React.FC<ScoringConfigProps> = ({ value, onChange }) => {
                   type="checkbox"
                   checked={value.biasReductionEnabled}
                   onChange={handleBiasReductionToggle}
+                  disabled={disabled}
                 />
                 <span>
                   <strong>Enable Bias Reduction</strong>

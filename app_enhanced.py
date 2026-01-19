@@ -138,10 +138,10 @@ def main():
     # Custom CSS with logo branding colors
     st.markdown("""
         <style>
-        /* Logo branding colors */
+        /* ResponsAble branding colors */
         :root {
-            --brand-blue: #0066CC;
-            --brand-green: #00A651;
+            --brand-blue: #215096;
+            --brand-green: #38A84F;
             --brand-dark-gray: #4A4A4A;
         }
         
@@ -386,7 +386,7 @@ def main():
         else:
             # Fallback text logo
             st.markdown("""
-                <div style="font-size: 1.5rem; font-weight: bold; color: #0066CC;">
+                <div style="font-size: 1.5rem; font-weight: bold; color: #215096;">
                     RA
                 </div>
             """, unsafe_allow_html=True)
@@ -395,7 +395,7 @@ def main():
         st.markdown("""
             <div class="header-text">
                 <div class="main-header">
-                    <span style="color: #0066CC;">RESPONS</span><span class="green-text">ABLE</span> 
+                    <span style="color: #215096;">RESPONS</span><span class="green-text">ABLE</span> 
                     <span style="color: #4A4A4A; font-size: 1.8rem;">Safety Staffing</span>
                 </div>
                 <div class="sub-header">AI-Powered Candidate Screening and Ranking System</div>

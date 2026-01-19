@@ -19,10 +19,6 @@ const VaultPage: React.FC = () => {
   const [selectedSkills, setSelectedSkills] = useState<string[]>([])
   const [nameFilter, setNameFilter] = useState<string>('')
 
-  useEffect(() => {
-    loadAssets()
-  }, [activeTab])
-
   const loadAssets = async () => {
     setLoading(true)
     setError('')
@@ -324,8 +320,9 @@ const VaultPage: React.FC = () => {
                   className="delete-button"
                   onClick={() => handleDelete(asset.id)}
                   title="Delete"
+                  aria-label={`Delete ${asset.original_name}`}
                 >
-                  <Trash2 size={16} />
+                  <Trash2 size={16} aria-hidden="true" />
                 </button>
               </div>
 

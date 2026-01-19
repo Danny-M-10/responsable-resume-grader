@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { analysisService, AnalysisResponse } from '../services/analysisService'
-import { Loader2, AlertCircle, FileText, Calendar } from 'lucide-react'
+import { AnalysisItemSkeleton } from '../components/LoadingSkeleton'
+import { AlertCircle, FileText, Calendar } from 'lucide-react'
 import './History.css'
 
 const History: React.FC = () => {
@@ -59,9 +60,14 @@ const History: React.FC = () => {
   if (loading) {
     return (
       <div className="history-page">
-        <div className="loading-container">
-          <Loader2 className="spinner" />
-          <span>Loading analysis history...</span>
+        <div className="history-header">
+          <h1>Analysis History</h1>
+          <p>View and access your past candidate analyses</p>
+        </div>
+        <div className="skeleton-loading-container">
+          {[1, 2, 3, 4].map((i) => (
+            <AnalysisItemSkeleton key={i} />
+          ))}
         </div>
       </div>
     )
@@ -88,10 +94,13 @@ const History: React.FC = () => {
 
       {analyses.length === 0 ? (
         <div className="no-analyses">
-          <FileText size={48} />
+          <FileText size={64} className="empty-state-icon" />
           <h2>No analyses yet</h2>
           <p>Start analyzing candidates from the dashboard to see your history here.</p>
-          <button onClick={() => navigate('/')} className="go-to-dashboard-btn">
+          <p className="empty-state-help">
+            Upload job descriptions and resumes, then click "Process Candidates" to begin.
+          </p>
+          <button onClick={() => navigate('/')} className="go-to-dashboard-btn" aria-label="Go to Dashboard">
             Go to Dashboard
           </button>
         </div>
@@ -116,6 +125,7 @@ const History: React.FC = () => {
                   <button
                     className="view-results-btn"
                     onClick={() => handleViewResults(analysis.id)}
+                    aria-label={`View results for analysis ${analysis.id.slice(0, 8)}`}
                   >
                     View Results
                   </button>

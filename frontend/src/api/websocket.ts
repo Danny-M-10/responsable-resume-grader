@@ -7,6 +7,7 @@ export class ProgressWebSocket {
   private reconnectAttempts = 0
   private maxReconnectAttempts = 5
   private reconnectDelay = 1000
+  private shouldReconnect = true
   private onProgressCallback?: (data: any) => void
   private onErrorCallback?: (error: Event) => void
   private onCloseCallback?: () => void
@@ -39,6 +40,7 @@ export class ProgressWebSocket {
   }
 
   connect() {
+    this.shouldReconnect = true
     try {
       this.ws = new WebSocket(this.url)
 
@@ -70,7 +72,9 @@ export class ProgressWebSocket {
         if (this.onCloseCallback) {
           this.onCloseCallback()
         }
-        this.attemptReconnect()
+        if (this.shouldReconnect) {
+          this.attemptReconnect()
+        }
       }
     } catch (error) {
       console.error('Failed to create WebSocket connection:', error)
@@ -100,6 +104,7 @@ export class ProgressWebSocket {
   }
 
   disconnect() {
+    this.shouldReconnect = false
     if (this.ws) {
       this.ws.close()
       this.ws = null

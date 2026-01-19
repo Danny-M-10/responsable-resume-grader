@@ -1,17 +1,17 @@
 """
-Design tokens for CROSSROADS Professional Services UI
+Design tokens for ResponsAble UI
 Provides consistent design system for light and dark modes
 """
 
 from typing import Dict, Any
 
-# Brand colors (unchanged from existing)
+# Brand colors - ResponsAble
 BRAND_COLORS = {
-    "blue": "#00A8CC",  # Primary brand blue
-    "green": "#00A651",  # Success/accent green
-    "brown": "#6B4423",  # Primary text color
+    "blue": "#215096",  # Deep blue from ResponsAble logo
+    "green": "#38A84F",  # Bright green from ResponsAble logo
+    "brown": "#215096",  # Use blue for primary text (replacing brown)
     "black": "#000000",  # Black background
-    "dark_gray": "#4A4A4A",  # Dark gray
+    "dark_gray": "#4A4A4A",  # Dark gray for tagline
 }
 
 # Light mode design tokens

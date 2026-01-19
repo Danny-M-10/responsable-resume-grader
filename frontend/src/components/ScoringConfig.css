@@ -2,6 +2,17 @@
   margin-bottom: 2rem;
 }
 
+.scoring-config.disabled {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.scoring-config.disabled input,
+.scoring-config.disabled select,
+.scoring-config.disabled button {
+  cursor: not-allowed;
+}
+
 .scoring-config-section {
   background: white;
   padding: 1.5rem;
@@ -291,4 +302,19 @@
 .bias-toggle small {
   color: var(--color-text-muted);
   font-size: 0.875rem;
+}
+
+/* Mobile Responsiveness */
+@media (max-width: 768px) {
+  .scoring-config-section {
+    padding: var(--spacing-base);
+  }
+
+  .weights-section {
+    gap: var(--spacing-base);
+  }
+
+  .weight-input {
+    width: 100%;
+  }
 }

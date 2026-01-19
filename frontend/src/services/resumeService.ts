@@ -3,6 +3,7 @@ import { apiClient } from '../api/client'
 export interface ResumeUploadResponse {
   message: string
   candidate_ids: string[]
+  asset_ids?: string[]  // Asset IDs from vault
   parsed_data: any[]
   client_id?: string  // Client ID for WebSocket progress updates
 }

@@ -1,19 +1,19 @@
 #!/bin/bash
 
-# Deployment script for FastAPI + React application to AWS ECS
-# Maintains database connection from existing deployment
+# Deployment script for ResponsAble application to AWS ECS
+# Targets: responsAble_recruitment_ai_app cluster/service
 
 set -e
 
 # Configuration
 AWS_REGION="us-east-2"
 ECR_REPOSITORY="recruiting-candidate-ranker"
-ECS_CLUSTER="internal_recruiting_candidate_ranker"
-ECS_SERVICE="internal_recruiting_candidate_ranker"
+ECS_CLUSTER="responsAble_recruitment_ai_app"
+ECS_SERVICE="responsAble_recruitment_ai_app"
 IMAGE_TAG=$(git rev-parse --short HEAD 2>/dev/null || echo "latest")
 
 echo "=========================================="
-echo "Deploying FastAPI + React to AWS ECS"
+echo "Deploying ResponsAble Application to AWS ECS"
 echo "=========================================="
 echo "Region: $AWS_REGION"
 echo "ECR Repository: $ECR_REPOSITORY"
@@ -81,15 +81,24 @@ if ! aws ecs describe-task-definition \
     --query taskDefinition \
     --region $AWS_REGION \
     > task-definition.json 2>/dev/null; then
-    echo "Task definition $TASK_DEF_NAME not found, using recruiting-candidate-ranker as template..."
-    TASK_DEF_NAME="recruiting-candidate-ranker"
+    echo "Task definition $TASK_DEF_NAME not found, trying alternative names..."
+    # Try with hyphens instead of mixed case
+    TASK_DEF_NAME="responsable-recruitment-ai-app"
     if ! aws ecs describe-task-definition \
         --task-definition $TASK_DEF_NAME \
         --query taskDefinition \
         --region $AWS_REGION \
         > task-definition.json 2>/dev/null; then
-        echo "✗ Failed to download task definition"
-        exit 1
+        echo "Task definition not found, using recruiting-candidate-ranker as template..."
+        TASK_DEF_NAME="recruiting-candidate-ranker"
+        if ! aws ecs describe-task-definition \
+            --task-definition $TASK_DEF_NAME \
+            --query taskDefinition \
+            --region $AWS_REGION \
+            > task-definition.json 2>/dev/null; then
+            echo "✗ Failed to download task definition"
+            exit 1
+        fi
     fi
 fi
 # Always update the family name to match the new service (use hyphens, not underscores)
@@ -99,12 +108,12 @@ import os
 with open('task-definition.json', 'r') as f:
     task_def = json.load(f)
 # ECS task definition family names must use hyphens, not underscores
-ecs_service = os.environ.get("ECS_SERVICE", "internal_recruiting_candidate_ranker")
-task_def['family'] = ecs_service.replace("_", "-")
+ecs_service = os.environ.get("ECS_SERVICE", "responsAble_recruitment_ai_app")
+task_def['family'] = ecs_service.replace("_", "-").lower()
 with open('task-definition.json', 'w') as f:
     json.dump(task_def, f, indent=2)
 FAMILY_UPDATE
-FAMILY_NAME=$(python3 -c "import json; print(json.load(open('task-definition.json'))['family'])" 2>/dev/null || echo "internal-recruiting-candidate-ranker")
+FAMILY_NAME=$(python3 -c "import json; print(json.load(open('task-definition.json'))['family'])" 2>/dev/null || echo "responsable-recruitment-ai-app")
 echo "✓ Task definition downloaded (family: $FAMILY_NAME)"
 echo ""
 
@@ -116,23 +125,32 @@ import json
 with open('task-definition.json', 'r') as f:
     task_def = json.load(f)
 
+# ResponsAble-specific S3 bucket
+RESPONSABLE_BUCKET = "responsable-recruitment-ai-uploads-us-east-2-774305585062"
+
 # Update the image and port for the 'app' container
 for container in task_def.get('containerDefinitions', []):
     if container['name'] == 'app':
         container['image'] = '$FULL_IMAGE_NAME'
         # Update port from 8501 (Streamlit) to 8000 (FastAPI)
         container['portMappings'] = [{"containerPort": 8000, "protocol": "tcp"}]
-        # Update or add PORT environment variable
+        # Update or add environment variables
         env_vars = container.get('environment', [])
         port_found = False
+        storage_bucket_found = False
         for env_var in env_vars:
             if env_var['name'] == 'PORT':
                 env_var['value'] = '8000'
                 port_found = True
-                break
+            elif env_var['name'] == 'STORAGE_BUCKET':
+                # Update to ResponsAble-specific bucket
+                env_var['value'] = RESPONSABLE_BUCKET
+                storage_bucket_found = True
         if not port_found:
             env_vars.append({'name': 'PORT', 'value': '8000'})
-            container['environment'] = env_vars
+        if not storage_bucket_found:
+            env_vars.append({'name': 'STORAGE_BUCKET', 'value': RESPONSABLE_BUCKET})
+        container['environment'] = env_vars
         # Update health check for FastAPI
         container['healthCheck'] = {
             "command": ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"],
@@ -143,11 +161,12 @@ for container in task_def.get('containerDefinitions', []):
         }
         print(f"Updated container 'app' image to: {container['image']}")
         print(f"Updated container port to: 8000")
+        print(f"Updated STORAGE_BUCKET to: {RESPONSABLE_BUCKET}")
         print(f"Updated health check endpoint to: /health")
 
 # Ensure family name uses hyphens (not underscores) for ECS compatibility
 if 'family' in task_def:
-    task_def['family'] = task_def['family'].replace('_', '-')
+    task_def['family'] = task_def['family'].replace('_', '-').lower()
 
 # Remove fields that can't be in new task definition
 task_def.pop('taskDefinitionArn', None)
@@ -208,7 +227,6 @@ if [ ! -z "$TARGET_GROUP_ARN" ] && [ "$TARGET_GROUP_ARN" != "None" ]; then
     
     # Update health check path to /health
     echo "Updating target group health check to /health..."
-    # Use modify-target-group with --health-check-path parameter (not modify-target-group-attributes)
     if aws elbv2 modify-target-group \
         --target-group-arn "$TARGET_GROUP_ARN" \
         --health-check-path "/health" \
@@ -279,12 +297,20 @@ else
     TEMPLATE_SERVICE=${TEMPLATE_SERVICE:-recruiting-candidate-ranker}
     TEMPLATE_STATUS=$(aws ecs describe-services --cluster $ECS_CLUSTER --services $TEMPLATE_SERVICE --region $AWS_REGION --query 'services[0].status' --output text 2>/dev/null)
     if [ -z "$TEMPLATE_STATUS" ] || [ "$TEMPLATE_STATUS" = "None" ] || [ "$TEMPLATE_STATUS" = "INACTIVE" ]; then
-        echo "✗ Template service '$TEMPLATE_SERVICE' not found or inactive"
-        echo "   Set TEMPLATE_SERVICE to an existing ECS service name to clone network config."
-        exit 1
+        # Try alternative cluster
+        TEMPLATE_CLUSTER="recruiting-candidate-ranker"
+        TEMPLATE_STATUS=$(aws ecs describe-services --cluster $TEMPLATE_CLUSTER --services $TEMPLATE_SERVICE --region $AWS_REGION --query 'services[0].status' --output text 2>/dev/null)
+        if [ -z "$TEMPLATE_STATUS" ] || [ "$TEMPLATE_STATUS" = "None" ] || [ "$TEMPLATE_STATUS" = "INACTIVE" ]; then
+            echo "✗ Template service '$TEMPLATE_SERVICE' not found or inactive"
+            echo "   Set TEMPLATE_SERVICE to an existing ECS service name to clone network config."
+            exit 1
+        fi
+        NETWORK_CONFIG=$(aws ecs describe-services --cluster $TEMPLATE_CLUSTER --services $TEMPLATE_SERVICE --region $AWS_REGION --query 'services[0].networkConfiguration' --output json 2>/dev/null)
+        LOAD_BALANCER=$(aws ecs describe-services --cluster $TEMPLATE_CLUSTER --services $TEMPLATE_SERVICE --region $AWS_REGION --query 'services[0].loadBalancers[0]' --output json 2>/dev/null)
+    else
+        NETWORK_CONFIG=$(aws ecs describe-services --cluster $ECS_CLUSTER --services $TEMPLATE_SERVICE --region $AWS_REGION --query 'services[0].networkConfiguration' --output json 2>/dev/null)
+        LOAD_BALANCER=$(aws ecs describe-services --cluster $ECS_CLUSTER --services $TEMPLATE_SERVICE --region $AWS_REGION --query 'services[0].loadBalancers[0]' --output json 2>/dev/null)
     fi
-    NETWORK_CONFIG=$(aws ecs describe-services --cluster $ECS_CLUSTER --services $TEMPLATE_SERVICE --region $AWS_REGION --query 'services[0].networkConfiguration' --output json 2>/dev/null)
-    LOAD_BALANCER=$(aws ecs describe-services --cluster $ECS_CLUSTER --services $TEMPLATE_SERVICE --region $AWS_REGION --query 'services[0].loadBalancers[0]' --output json 2>/dev/null)
     
     if [ -z "$NETWORK_CONFIG" ] || [ "$NETWORK_CONFIG" = "null" ]; then
         echo "✗ Failed to get network configuration template"
@@ -292,25 +318,38 @@ else
     fi
     
     if [ -z "$LOAD_BALANCER" ] || [ "$LOAD_BALANCER" = "null" ]; then
-        echo "✗ Failed to get load balancer configuration template"
-        exit 1
+        echo "⚠  No load balancer config found, creating service without load balancer"
+        # Create service without load balancer
+        if ! aws ecs create-service \
+            --cluster $ECS_CLUSTER \
+            --service-name $ECS_SERVICE \
+            --task-definition $NEW_TASK_DEF_ARN \
+            --desired-count 1 \
+            --launch-type FARGATE \
+            --network-configuration "$NETWORK_CONFIG" \
+            --region $AWS_REGION \
+            > /dev/null 2>&1; then
+            echo "✗ Failed to create ECS service"
+            exit 1
+        fi
+        echo "✓ ECS service created (without load balancer)"
+    else
+        # Create service with load balancer
+        if ! aws ecs create-service \
+            --cluster $ECS_CLUSTER \
+            --service-name $ECS_SERVICE \
+            --task-definition $NEW_TASK_DEF_ARN \
+            --desired-count 1 \
+            --launch-type FARGATE \
+            --network-configuration "$NETWORK_CONFIG" \
+            --load-balancers "$LOAD_BALANCER" \
+            --region $AWS_REGION \
+            > /dev/null 2>&1; then
+            echo "✗ Failed to create ECS service"
+            exit 1
+        fi
+        echo "✓ ECS service created"
     fi
-    
-    # Create service
-    if ! aws ecs create-service \
-        --cluster $ECS_CLUSTER \
-        --service-name $ECS_SERVICE \
-        --task-definition $NEW_TASK_DEF_ARN \
-        --desired-count 1 \
-        --launch-type FARGATE \
-        --network-configuration "$NETWORK_CONFIG" \
-        --load-balancers "$LOAD_BALANCER" \
-        --region $AWS_REGION \
-        > /dev/null 2>&1; then
-        echo "✗ Failed to create ECS service"
-        exit 1
-    fi
-    echo "✓ ECS service created"
 fi
 echo ""
 
@@ -361,10 +400,7 @@ echo "Running tasks: $RUNNING / $DESIRED"
 echo "Port: 8000 (FastAPI)"
 echo ""
 echo "Database: Using existing DATABASE_URL from SSM Parameter Store"
-echo "The application is now live on AWS!"
-echo ""
-echo "Note: If ALB target group port was not automatically updated,"
-echo "      you may need to manually update it from 8501 to 8000"
+echo "The ResponsAble application is now live on AWS!"
 echo ""
 
 # Cleanup

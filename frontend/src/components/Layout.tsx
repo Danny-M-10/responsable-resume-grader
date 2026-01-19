@@ -3,7 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
 import { Moon, Sun } from 'lucide-react'
-import crossroadsLogo from '../assets/crossroads-logo.png'
+import responsableLogo from '../assets/responsable-logo.jpg'
 import './Layout.css'
 
 interface LayoutProps {
@@ -20,13 +20,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       <header className="layout-header">
         <div className="header-content">
           <div className="logo-section">
-            <img src={crossroadsLogo} alt="Crossroads Professional Services" className="logo-image" />
+            <img src={responsableLogo} alt="ResponsAble" className="logo-image" />
             <div className="logo-text">
               <h1 className="logo">
-                <span className="logo-brown">CROSSROADS</span>
-                <span className="logo-blue"> Professional Services</span>
+                <span className="logo-blue">RESPONS</span><span className="logo-green">ABLE</span>
               </h1>
-              <p className="subtitle">Universal Recruiting Tool</p>
+              <p className="subtitle">Safety Staffing on Demand</p>
             </div>
           </div>
           <div className="header-actions">

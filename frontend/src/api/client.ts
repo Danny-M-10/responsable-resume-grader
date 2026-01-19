@@ -20,7 +20,12 @@ apiClient.interceptors.request.use(
     
     // Only set Content-Type for non-FormData requests
     // FormData requests should let axios set multipart/form-data with boundary automatically
-    if (!(config.data instanceof FormData) && !config.headers['Content-Type']) {
+    // Check if Content-Type header is already set (AxiosHeaders supports get())
+    const headers = config.headers
+    const hasContentType = typeof headers?.get === 'function'
+      ? Boolean(headers.get('Content-Type') || headers.get('content-type'))
+      : Boolean(headers && ('Content-Type' in headers || 'content-type' in headers))
+    if (!(config.data instanceof FormData) && !hasContentType) {
       config.headers['Content-Type'] = 'application/json'
     }
     

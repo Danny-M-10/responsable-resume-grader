@@ -1,5 +1,5 @@
 /**
- * CROSSROADS Professional Services Theme System
+ * ResponsAble Theme System
  * CSS variables for light and dark modes
  * Generated from design tokens
  */
@@ -8,9 +8,9 @@
 :root,
 :root[data-theme="light"] {
   /* Brand colors */
-  --brand-blue: #00A8CC;
-  --brand-green: #00A651;
-  --brand-brown: #6B4423;
+  --brand-blue: #215096;
+  --brand-green: #38A84F;
+  --brand-brown: #215096;  /* Using blue instead of brown */
   --brand-black: #000000;
   --brand-dark-gray: #4A4A4A;
 

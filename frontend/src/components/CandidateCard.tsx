@@ -39,7 +39,20 @@ const CandidateCard: React.FC<CandidateCardProps> = ({ candidate }) => {
 
   return (
     <div className={`candidate-card ${expanded ? 'expanded' : ''}`}>
-      <div className="candidate-header" onClick={() => setExpanded(!expanded)}>
+      <div 
+        className="candidate-header" 
+        onClick={() => setExpanded(!expanded)}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            setExpanded(!expanded)
+          }
+        }}
+        aria-label={`${expanded ? 'Collapse' : 'Expand'} details for ${candidate.name}`}
+        aria-expanded={expanded}
+      >
         <div className="candidate-rank">
           <span className="rank-number">#{candidate.rank}</span>
         </div>
@@ -48,13 +61,13 @@ const CandidateCard: React.FC<CandidateCardProps> = ({ candidate }) => {
             {candidate.name}
             {candidate.email && (
               <span className="contact-info">
-                <Mail size={14} />
+                <Mail size={14} aria-hidden="true" />
                 {candidate.email}
               </span>
             )}
             {candidate.phone && (
               <span className="contact-info">
-                <Phone size={14} />
+                <Phone size={14} aria-hidden="true" />
                 {candidate.phone}
               </span>
             )}
@@ -65,7 +78,7 @@ const CandidateCard: React.FC<CandidateCardProps> = ({ candidate }) => {
           <div className="score-label">{scoreLabel}</div>
         </div>
         <div className="expand-icon">
-          {expanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+          {expanded ? <ChevronUp size={20} aria-hidden="true" /> : <ChevronDown size={20} aria-hidden="true" />}
         </div>
       </div>
 

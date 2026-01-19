@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 
 from backend.database.connection import init_db, close_db
 from backend.database.init_db_async import init_db_async
-from backend.api import auth, jobs, resumes, candidates, analysis, reports, templates, settings, vault
+from backend.api import auth, jobs, resumes, candidates, analysis, reports, templates, settings, vault, chat
 from backend.websocket import progress
 
 # Configure logging
@@ -53,8 +53,8 @@ async def lifespan(app: FastAPI):
 
 # Create FastAPI app
 app = FastAPI(
-    title="CROSSROADS Professional Services - Candidate Ranking API",
-    description="Universal Recruiting Tool API",
+    title="ResponsAble - Candidate Ranking API",
+    description="Safety Staffing on Demand API",
     version="1.0.0",
     lifespan=lifespan,
     redirect_slashes=True  # Automatically redirect trailing slashes
@@ -95,6 +95,7 @@ app.include_router(reports.router, prefix="/api/reports", tags=["reports"])
 app.include_router(templates.router, prefix="/api/templates", tags=["templates"])
 app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
 app.include_router(vault.router, prefix="/api/vault", tags=["vault"])
+app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
 
 # WebSocket routes
 from fastapi import WebSocket as WS, Query
@@ -110,22 +111,24 @@ static_dir = Path(__file__).parent.parent / "static"
 assets_dir = static_dir / "assets"
 
 # Mount assets directory for CSS, JS, and other static assets from Vite build
-if assets_dir.exists():
-    app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+app.mount("/assets", StaticFiles(directory=str(assets_dir), check_dir=False), name="assets")
 
 # Serve other static files from root (like vite.svg)
-if static_dir.exists():
-    vite_svg_path = static_dir / "vite.svg"
+vite_svg_path = static_dir / "vite.svg"
+
+@app.get("/vite.svg")
+async def serve_vite_svg():
     if vite_svg_path.exists():
-        @app.get("/vite.svg")
-        async def serve_vite_svg():
-            return FileResponse(str(vite_svg_path))
-    
-    favicon_path = static_dir / "favicon.ico"
+        return FileResponse(str(vite_svg_path))
+    return JSONResponse({"error": "Not found"}, status_code=404)
+
+favicon_path = static_dir / "favicon.ico"
+
+@app.get("/favicon.ico")
+async def serve_favicon():
     if favicon_path.exists():
-        @app.get("/favicon.ico")
-        async def serve_favicon():
-            return FileResponse(str(favicon_path))
+        return FileResponse(str(favicon_path))
+    return JSONResponse({"error": "Not found"}, status_code=404)
 
 
 @app.get("/")
@@ -135,7 +138,7 @@ async def root():
     if static_dir.exists() and index_path.exists():
         return FileResponse(str(index_path))
     return JSONResponse({
-        "message": "CROSSROADS Professional Services - Candidate Ranking API",
+        "message": "ResponsAble - Candidate Ranking API",
         "version": "1.0.0",
         "status": "running"
     })
@@ -152,11 +155,12 @@ async def health_check():
 async def serve_react_app(full_path: str):
     """Serve React app for all non-API routes"""
     # Don't interfere with API routes, WebSocket routes, health check, or static assets
+    # Note: vite.svg and favicon.ico are handled by dedicated handlers above, so don't block them here
     if (full_path.startswith("api/") or 
         full_path.startswith("ws/") or 
         full_path.startswith("assets/") or
         full_path == "health" or
-        full_path in ["vite.svg", "favicon.ico", "robots.txt"]):
+        full_path == "robots.txt"):
         return JSONResponse({"error": "Not found"}, status_code=404)
     
     index_path = static_dir / "index.html"

@@ -53,6 +53,40 @@
   }
 }
 
+/* Mobile Responsiveness */
+@media (max-width: 768px) {
+  .history-page {
+    padding: var(--spacing-base);
+  }
+
+  .analyses-list {
+    gap: var(--spacing-base);
+  }
+
+  .analysis-item {
+    padding: var(--spacing-base);
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-base);
+  }
+
+  .analysis-item-header {
+    width: 100%;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-sm);
+  }
+
+  .analysis-item-actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .analysis-item-actions button {
+    flex: 1;
+  }
+}
+
 .no-analyses {
   display: flex;
   flex-direction: column;

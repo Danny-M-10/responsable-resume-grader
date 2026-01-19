@@ -1,19 +1,21 @@
 import React, { useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import JobInput, { JobInputData } from '../components/JobInput'
-import ResumeUpload, { UploadedFile } from '../components/ResumeUpload'
+import ResumeUpload, { ProcessedResume } from '../components/ResumeUpload'
 import ScoringConfig, { ScoringConfigData } from '../components/ScoringConfig'
 import AnalysisProgress from '../components/AnalysisProgress'
 import { jobService } from '../services/jobService'
 import { analysisService } from '../services/analysisService'
 import { resumeService } from '../services/resumeService'
 import { vaultService } from '../services/vaultService'
-import { AlertCircle } from 'lucide-react'
+import { useToast } from '../contexts/ToastContext'
+import { AlertCircle, Loader2 } from 'lucide-react'
 import { debugLog } from '../utils/debugLog'
 import './Dashboard.css'
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate()
+  const { showToast } = useToast()
 
   // Job input state
   const [jobData, setJobData] = useState<JobInputData>({
@@ -25,7 +27,7 @@ const Dashboard: React.FC = () => {
   const [selectedVaultJobId, setSelectedVaultJobId] = useState<string>('')
 
   // Resume upload state
-  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([])
+  const [processedResumes, setProcessedResumes] = useState<ProcessedResume[]>([])
   const [selectedVaultResumeIds, setSelectedVaultResumeIds] = useState<string[]>([])
 
   // Scoring config state
@@ -64,9 +66,17 @@ const Dashboard: React.FC = () => {
       errors.push('Job description is required')
     }
 
-    const totalResumes = uploadedFiles.length + selectedVaultResumeIds.length
+    // Check for processed resumes (completed status)
+    const completedResumes = processedResumes.filter((r) => r.status === 'complete')
+    const totalResumes = completedResumes.length + selectedVaultResumeIds.length
     if (totalResumes === 0) {
-      errors.push('At least one resume file is required')
+      errors.push('At least one processed resume is required')
+    }
+    
+    // Check if any resumes are still processing
+    const processingResumes = processedResumes.filter((r) => r.status === 'uploading' || r.status === 'parsing')
+    if (processingResumes.length > 0) {
+      errors.push('Please wait for all resumes to finish processing before starting analysis')
     }
 
     return errors
@@ -80,16 +90,23 @@ const Dashboard: React.FC = () => {
     const errors = validateForm()
     console.log('[Dashboard] Validation errors:', errors)
     console.log('[Dashboard] Job data state:', { jobTitle: jobData.jobTitle, location: jobData.location, jobDescription: jobData.jobDescription?.substring(0, 50) + '...', hasJobId: !!jobData.jobId })
-    console.log('[Dashboard] Resume state:', { uploadedFilesCount: uploadedFiles.length, selectedVaultResumeIdsCount: selectedVaultResumeIds.length })
+    const completedResumes = processedResumes.filter((r) => r.status === 'complete')
+    console.log('[Dashboard] Resume state:', { processedResumesCount: processedResumes.length, completedResumesCount: completedResumes.length, selectedVaultResumeIdsCount: selectedVaultResumeIds.length })
     if (errors.length > 0) {
       console.log('[Dashboard] Setting validation errors:', errors)
       setValidationErrors(errors)
+      showToast({
+        message: `Please fix ${errors.length} error${errors.length > 1 ? 's' : ''} before continuing`,
+        type: 'error',
+      })
       return
     }
 
-    setProcessing(true)
+    // Generate clientId and set processing state BEFORE starting any async operations
+    // This ensures the progress component is shown immediately
     const clientId = `client_${Date.now()}_${Math.random().toString(36).substring(7)}`
     setAnalysisClientId(clientId)
+    setProcessing(true)
 
     try {
       // Step 1: Create or get job
@@ -106,19 +123,22 @@ const Dashboard: React.FC = () => {
         setJobData({ ...jobData, jobId })
       }
 
-      // Step 2: Upload and parse resumes
+      // Step 2: Collect candidate IDs from processed resumes
       const newCandidateIds: string[] = []
 
-      // Upload new files (always included if provided)
-      if (uploadedFiles.length > 0) {
-        const files = uploadedFiles.map((uf) => uf.file)
-        const uploadResponse = await resumeService.uploadResumes(files, clientId)
-        newCandidateIds.push(...uploadResponse.candidate_ids)
-        console.log('[Dashboard] Uploaded files processed:', {
-          fileCount: uploadedFiles.length,
-          candidateIdsCount: uploadResponse.candidate_ids.length,
-        })
-      }
+      // Get candidate IDs from already-processed resumes
+      const completedResumes = processedResumes.filter((r) => r.status === 'complete' && r.candidateId)
+      completedResumes.forEach((resume) => {
+        if (resume.candidateId) {
+          newCandidateIds.push(resume.candidateId)
+        }
+      })
+      console.log('[Dashboard] Using processed resumes:', {
+        completedResumesCount: completedResumes.length,
+        candidateIdsCount: newCandidateIds.length,
+      })
+
+      const vaultUploadErrors: string[] = []
 
       // Load resumes from vault (only if selected)
       if (selectedVaultResumeIds.length > 0) {
@@ -131,20 +151,33 @@ const Dashboard: React.FC = () => {
             const blob = await vaultService.downloadAsset(assetId)
             const file = new File([blob], asset.original_name, { type: blob.type })
             const uploadResponse = await resumeService.uploadResumes([file], clientId)
-            newCandidateIds.push(...uploadResponse.candidate_ids)
+            const validIds = (uploadResponse.candidate_ids || []).filter((id) => Boolean(id)) as string[]
+            if (validIds.length === 0) {
+              throw new Error('No candidate IDs returned from vault resume upload')
+            }
+            newCandidateIds.push(...validIds)
           } catch (err) {
+            const errorMessage = err instanceof Error ? err.message : 'Failed to process vault resume'
+            vaultUploadErrors.push(errorMessage)
             console.error(`Failed to load resume from vault ${assetId}:`, err)
+            showToast({
+              message: errorMessage,
+              type: 'error',
+            })
           }
         }
       }
 
       console.log('[Dashboard] Total candidate IDs for analysis:', {
         totalCount: newCandidateIds.length,
-        fromUploaded: uploadedFiles.length > 0 ? 'yes' : 'no',
+        fromProcessed: completedResumes.length,
         fromVault: selectedVaultResumeIds.length > 0 ? selectedVaultResumeIds.length : 0,
       })
 
       if (newCandidateIds.length === 0) {
+        if (vaultUploadErrors.length > 0) {
+          throw new Error('Failed to process selected vault resumes. Please check the errors and try again.')
+        }
         throw new Error('No candidates were successfully processed')
       }
 
@@ -165,8 +198,17 @@ const Dashboard: React.FC = () => {
       const finalClientId = analysisResponse.client_id || clientId
       setAnalysisClientId(finalClientId)
       setCurrentAnalysisId(analysisResponse.id)
+      showToast({
+        message: 'Analysis started successfully!',
+        type: 'success',
+      })
     } catch (err: any) {
-      setError(err.response?.data?.detail || err.message || 'Failed to process candidates')
+      const errorMessage = err.response?.data?.detail || err.message || 'Failed to process candidates'
+      setError(errorMessage)
+      showToast({
+        message: errorMessage,
+        type: 'error',
+      })
       setProcessing(false)
       setAnalysisClientId('')
     }
@@ -187,6 +229,11 @@ const Dashboard: React.FC = () => {
   const handleAnalysisError = (errorMsg: string) => {
     setError(errorMsg)
   }
+
+  // Check if any resumes are currently processing
+  const isProcessingResumes = processedResumes.some(
+    (r) => r.status === 'uploading' || r.status === 'parsing'
+  )
 
   return (
     <div className="dashboard">
@@ -212,6 +259,17 @@ const Dashboard: React.FC = () => {
         </div>
       )}
 
+      {/* Processing Indicator */}
+      {isProcessingResumes && (
+        <div className="processing-banner" role="status" aria-live="polite">
+          <Loader2 className="spinner" size={20} />
+          <div>
+            <strong>Resumes are being processed</strong>
+            <p>Please wait while resumes are processed. The form is locked to ensure your analysis uses the current settings.</p>
+          </div>
+        </div>
+      )}
+
       {/* Job Input Section */}
       <JobInput
         value={jobData}
@@ -233,18 +291,24 @@ const Dashboard: React.FC = () => {
         }}
         onVaultAssetSelect={handleVaultJobSelect}
         selectedVaultJobId={selectedVaultJobId}
+        disabled={isProcessingResumes || processing}
       />
 
       {/* Resume Upload Section */}
       <ResumeUpload
-        uploadedFiles={uploadedFiles}
-        onFilesChange={setUploadedFiles}
+        processedResumes={processedResumes}
+        onProcessedResumesChange={setProcessedResumes}
         selectedVaultResumeIds={selectedVaultResumeIds}
         onVaultResumesChange={setSelectedVaultResumeIds}
+        disabled={isProcessingResumes}
       />
 
       {/* Scoring Configuration */}
-      <ScoringConfig value={scoringConfig} onChange={setScoringConfig} />
+      <ScoringConfig 
+        value={scoringConfig} 
+        onChange={setScoringConfig}
+        disabled={isProcessingResumes || processing}
+      />
 
       {/* Process Candidates Button */}
       {!processing && (
@@ -252,7 +316,9 @@ const Dashboard: React.FC = () => {
           <button
             className="process-btn"
             onClick={handleProcessCandidates}
-            disabled={processing}
+            disabled={processing || isProcessingResumes}
+            aria-label="Start candidate analysis"
+            aria-busy={processing || isProcessingResumes}
           >
             Process Candidates
           </button>

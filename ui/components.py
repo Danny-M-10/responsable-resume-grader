@@ -1,5 +1,5 @@
 """
-UI Components for CROSSROADS Professional Services
+UI Components for ResponsAble
 Reusable components using design tokens
 """
 
@@ -29,14 +29,14 @@ def render_theme_script(current_theme: str = "light") -> str:
     <script>
     (function() {{
         // Initialize theme from data-theme attribute or localStorage or OS preference
-        const savedTheme = localStorage.getItem('crossroads-theme');
+        const savedTheme = localStorage.getItem('responsable-theme');
         const osTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
         const initialTheme = savedTheme || '{current_theme}' || osTheme;
         
         // Set initial theme
         if (initialTheme) {{
             document.documentElement.setAttribute('data-theme', initialTheme);
-            localStorage.setItem('crossroads-theme', initialTheme);
+            localStorage.setItem('responsable-theme', initialTheme);
         }}
         
         // Listen for OS theme changes (if no saved preference)

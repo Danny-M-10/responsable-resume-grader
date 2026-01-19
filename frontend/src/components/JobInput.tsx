@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { jobService, JobParsed } from '../services/jobService'
 import { vaultService, Asset } from '../services/vaultService'
+// import { useToast } from '../contexts/ToastContext' // Reserved for future toast notifications
 import { Upload, Loader2 } from 'lucide-react'
 import { debugLog } from '../utils/debugLog'
 import './JobInput.css'
@@ -24,6 +25,7 @@ interface JobInputProps {
   onChange: (data: JobInputData) => void
   onVaultAssetSelect?: (assetId: string) => void
   selectedVaultJobId?: string
+  disabled?: boolean
 }
 
 const JobInput: React.FC<JobInputProps> = ({
@@ -31,13 +33,17 @@ const JobInput: React.FC<JobInputProps> = ({
   onChange,
   onVaultAssetSelect,
   selectedVaultJobId,
+  disabled = false,
 }) => {
+  // const { showToast } = useToast() // Reserved for future toast notifications
   const [inputMethod, setInputMethod] = useState<'upload' | 'manual'>('upload')
   const [uploading, setUploading] = useState(false)
   const [parsing, setParsing] = useState(false)
   const [vaultJobs, setVaultJobs] = useState<Asset[]>([])
   const [selectedVaultJob, setSelectedVaultJob] = useState<string>('')
   const [error, setError] = useState<string>('')
+  const [isDragging, setIsDragging] = useState(false)
+  const dragCounterRef = useRef(0) // Track drag enter/leave to prevent flickering
 
   useEffect(() => {
     loadVaultJobs()
@@ -55,6 +61,25 @@ const JobInput: React.FC<JobInputProps> = ({
     }
   }
 
+  // Helper function to validate file type
+  const isValidFileType = (file: File): boolean => {
+    const validTypes = [
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'text/plain',
+    ]
+    const validExtensions = ['.pdf', '.docx', '.txt']
+    
+    // Check MIME type
+    if (validTypes.includes(file.type)) {
+      return true
+    }
+    
+    // Check file extension as fallback
+    const fileName = file.name.toLowerCase()
+    return validExtensions.some((ext) => fileName.endsWith(ext))
+  }
+
   const loadVaultJob = async (assetId: string) => {
     try {
       setParsing(true)
@@ -68,7 +93,7 @@ const JobInput: React.FC<JobInputProps> = ({
           jobTitle: jobResponse.parsed_data.job_title,
           location: jobResponse.parsed_data.location,
           certifications: (jobResponse.parsed_data.certifications || []).map((c: any) => ({
-            name: c.name || c,
+            name: c.name || '',
             category: (c.category || 'must-have') as 'must-have' | 'bonus',
           })),
           jobDescription: jobResponse.parsed_data.full_description || '',
@@ -86,12 +111,17 @@ const JobInput: React.FC<JobInputProps> = ({
     }
   }
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    // #region agent log
-    debugLog({location:'JobInput.tsx:88',message:'handleFileUpload entry',data:{hasFile:!!event.target.files?.[0],fileName:event.target.files?.[0]?.name},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A'});
-    // #endregion
-    const file = event.target.files?.[0]
-    if (!file) return
+  // Shared function to process file (used by both file input and drag-drop)
+  const processFile = async (file: File) => {
+    if (uploading || parsing || disabled) {
+      return
+    }
+
+    // Validate file type
+    if (!isValidFileType(file)) {
+      setError('Invalid file type. Only PDF, DOCX, and TXT files are supported.')
+      return
+    }
 
     setError('')
     setUploading(true)
@@ -99,22 +129,22 @@ const JobInput: React.FC<JobInputProps> = ({
 
     try {
       // #region agent log
-      debugLog({location:'JobInput.tsx:97',message:'Calling uploadJob',data:{fileName:file.name,fileSize:file.size,fileType:file.type},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A'});
+      debugLog({location:'JobInput.tsx:processFile',message:'Calling uploadJob',data:{fileName:file.name,fileSize:file.size,fileType:file.type},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A'});
       // #endregion
       const jobResponse = await jobService.uploadJob(file)
       // #region agent log
-      debugLog({location:'JobInput.tsx:100',message:'uploadJob response received',data:{hasParsedData:!!jobResponse.parsed_data,hasId:!!jobResponse.id,parsedDataType:typeof jobResponse.parsed_data,parsedDataKeys:jobResponse.parsed_data?Object.keys(jobResponse.parsed_data):null},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'B'});
+      debugLog({location:'JobInput.tsx:processFile',message:'uploadJob response received',data:{hasParsedData:!!jobResponse.parsed_data,hasId:!!jobResponse.id,parsedDataType:typeof jobResponse.parsed_data,parsedDataKeys:jobResponse.parsed_data?Object.keys(jobResponse.parsed_data):null},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'B'});
       // #endregion
       if (jobResponse.parsed_data) {
         // #region agent log
-        debugLog({location:'JobInput.tsx:102',message:'Before onChange call',data:{hasFullDescription:!!jobResponse.parsed_data.full_description,certificationsType:typeof jobResponse.parsed_data.certifications,isCertificationsArray:Array.isArray(jobResponse.parsed_data.certifications)},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'C'});
+        debugLog({location:'JobInput.tsx:processFile',message:'Before onChange call',data:{hasFullDescription:!!jobResponse.parsed_data.full_description,certificationsType:typeof jobResponse.parsed_data.certifications,isCertificationsArray:Array.isArray(jobResponse.parsed_data.certifications)},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'C'});
         // #endregion
         try {
           onChange({
             jobTitle: jobResponse.parsed_data.job_title,
             location: jobResponse.parsed_data.location,
             certifications: (jobResponse.parsed_data.certifications || []).map((c: any) => ({
-              name: c.name || c,
+              name: c.name || '',
               category: (c.category || 'must-have') as 'must-have' | 'bonus',
             })),
             jobDescription: jobResponse.parsed_data.full_description || '',
@@ -122,32 +152,110 @@ const JobInput: React.FC<JobInputProps> = ({
             jobId: jobResponse.id,
           })
           // #region agent log
-          debugLog({location:'JobInput.tsx:113',message:'onChange completed successfully',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'C'});
+          debugLog({location:'JobInput.tsx:processFile',message:'onChange completed successfully',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'C'});
           // #endregion
         } catch (onChangeErr: any) {
           // #region agent log
-          debugLog({location:'JobInput.tsx:115',message:'onChange error caught',data:{errorMessage:onChangeErr?.message,errorStack:onChangeErr?.stack?.substring(0,200),errorName:onChangeErr?.name},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'C'});
+          debugLog({location:'JobInput.tsx:processFile',message:'onChange error caught',data:{errorMessage:onChangeErr?.message,errorStack:onChangeErr?.stack?.substring(0,200),errorName:onChangeErr?.name},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'C'});
           // #endregion
           throw onChangeErr
         }
       } else {
         // #region agent log
-        debugLog({location:'JobInput.tsx:119',message:'parsed_data is null/undefined',data:{responseId:jobResponse.id,responseKeys:Object.keys(jobResponse)},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'B'});
+        debugLog({location:'JobInput.tsx:processFile',message:'parsed_data is null/undefined',data:{responseId:jobResponse.id,responseKeys:Object.keys(jobResponse)},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'B'});
         // #endregion
       }
     } catch (err: any) {
       // #region agent log
-      debugLog({location:'JobInput.tsx:122',message:'Error caught in handleFileUpload',data:{errorMessage:err?.message,errorStack:err?.stack?.substring(0,300),errorName:err?.name,hasResponse:!!err?.response,responseStatus:err?.response?.status,responseDetail:err?.response?.data?.detail},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A'});
+      debugLog({location:'JobInput.tsx:processFile',message:'Error caught in processFile',data:{errorMessage:err?.message,errorStack:err?.stack?.substring(0,300),errorName:err?.name,hasResponse:!!err?.response,responseStatus:err?.response?.status,responseDetail:err?.response?.data?.detail},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A'});
       // #endregion
       setError(err.response?.data?.detail || 'Failed to parse job description')
     } finally {
       setUploading(false)
       setParsing(false)
-      // Reset file input
-      event.target.value = ''
-      // #region agent log
-      debugLog({location:'JobInput.tsx:129',message:'handleFileUpload finally block',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A'});
-      // #endregion
+    }
+  }
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    // #region agent log
+    debugLog({location:'JobInput.tsx:handleFileUpload',message:'handleFileUpload entry',data:{hasFile:!!event.target.files?.[0],fileName:event.target.files?.[0]?.name},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A'});
+    // #endregion
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    await processFile(file)
+
+    // Reset file input
+    event.target.value = ''
+    // #region agent log
+    debugLog({location:'JobInput.tsx:handleFileUpload',message:'handleFileUpload finally block',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A'});
+    // #endregion
+  }
+
+  // Drag and drop handlers
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    
+    if (uploading || parsing || disabled) {
+      return
+    }
+
+    dragCounterRef.current++
+    if (e.dataTransfer.types.includes('Files')) {
+      setIsDragging(true)
+    }
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    
+    if (uploading || parsing || disabled) {
+      return
+    }
+
+    // Set dropEffect to show visual feedback
+    if (e.dataTransfer.types.includes('Files')) {
+      e.dataTransfer.dropEffect = 'copy'
+    }
+  }
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    
+    dragCounterRef.current--
+    
+    // Only set isDragging to false when we actually leave the drop zone
+    // This prevents flickering when moving between child elements
+    if (dragCounterRef.current === 0) {
+      setIsDragging(false)
+    }
+  }
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    
+    setIsDragging(false)
+    dragCounterRef.current = 0
+
+    if (uploading || parsing || disabled) {
+      return
+    }
+
+    const files = Array.from(e.dataTransfer.files)
+    if (files.length === 0) {
+      return
+    }
+
+    // Process the first file (job descriptions are typically single files)
+    const file = files[0]
+    if (isValidFileType(file)) {
+      await processFile(file)
+    } else {
+      setError('Invalid file type. Only PDF, DOCX, and TXT files are supported.')
     }
   }
 
@@ -188,7 +296,7 @@ const JobInput: React.FC<JobInputProps> = ({
   }
 
   return (
-    <div className="job-input">
+    <div className={`job-input ${disabled ? 'disabled' : ''}`}>
       <div className="job-input-section">
         <h3>Job Information</h3>
         
@@ -201,6 +309,7 @@ const JobInput: React.FC<JobInputProps> = ({
               value="upload"
               checked={inputMethod === 'upload'}
               onChange={(e) => setInputMethod(e.target.value as 'upload' | 'manual')}
+              disabled={disabled}
             />
             <span>Upload Job Description File (Recommended)</span>
           </label>
@@ -211,6 +320,7 @@ const JobInput: React.FC<JobInputProps> = ({
               value="manual"
               checked={inputMethod === 'manual'}
               onChange={(e) => setInputMethod(e.target.value as 'upload' | 'manual')}
+              disabled={disabled}
             />
             <span>Enter Details Manually</span>
           </label>
@@ -235,7 +345,7 @@ const JobInput: React.FC<JobInputProps> = ({
                   id="vault-job"
                   value={selectedVaultJob}
                   onChange={(e) => handleVaultJobSelect(e.target.value)}
-                  disabled={parsing}
+                  disabled={parsing || disabled}
                 >
                   <option value="">None</option>
                   {vaultJobs.map((job) => (
@@ -248,8 +358,14 @@ const JobInput: React.FC<JobInputProps> = ({
             )}
 
             {/* File Upload */}
-            <div className="file-upload">
-              <label htmlFor="job-file-upload" className="upload-label">
+            <div 
+              className={`file-upload ${isDragging ? 'dragging' : ''} ${disabled || uploading || parsing ? 'disabled' : ''}`}
+              onDragEnter={handleDragEnter}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+            >
+              <label htmlFor="job-file-upload" className={`upload-label ${disabled || uploading || parsing ? 'disabled' : ''}`}>
                 <Upload size={20} />
                 <span>Upload Job Description</span>
               </label>
@@ -258,11 +374,15 @@ const JobInput: React.FC<JobInputProps> = ({
                 type="file"
                 accept=".pdf,.docx,.txt"
                 onChange={handleFileUpload}
-                disabled={uploading || parsing}
+                disabled={uploading || parsing || disabled}
                 style={{ display: 'none' }}
               />
               <p className="upload-help">
-                Supported formats: PDF, DOCX, TXT. The system will automatically extract all requirements.
+                {isDragging ? (
+                  <span>Drop file here to upload...</span>
+                ) : (
+                  <>Supported formats: PDF, DOCX, TXT. The system will automatically extract all requirements.</>
+                )}
               </p>
             </div>
 
@@ -306,6 +426,7 @@ const JobInput: React.FC<JobInputProps> = ({
                           type="text"
                           value={value.jobTitle}
                           onChange={(e) => handleManualInputChange('jobTitle', e.target.value)}
+                          disabled={disabled}
                         />
                       </div>
                       <div className="form-group">
@@ -314,6 +435,7 @@ const JobInput: React.FC<JobInputProps> = ({
                           type="text"
                           value={value.location}
                           onChange={(e) => handleManualInputChange('location', e.target.value)}
+                          disabled={disabled}
                         />
                       </div>
                     </div>
@@ -331,6 +453,7 @@ const JobInput: React.FC<JobInputProps> = ({
                             onChange={(e) =>
                               updateCertification(idx, 'name', e.target.value)
                             }
+                            disabled={disabled}
                           />
                           <select
                             value={cert.category}
@@ -341,6 +464,7 @@ const JobInput: React.FC<JobInputProps> = ({
                                 e.target.value as 'must-have' | 'bonus'
                               )
                             }
+                            disabled={disabled}
                           >
                             <option value="must-have">Must-Have</option>
                             <option value="bonus">Bonus</option>
@@ -349,6 +473,7 @@ const JobInput: React.FC<JobInputProps> = ({
                             type="button"
                             onClick={() => removeCertification(idx)}
                             className="remove-btn"
+                            disabled={disabled}
                           >
                             Remove
                           </button>
@@ -358,6 +483,7 @@ const JobInput: React.FC<JobInputProps> = ({
                         type="button"
                         onClick={addCertification}
                         className="add-btn"
+                        disabled={disabled}
                       >
                         Add Certification
                       </button>
@@ -378,6 +504,7 @@ const JobInput: React.FC<JobInputProps> = ({
                   placeholder="e.g., Data Scientist"
                   value={value.jobTitle}
                   onChange={(e) => handleManualInputChange('jobTitle', e.target.value)}
+                  disabled={disabled}
                 />
               </div>
               <div className="form-group">
@@ -388,6 +515,7 @@ const JobInput: React.FC<JobInputProps> = ({
                   placeholder="e.g., New York, NY"
                   value={value.location}
                   onChange={(e) => handleManualInputChange('location', e.target.value)}
+                  disabled={disabled}
                 />
               </div>
             </div>
@@ -399,6 +527,7 @@ const JobInput: React.FC<JobInputProps> = ({
                   type="button"
                   onClick={addCertification}
                   className="add-btn"
+                  disabled={disabled}
                 >
                   Add Certification
                 </button>
@@ -410,6 +539,7 @@ const JobInput: React.FC<JobInputProps> = ({
                     placeholder={`Certification ${idx + 1} Name`}
                     value={cert.name}
                     onChange={(e) => updateCertification(idx, 'name', e.target.value)}
+                    disabled={disabled}
                   />
                   <select
                     value={cert.category}
@@ -420,6 +550,7 @@ const JobInput: React.FC<JobInputProps> = ({
                         e.target.value as 'must-have' | 'bonus'
                       )
                     }
+                    disabled={disabled}
                   >
                     <option value="must-have">Must-Have</option>
                     <option value="bonus">Bonus</option>
@@ -428,6 +559,7 @@ const JobInput: React.FC<JobInputProps> = ({
                     type="button"
                     onClick={() => removeCertification(idx)}
                     className="remove-btn"
+                    disabled={disabled}
                   >
                     Remove
                   </button>
@@ -443,6 +575,7 @@ const JobInput: React.FC<JobInputProps> = ({
                 placeholder="Enter the complete job description including required skills, preferred skills, experience requirements, technical stack, responsibilities, etc."
                 value={value.jobDescription}
                 onChange={(e) => handleManualInputChange('jobDescription', e.target.value)}
+                disabled={disabled}
               />
             </div>
           </div>

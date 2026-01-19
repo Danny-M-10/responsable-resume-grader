@@ -2216,14 +2216,13 @@ def main():
         <style>
         /* Logo branding colors and design system - now using design tokens */
         :root {
-            /* CROSSROADS Professional Services Brand Colors */
-            --brand-blue: #00A8CC;  /* Bright medium blue (cyan/teal) from logo */
-            --brand-brown: #6B4423;  /* Dark brown/sepia for primary text */
+            /* ResponsAble Brand Colors */
+            --brand-blue: #215096;  /* Deep blue from ResponsAble logo */
+            --brand-green: #38A84F;  /* Bright green from ResponsAble logo */
             --brand-black: #000000;  /* Black background */
-            --brand-green: #00A651;  /* Keep for success states */
-            --brand-dark-gray: #4A4A4A;
+            --brand-dark-gray: #4A4A4A;  /* Dark gray for tagline */
             
-            /* CROSSROADS Typography */
+            /* ResponsAble Typography */
             --font-serif: 'Times New Roman', 'Times', serif;
             --score-excellent: #27ae60;
             --score-good: #f39c12;
@@ -2245,8 +2244,8 @@ def main():
             --font-size-2xl: 1.5rem;
             --font-size-3xl: 1.875rem;
             
-            /* Semantic colors - CROSSROADS theme */
-            --text-primary: #6B4423;  /* Brown for primary text */
+            /* Semantic colors - ResponsAble theme */
+            --text-primary: #215096;  /* Blue for primary text */
             --text-secondary: #4A4A4A;
             --text-muted: #6c757d;
             --bg-primary: #ffffff;
@@ -2290,7 +2289,7 @@ def main():
             gap: 1rem;
             margin-bottom: 1.5rem;
             padding-bottom: 1rem;
-            border-bottom: 2px solid var(--brand-blue);  /* CROSSROADS blue accent */
+            border-bottom: 2px solid var(--brand-blue);  /* ResponsAble blue accent */
             font-family: var(--font-serif);
         }
 
@@ -2315,14 +2314,14 @@ def main():
 
         .main-header {
             font-size: 2.5rem;
-            color: var(--brand-brown);  /* CROSSROADS brown */
+            color: var(--brand-blue);  /* ResponsAble blue */
             font-weight: bold;
             margin-bottom: 0.3rem;
             font-family: var(--font-serif);
         }
 
         .main-header .blue-text {
-            color: var(--brand-blue);  /* CROSSROADS blue for Professional Services */
+            color: var(--brand-green);  /* ResponsAble green */
         }
 
         .sub-header {
@@ -2333,12 +2332,12 @@ def main():
 
         .section-header {
             font-size: var(--font-size-2xl);
-            color: var(--brand-brown);  /* CROSSROADS brown for headers */
+            color: var(--brand-blue);  /* ResponsAble blue for headers */
             font-weight: 600;
             line-height: 1.3;
             margin-top: var(--spacing-lg);
             margin-bottom: var(--spacing-md);
-            border-bottom: 2px solid var(--brand-blue);  /* CROSSROADS blue accent */
+            border-bottom: 2px solid var(--brand-blue);  /* ResponsAble blue accent */
             padding-bottom: var(--spacing-xs);
             font-family: var(--font-serif);
         }
@@ -2390,7 +2389,7 @@ def main():
             border-radius: 0.25rem;
         }
 
-        /* Style the Process Candidates button with CROSSROADS blue */
+        /* Style the Process Candidates button with ResponsAble blue */
         div[data-testid="stButton"] > button[kind="primary"],
         button[kind="primary"] {
             background-color: var(--color-primary) !important;
@@ -2419,11 +2418,11 @@ def main():
             outline-offset: 2px !important;
         }
 
-        /* Style download button with CROSSROADS blue */
+        /* Style download button with ResponsAble blue */
         div[data-testid="stDownloadButton"] > button,
         .stDownloadButton > button {
-            background-color: var(--brand-blue) !important;  /* CROSSROADS blue */
-            background: var(--brand-blue) !important;  /* CROSSROADS blue */
+            background-color: var(--brand-blue) !important;  /* ResponsAble blue */
+            background: var(--brand-blue) !important;  /* ResponsAble blue */
             color: white !important;
             border: none !important;
             font-weight: bold !important;
@@ -2437,8 +2436,8 @@ def main():
 
         /* Additional Streamlit button styling */
         button[data-baseweb="button"][kind="primary"] {
-            background-color: var(--brand-blue) !important;  /* CROSSROADS blue */
-            background: var(--brand-blue) !important;  /* CROSSROADS blue */
+            background-color: var(--brand-blue) !important;  /* ResponsAble blue */
+            background: var(--brand-blue) !important;  /* ResponsAble blue */
         }
 
         /* Update success messages to use brand green */
@@ -2792,8 +2791,8 @@ def main():
         </style>
     """, unsafe_allow_html=True)
 
-    # Header with logo - CROSSROADS Professional Services
-    logo_path = Path(__file__).parent / "Services Logo Full Color3840px copy.png"
+    # Header with logo - ResponsAble
+    logo_path = Path(__file__).parent / "responsableLOGO-color-2048px.jpg"
 
     # Display logo with fixed width to maintain aspect ratio while reducing size, centered
     if logo_path.exists():
@@ -2824,7 +2823,7 @@ def main():
         st.markdown("""
             <div style="text-align: center; margin-top: 0.5rem; margin-bottom: 1rem;">
                 <div style="font-size: var(--font-size-lg); color: var(--brand-blue); font-weight: 500; font-family: var(--font-serif);">
-                    Universal Recruiting Tool
+                    Safety Staffing on Demand
                 </div>
             </div>
         """, unsafe_allow_html=True)
@@ -2834,8 +2833,8 @@ def main():
 
         with col1:
             st.markdown("""
-                <div style="font-size: var(--font-size-2xl); font-weight: bold; color: var(--brand-brown); font-family: 'Times New Roman', serif;">
-                    C
+                <div style="font-size: var(--font-size-2xl); font-weight: bold; color: var(--brand-blue); font-family: 'Times New Roman', serif;">
+                    RA
                 </div>
             """, unsafe_allow_html=True)
 
@@ -2843,10 +2842,9 @@ def main():
             st.markdown("""
                 <div class="header-text">
                     <div class="main-header">
-                        <span style="color: var(--brand-brown); font-family: 'Times New Roman', serif; font-weight: bold;">CROSSROADS</span>
-                        <span style="color: var(--brand-blue); font-family: 'Times New Roman', serif; font-style: italic;">Professional Services</span>
+                        <span style="color: var(--brand-blue); font-family: 'Times New Roman', serif; font-weight: bold;">RESPONS</span><span style="color: var(--brand-green); font-family: 'Times New Roman', serif; font-weight: bold;">ABLE</span>
                     </div>
-                    <div class="sub-header">Universal Recruiting Tool</div>
+                    <div class="sub-header">Safety Staffing on Demand</div>
                 </div>
             """, unsafe_allow_html=True)
 
@@ -2955,7 +2953,7 @@ def main():
                 # Footer
                 st.markdown("---")
                 st.markdown(
-                    '<div style="text-align: center; color: var(--text-muted); padding: var(--spacing-sm);">CROSSROADS Professional Services | Universal Recruiting Tool</div>',
+                    '<div style="text-align: center; color: var(--text-muted); padding: var(--spacing-sm);">ResponsAble | Safety Staffing on Demand</div>',
                     unsafe_allow_html=True
                 )
             # If we have stored results from viewing previous analysis, show them
@@ -2965,7 +2963,7 @@ def main():
                 # Footer
                 st.markdown("---")
                 st.markdown(
-                    '<div style="text-align: center; color: var(--text-muted); padding: var(--spacing-sm);">CROSSROADS Professional Services | Universal Recruiting Tool</div>',
+                    '<div style="text-align: center; color: var(--text-muted); padding: var(--spacing-sm);">ResponsAble | Safety Staffing on Demand</div>',
                     unsafe_allow_html=True
                 )
             else:
@@ -4074,7 +4072,7 @@ The AI will analyze this to extract skills and requirements.""",
             # Footer
             st.markdown("---")
             st.markdown(
-                '<div style="text-align: center; color: #7f8c8d; padding: 1rem;">CROSSROADS Professional Services | Universal Recruiting Tool</div>',
+                '<div style="text-align: center; color: #7f8c8d; padding: 1rem;">ResponsAble | Safety Staffing on Demand</div>',
                 unsafe_allow_html=True
             )
         

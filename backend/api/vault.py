@@ -74,14 +74,15 @@ async def save_asset(
                 logger.warning(f"Failed to parse resume {filename}: {parse_error}", exc_info=True)
                 # Save with minimal metadata (source and file_hash will be added)
         
-        # Save asset
+        # Save asset without auto-commit; commit after successful retrieval
         asset_id = await save_asset_async(
             user_id=user_id,
             kind=kind,
             original_name=filename,
             content=content,
             metadata=metadata,
-            db=db
+            db=db,
+            auto_commit=False
         )
         
         # Get saved asset
@@ -92,6 +93,8 @@ async def save_asset(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to retrieve saved asset"
             )
+
+        await db.commit()
         
         return AssetResponse(
             id=asset["id"],
@@ -111,14 +114,22 @@ async def save_asset(
 @router.get("/assets", response_model=AssetListResponse)
 async def list_assets(
     kind: str = Query(..., regex="^(job_description|resume)$", description="Asset kind: job_description or resume"),
+    search: Optional[str] = Query(None, description="Full-text search query"),
+    tags: Optional[str] = Query(None, description="Comma-separated list of tags to filter by"),
+    skills: Optional[str] = Query(None, description="Comma-separated list of skills to filter by"),
+    name: Optional[str] = Query(None, description="Filter by candidate name (partial match)"),
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    List assets for current user by kind
+    List assets for current user by kind with optional filters
     
     Args:
         kind: Asset kind ('job_description' or 'resume')
+        search: Full-text search query
+        tags: Comma-separated list of tags to filter by
+        skills: Comma-separated list of skills to filter by
+        name: Filter by candidate name (partial match)
         user_id: Current user ID
         db: Database session
         
@@ -126,7 +137,19 @@ async def list_assets(
         List of assets
     """
     try:
-        assets = await list_assets_async(user_id, kind, db)
+        # Parse comma-separated tag and skill filters, stripping whitespace and removing empties
+        tag_list = [tag.strip() for tag in tags.split(',') if tag.strip()] if tags else None
+        skill_list = [skill.strip() for skill in skills.split(',') if skill.strip()] if skills else None
+        
+        assets = await list_assets_async(
+            user_id, 
+            kind, 
+            db,
+            search=search,
+            tags=tag_list,
+            skills=skill_list,
+            name=name
+        )
         
         return AssetListResponse(
             assets=[

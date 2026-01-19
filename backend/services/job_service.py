@@ -30,7 +30,8 @@ async def parse_job_file_async(
     await send_progress_update(client_id, "reading_file", 0.1, message="Reading job description file...")
     
     temp_dir = tempfile.mkdtemp()
-    temp_path = os.path.join(temp_dir, filename)
+    safe_filename = os.path.basename(filename) or "job_description.txt"
+    temp_path = os.path.join(temp_dir, safe_filename)
     
     try:
         async with aiofiles.open(temp_path, 'wb') as f:
@@ -50,6 +51,6 @@ async def parse_job_file_async(
         try:
             os.remove(temp_path)
             os.rmdir(temp_dir)
-        except:
+        except OSError:
             pass
 

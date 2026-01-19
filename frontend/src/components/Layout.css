@@ -55,7 +55,10 @@
 
 .logo-blue {
   color: var(--color-brand-blue);
-  font-style: italic;
+}
+
+.logo-green {
+  color: var(--color-brand-green);
 }
 
 .subtitle {

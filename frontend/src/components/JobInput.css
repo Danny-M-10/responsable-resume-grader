@@ -2,6 +2,18 @@
   margin-bottom: 2rem;
 }
 
+.job-input.disabled {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.job-input.disabled input,
+.job-input.disabled textarea,
+.job-input.disabled select,
+.job-input.disabled button {
+  cursor: not-allowed;
+}
+
 .job-input-section {
   background: white;
   padding: 1.5rem;
@@ -93,6 +105,22 @@
 
 .file-upload {
   margin-bottom: 1.5rem;
+  padding: 1rem;
+  border: 2px dashed #ddd;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+.file-upload.dragging:not(.disabled) {
+  border-color: var(--color-brand-blue);
+  border-style: solid;
+  background-color: #e3f2fd;
+  box-shadow: 0 0 0 4px rgba(0, 168, 204, 0.1);
+}
+
+.file-upload.disabled {
+  opacity: 0.6;
+  pointer-events: none;
 }
 
 .upload-label {
@@ -108,8 +136,13 @@
   transition: background-color 0.3s;
 }
 
-.upload-label:hover {
+.upload-label:hover:not(.disabled) {
   background-color: #0099b8;
+}
+
+.upload-label.disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .upload-help {

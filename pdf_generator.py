@@ -30,12 +30,12 @@ from ui.theme import LIGHT_TOKENS, BRAND_COLORS
 class PDFGenerator:
     """Generates professional PDF reports for candidate rankings"""
 
-    # Fixed logo path - CROSSROADS Professional Services logo
-    LOGO_PATH = Path(__file__).parent / "Services Logo Full Color3840px copy.png"
+    # Fixed logo path - ResponsAble logo
+    LOGO_PATH = Path(__file__).parent / "responsableLOGO-color-2048px.jpg"
     LOGO_WIDTH = 2.5 * inch
     LOGO_HEIGHT = 1.0 * inch
     
-    # CROSSROADS Brand Colors (from design tokens)
+    # ResponsAble Brand Colors (from design tokens)
     BRAND_BLUE = colors.HexColor(BRAND_COLORS['blue'])
     BRAND_BROWN = colors.HexColor(BRAND_COLORS['brown'])
     BRAND_BLACK = colors.HexColor(BRAND_COLORS['black'])
@@ -70,13 +70,13 @@ class PDFGenerator:
         self._setup_custom_styles()
 
     def _setup_custom_styles(self):
-        """Setup custom paragraph styles with CROSSROADS branding using design tokens"""
+        """Setup custom paragraph styles with ResponsAble branding using design tokens"""
         # Title style - using FONT_SIZE_3XL from tokens
         self.styles.add(ParagraphStyle(
             name='CustomTitle',
             parent=self.styles['Heading1'],
             fontSize=self.FONT_SIZE_3XL,
-            textColor=self.BRAND_BROWN,
+            textColor=self.BRAND_BLUE,
             spaceAfter=self.SPACING_XL,
             alignment=TA_CENTER,
             fontName='Times-Bold',
@@ -88,7 +88,7 @@ class PDFGenerator:
             name='SectionHeader',
             parent=self.styles['Heading2'],
             fontSize=self.FONT_SIZE_XL,
-            textColor=self.BRAND_BROWN,
+            textColor=self.BRAND_BLUE,
             spaceAfter=self.SPACING_MD,
             spaceBefore=self.SPACING_LG,
             fontName='Times-Bold',
@@ -115,7 +115,7 @@ class PDFGenerator:
             name='CandidateName',
             parent=self.styles['Heading3'],
             fontSize=self.FONT_SIZE_LG,
-            textColor=self.BRAND_BROWN,  # Brown for emphasis
+            textColor=self.BRAND_BLUE,  # Blue for emphasis
             fontName='Times-Bold',  # Serif bold
             spaceAfter=6
         ))
@@ -178,19 +178,19 @@ class PDFGenerator:
         story.append(self._create_header())
         story.append(Spacer(1, 0.3*inch))
 
-        # Title - CROSSROADS branded
+        # Title - ResponsAble branded
         title = Paragraph("CANDIDATE RANKING REPORT", self.styles['CustomTitle'])
         story.append(title)
         story.append(Spacer(1, 0.1*inch))
         
-        # Add CROSSROADS branding subtitle
+        # Add ResponsAble branding subtitle
         subtitle = Paragraph(
-            "<i>CROSSROADS Professional Services</i>",
+            "<i>ResponsAble</i>",
             ParagraphStyle(
                 'SubtitleStyle',
                 parent=self.styles['Normal'],
                 fontSize=12,
-                textColor=self.BRAND_BLUE,  # CROSSROADS blue
+                textColor=self.BRAND_BLUE,  # ResponsAble blue
                 alignment=TA_CENTER,
                 fontName='Times-Italic',  # Serif italic
                 spaceAfter=10
@@ -284,12 +284,12 @@ class PDFGenerator:
 
         # Fallback: Create a simple text-based logo if image not found
         logo_text = Paragraph(
-            "<b>CROSSROADS</b><br/><i>Professional Services</i>",
+            "<b>RESPONS</b><font color='#38A84F'><b>ABLE</b></font>",
             ParagraphStyle(
                 'LogoStyle',
                 parent=self.styles['Normal'],
                 fontSize=14,
-                textColor=self.BRAND_BROWN,  # Brown for CROSSROADS
+                textColor=self.BRAND_BLUE,  # Blue for ResponsAble
                 fontName='Times-Bold',  # Serif font
                 alignment=TA_LEFT,
                 spaceAfter=0.1*inch
@@ -310,7 +310,7 @@ class PDFGenerator:
             ('FONTNAME', (0, 0), (0, -1), 'Times-Bold'),  # Serif bold
             ('FONTNAME', (1, 0), (1, -1), 'Times-Roman'),  # Serif
             ('FONTSIZE', (0, 0), (-1, -1), 10),
-            ('TEXTCOLOR', (0, 0), (-1, -1), self.BRAND_BROWN),  # Brown for labels
+            ('TEXTCOLOR', (0, 0), (-1, -1), self.BRAND_BLUE),  # Blue for labels
             ('TEXTCOLOR', (1, 0), (1, -1), colors.HexColor('#333333')),  # Dark gray for values
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
         ]))
@@ -969,44 +969,113 @@ class PDFGenerator:
             'Certs/\nEdu'
         ]
 
-        # Create figure - adjust size based on number of candidates
-        # Keep it smaller to fit on PDF page
-        fig_height = min(5, 1.5 + len(chart_candidates) * 0.4)
-        fig, ax = plt.subplots(figsize=(7.5, fig_height))
-
-        # Prepare data - truncate names more aggressively
-        candidate_names = [f"{c.name[:18]}..." if len(c.name) > 18 else c.name
-                          for c in chart_candidates]
-
         # Matrix: rows = candidates, cols = criteria
         num_candidates = len(chart_candidates)
         num_criteria = len(criteria)
 
-        # Create grid
-        for i in range(num_candidates + 1):
+        # Use integer-based grid: columns 0 (name), 1-7 (criteria), 8 (score)
+        # Rows: 0 to num_candidates-1 (data), num_candidates (header)
+
+        # Helper function to wrap/truncate names to fit in cell
+        # Use more conservative character limits to ensure text fits
+        def prepare_name(name):
+            """Prepare name for display - wrap to 2 lines if needed, otherwise truncate"""
+            # Conservative: ~16 characters per line at 8pt font fits in 2.5 unit column
+            max_chars_per_line = 16
+            max_total_chars = max_chars_per_line * 2  # Allow 2 lines
+            
+            if len(name) <= max_chars_per_line:
+                return [name]
+            
+            # If fits in 2 lines, try to split at space or hyphen
+            if len(name) <= max_total_chars:
+                # Try to split at space or hyphen for two-line display
+                for char in [' ', '-']:
+                    if char in name[:max_chars_per_line]:
+                        split_pos = name[:max_chars_per_line].rfind(char)
+                        if split_pos > max_chars_per_line // 2:  # Ensure reasonable split
+                            second_part = name[split_pos+1:]
+                            if len(second_part) <= max_chars_per_line:
+                                return [name[:split_pos], second_part]
+            
+            # Truncate to fit in available space - be aggressive
+            if len(name) <= max_chars_per_line:
+                return [name]
+            # Truncate to max_chars_per_line - 3 (for ellipsis)
+            return [name[:max_chars_per_line-3] + '...']
+
+        # Prepare candidate names with conservative truncation
+        candidate_names = []
+        for candidate in chart_candidates:
+            candidate_names.append(prepare_name(candidate.name))
+
+        # Calculate figure size - make it wider to accommodate longer names
+        # Base width on number of columns, but scale up for better name display
+        # Standard columns: 1 name + 7 criteria + 1 score = 9 columns total
+        # Make name column effectively wider by using a wider figure
+        fig_width = 9.0  # Wider figure to give more space for names
+        fig_height = min(5.0, 1.2 + len(chart_candidates) * 0.45)
+        
+        # Create figure
+        fig, ax = plt.subplots(figsize=(fig_width, fig_height))
+
+        # Create grid using integer positions
+        for i in range(num_candidates + 2):  # +1 for header, +1 for bottom border
             ax.axhline(i, color='gray', linewidth=0.5)
 
-        for j in range(num_criteria + 2):  # +2 for name and score columns
-            ax.axvline(j, color='gray', linewidth=0.5)
+        # Calculate column positions - make first column wider
+        # Use proportional spacing: column 0 gets 2.5x more width
+        total_cols = num_criteria + 2  # +1 for name, +1 for score
+        # Allocate more visual space for name column
+        col_positions = [0]
+        # Name column (col 0): width 2.5 units
+        col_positions.append(2.5)
+        # Criteria columns (cols 1-7): width 0.8 units each
+        for i in range(num_criteria):
+            col_positions.append(col_positions[-1] + 0.8)
+        # Score column (col 8): width 1.0 units
+        col_positions.append(col_positions[-1] + 1.0)
+        
+        total_width = col_positions[-1]
 
-        # Headers - horizontal text, no rotation - standardized to 9pt
-        ax.text(0.5, num_candidates + 0.5, 'Candidate', ha='center', va='center',
-                fontweight='bold', fontsize=9)
+        # Draw vertical grid lines
+        for pos in col_positions:
+            ax.axvline(pos, color='gray', linewidth=0.5)
 
-        for j, criterion in enumerate(criteria, 1):
-            ax.text(j + 0.5, num_candidates + 0.5, criterion, ha='center', va='center',
-                    fontweight='bold', fontsize=9)  # Standardized to 9pt
+        # Headers
+        header_row = num_candidates + 0.5
+        ax.text(col_positions[0] + (col_positions[1] - col_positions[0]) / 2, header_row, 'Candidate', 
+                ha='center', va='center', fontweight='bold', fontsize=9)
 
-        ax.text(num_criteria + 1.5, num_candidates + 0.5, 'Score', ha='center', va='center',
+        for j, criterion in enumerate(criteria):
+            col_center = col_positions[j + 1] + (col_positions[j + 2] - col_positions[j + 1]) / 2
+            ax.text(col_center, header_row, criterion, ha='center', va='center',
+                    fontweight='bold', fontsize=9)
+
+        score_col_center = col_positions[-2] + (col_positions[-1] - col_positions[-2]) / 2
+        ax.text(score_col_center, header_row, 'Score', ha='center', va='center',
                 fontweight='bold', fontsize=9)
 
         # Fill in data
         for i, candidate in enumerate(chart_candidates):
-            row = num_candidates - i - 1  # Reverse order (top candidate at top)
+            # Row position: reverse order (top candidate at top)
+            row = num_candidates - i - 1
+            row_center = row + 0.5
 
-            # Candidate name - standardized to 9pt
-            ax.text(0.5, row + 0.5, candidate_names[i], ha='center', va='center',
-                    fontsize=9)
+            # Candidate name - handle single or two-line with clipping
+            name_lines = candidate_names[i]
+            name_col_center = col_positions[0] + (col_positions[1] - col_positions[0]) / 2
+            
+            if len(name_lines) == 1:
+                # Single line - smaller font to ensure fit
+                ax.text(name_col_center, row_center, name_lines[0], 
+                       ha='center', va='center', fontsize=7.5, clip_on=True)
+            else:
+                # Two-line name - smaller font and tighter spacing
+                ax.text(name_col_center, row_center + 0.12, name_lines[0],
+                       ha='center', va='center', fontsize=7.5, clip_on=True)
+                ax.text(name_col_center, row_center - 0.12, name_lines[1],
+                       ha='center', va='center', fontsize=7.5, clip_on=True)
 
             # Evaluation criteria (NEW PRIORITY ORDER)
             # Get certifications/education score
@@ -1027,41 +1096,42 @@ class PDFGenerator:
                 cert_ed_score >= 6.0  # 7. Certifications/Education
             ]
 
-            for j, is_match in enumerate(evaluations, 1):
+            for j, is_match in enumerate(evaluations):
+                col_center = col_positions[j + 1] + (col_positions[j + 2] - col_positions[j + 1]) / 2
                 if is_match:
-                    # CROSSROADS blue Y for Yes
-                    ax.text(j + 0.5, row + 0.5, 'Y', ha='center', va='center',
-                           color='#00A8CC', fontsize=12, fontweight='bold')
+                    # ResponsAble blue Y for Yes
+                    ax.text(col_center, row_center, 'Y', ha='center', va='center',
+                           color='#215096', fontsize=12, fontweight='bold')
                 else:
-                    # Brown-tinted red N for No
-                    ax.text(j + 0.5, row + 0.5, 'N', ha='center', va='center',
+                    # Red N for No
+                    ax.text(col_center, row_center, 'N', ha='center', va='center',
                            color='#C85A3A', fontsize=12, fontweight='bold')
 
-            # Score - use CROSSROADS blue for high scores, brown for medium, orange/red for low
+            # Score - use ResponsAble blue for high scores, green for medium, orange/red for low
             if candidate.fit_score >= 8:
-                score_color = '#00A8CC'  # CROSSROADS blue for excellent
+                score_color = '#215096'  # ResponsAble blue for excellent
             elif candidate.fit_score >= 6.5:
-                score_color = '#4A90E2'  # Lighter blue for good
+                score_color = '#38A84F'  # ResponsAble green for good
             elif candidate.fit_score >= 5:
-                score_color = '#D4A574'  # Brown-tinted orange for viable
+                score_color = '#4A90E2'  # Lighter blue for viable
             else:
-                score_color = '#C85A3A'  # Brown-tinted red for poor
+                score_color = '#C85A3A'  # Red for poor
 
-            ax.text(num_criteria + 1.5, row + 0.5, f"{candidate.fit_score:.1f}",
+            ax.text(score_col_center, row_center, f"{candidate.fit_score:.1f}",
                    ha='center', va='center', fontsize=10, fontweight='bold',
                    color=score_color)
 
-        # Set limits and remove axes
-        ax.set_xlim(0, num_criteria + 2)
-        ax.set_ylim(0, num_candidates + 1)
+        # Set limits based on calculated dimensions
+        ax.set_xlim(0, total_width)
+        ax.set_ylim(-0.3, num_candidates + 1.3)
         ax.axis('off')
 
-        # Legend - use Y/N with CROSSROADS colors
+        # Legend - use Y/N with ResponsAble colors
         legend_elements = [
-            mpatches.Patch(color='#00A8CC', label='Y = Meets Criteria'),  # CROSSROADS blue
-            mpatches.Patch(color='#C85A3A', label='N = Does Not Meet')  # Brown-tinted red
+            mpatches.Patch(color='#215096', label='Y = Meets Criteria'),  # ResponsAble blue
+            mpatches.Patch(color='#C85A3A', label='N = Does Not Meet')  # Red
         ]
-        ax.legend(handles=legend_elements, loc='upper left', bbox_to_anchor=(0, -0.05),
+        ax.legend(handles=legend_elements, loc='upper left', bbox_to_anchor=(0, -0.08),
                  ncol=2, fontsize=9)
 
         # Add title - standardized to 11pt

@@ -57,13 +57,13 @@ def create_access_token(data: dict, expires_delta: Optional[int] = None) -> str:
     Returns:
         Encoded JWT token string
     """
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
     
     if expires_delta is None:
         expires_delta = 7 * 24 * 60 * 60  # 7 days
     
     to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(seconds=expires_delta)
+    expire = datetime.now(timezone.utc) + timedelta(seconds=expires_delta)
     to_encode.update({"exp": expire})
     
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)

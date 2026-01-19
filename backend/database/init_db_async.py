@@ -207,6 +207,16 @@ async def init_db_async():
                 created_at TEXT NOT NULL
             )
         """))
+
+        # Create user_settings table for settings persistence
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS user_settings (
+                user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+                settings_json TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        """))
         
         # Create indexes for performance
         # Note: PostgreSQL doesn't support IF NOT EXISTS for indexes, so we check first
@@ -365,12 +375,48 @@ async def init_db_async():
             if not has_column:
                 logger.info("Adding client_id column to analyses table (migration)...")
                 await conn.execute(text("ALTER TABLE analyses ADD COLUMN client_id TEXT"))
-                await conn.commit()
+                # Note: engine.begin() auto-commits on successful exit, no explicit commit needed
                 logger.info("✓ Successfully added client_id column to analyses table")
             else:
                 logger.debug("✓ client_id column already exists in analyses table")
         except Exception as e:
             logger.warning(f"Failed to add client_id column to analyses table (may already exist): {e}")
             # Don't fail initialization if migration fails - column might already exist
-    
+
+    # Migration: Clean up orphaned file_assets (local paths that no longer exist after S3 migration)
+    async with engine.begin() as conn:
+        try:
+            # Delete file_assets with local paths (not S3) since files were lost during container deployments
+            result = await conn.execute(
+                text("DELETE FROM file_assets WHERE stored_path NOT LIKE 's3://%'")
+            )
+            deleted_count = result.rowcount
+            if deleted_count > 0:
+                logger.info(f"✓ Cleaned up {deleted_count} orphaned file_assets records (local paths migrated to S3)")
+            else:
+                logger.debug("✓ No orphaned file_assets to clean up")
+        except Exception as e:
+            logger.warning(f"Failed to clean up orphaned file_assets: {e}")
+
+    # Migration: Clean up orphaned analyses (with local PDF paths that no longer exist)
+    async with engine.begin() as conn:
+        try:
+            # Delete analyses where the pdf_path in results is a local path (not S3)
+            # These are orphaned because the PDF files were lost during container deployments
+            result = await conn.execute(
+                text("""
+                    DELETE FROM analyses
+                    WHERE results IS NOT NULL
+                    AND results::text LIKE '%"pdf_path": "storage/%'
+                    AND results::text NOT LIKE '%"pdf_path": "s3://%'
+                """)
+            )
+            deleted_count = result.rowcount
+            if deleted_count > 0:
+                logger.info(f"✓ Cleaned up {deleted_count} orphaned analyses with local PDF paths")
+            else:
+                logger.debug("✓ No orphaned analyses to clean up")
+        except Exception as e:
+            logger.warning(f"Failed to clean up orphaned analyses: {e}")
+
     logger.info("Database tables initialized successfully")

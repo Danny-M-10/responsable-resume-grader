@@ -5,7 +5,7 @@ Refactored from auth.py for FastAPI
 import bcrypt
 import uuid
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
@@ -64,7 +64,7 @@ async def create_user_async(email: str, password: str, db: AsyncSession) -> str:
     
     user_id = str(uuid.uuid4())
     password_hash = _hash_password(password)
-    created_at = datetime.utcnow().isoformat() + "Z"
+    created_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     
     try:
         await db.execute(
@@ -136,9 +136,9 @@ async def authenticate_async(email: str, password: str, db: AsyncSession) -> Tup
             WHERE user_id = :user_id AND expires_at > :now
         """),
         {
-            "last_activity": datetime.utcnow().isoformat() + "Z",
+            "last_activity": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "user_id": user_id,
-            "now": datetime.utcnow().isoformat() + "Z"
+            "now": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         }
     )
     await db.commit()

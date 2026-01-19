@@ -5,6 +5,7 @@ Refactored from candidate_ranker.py for FastAPI
 import asyncio
 import logging
 import threading
+import tempfile
 from typing import Dict, Any, List
 from sqlalchemy import text
 from candidate_ranker import CandidateRankerApp
@@ -12,6 +13,7 @@ from backend.websocket.progress import send_progress_update
 from backend.database.connection import AsyncSessionLocal
 import json
 import os
+from pathlib import Path
 import traceback
 
 logger = logging.getLogger(__name__)
@@ -19,6 +21,8 @@ logger = logging.getLogger(__name__)
 # #region agent log
 def _log_debug(hypothesis_id, location, message, data=None):
     """Log debug info to CloudWatch via standard logger and NDJSON file"""
+    if os.environ.get("DEBUG_LOG_ENABLED", "false").lower() not in {"1", "true", "yes"}:
+        return
     try:
         import json
         import time
@@ -35,7 +39,8 @@ def _log_debug(hypothesis_id, location, message, data=None):
             "hypothesisId": hypothesis_id
         }
         try:
-            with open("/Users/danny/Documents/Cursor/Projects/internal_crossroads_Candidate_Ranking_Application_clone/.cursor/debug.log", "a") as f:
+            log_path = os.environ.get("DEBUG_LOG_PATH", "/tmp/candidate_ranker.debug.log")
+            with open(log_path, "a") as f:
                 f.write(json.dumps(log_entry) + "\n")
         except Exception:
             pass  # Silently fail if file write fails
@@ -65,6 +70,8 @@ async def run_analysis_async(
     Returns:
         Analysis results dictionary
     """
+    temp_files: List[str] = []
+    temp_dir: str | None = None
     try:
         # #region agent log
         _log_debug("A", "analysis_service.py:40", "run_analysis_async started", {"analysis_id": analysis_id, "job_id": job_id, "candidate_ids_count": len(candidate_ids), "client_id": client_id})
@@ -166,10 +173,26 @@ async def run_analysis_async(
                 if email_lower:
                     candidate_id_map[("", email_lower)] = candidate_id  # Fallback: email only
                 
-                if resume_path and os.path.exists(resume_path):
-                    resume_files.append(resume_path)
-                else:
-                    logger.warning(f"Resume file not found for candidate {candidate_id}: {resume_path}")
+                if resume_path:
+                    if resume_path.startswith("s3://"):
+                        # Download S3 resume content and write to temp file for analysis
+                        from storage import load_bytes
+                        content = await asyncio.to_thread(load_bytes, resume_path)
+                        if content:
+                            if temp_dir is None:
+                                temp_dir = tempfile.mkdtemp(prefix="candidate_resumes_")
+                            suffix = Path(resume_path).suffix or ".pdf"
+                            temp_path = os.path.join(temp_dir, f"{candidate_id}{suffix}")
+                            with open(temp_path, "wb") as f:
+                                f.write(content)
+                            resume_files.append(temp_path)
+                            temp_files.append(temp_path)
+                        else:
+                            logger.warning(f"Resume file not found in S3 for candidate {candidate_id}: {resume_path}")
+                    elif os.path.exists(resume_path):
+                        resume_files.append(resume_path)
+                    else:
+                        logger.warning(f"Resume file not found for candidate {candidate_id}: {resume_path}")
             
             # #region agent log
             _log_debug("D", "analysis_service.py:131", "Resume files collected", {"valid_files": len(resume_files), "file_paths": resume_files[:3], "candidate_mappings": len(candidate_id_map)})
@@ -430,4 +453,19 @@ async def run_analysis_async(
         _log_debug("E", "analysis_service.py:393", "Error progress update sent, about to re-raise exception", {"client_id": client_id})
         # #endregion agent log
         raise
+    finally:
+        # Cleanup any temp files created for S3 resume downloads
+        local_temp_files = temp_files if "temp_files" in locals() else []
+        for temp_path in local_temp_files:
+            try:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+            except OSError:
+                pass
+        local_temp_dir = temp_dir if "temp_dir" in locals() else None
+        if local_temp_dir:
+            try:
+                os.rmdir(local_temp_dir)
+            except OSError:
+                pass
 

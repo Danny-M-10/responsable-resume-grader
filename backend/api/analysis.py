@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 import uuid
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import text
 from pathlib import Path
 
@@ -40,7 +40,7 @@ async def start_analysis(
     """
     # Create analysis record
     analysis_id = str(uuid.uuid4())
-    created_at = datetime.utcnow().isoformat() + "Z"
+    created_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     # Use client_id from request if provided, otherwise generate one
     client_id = config.client_id if config.client_id else str(uuid.uuid4())
     
@@ -136,16 +136,20 @@ async def download_analysis_pdf(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Download PDF report for analysis
-    
+    Download PDF report for analysis (supports both S3 and local storage)
+
     Args:
         analysis_id: Analysis ID
         user_id: Current user ID
         db: Database session
-        
+
     Returns:
         PDF file
     """
+    from fastapi.responses import StreamingResponse
+    from storage import load_bytes
+    import io
+
     result = await db.execute(
         text("""
             SELECT results
@@ -155,13 +159,13 @@ async def download_analysis_pdf(
         {"analysis_id": analysis_id, "user_id": user_id}
     )
     row = result.fetchone()
-    
+
     if not row:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Analysis not found"
         )
-    
+
     # Parse results JSON to get PDF path
     results_data = None
     if row[0]:
@@ -178,21 +182,36 @@ async def download_analysis_pdf(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to parse analysis results"
             )
-    
+
     if not results_data or "pdf_path" not in results_data:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="PDF report not found for this analysis"
         )
-    
+
     pdf_path = results_data["pdf_path"]
-    
+
+    # Handle S3 paths
+    if pdf_path and pdf_path.startswith("s3://"):
+        content = load_bytes(pdf_path)
+        if not content:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="PDF file not found in S3"
+            )
+        return StreamingResponse(
+            io.BytesIO(content),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename=candidate_report_{analysis_id}.pdf"}
+        )
+
+    # Handle local paths
     if not Path(pdf_path).exists():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="PDF file not found on server"
         )
-    
+
     return FileResponse(
         pdf_path,
         media_type="application/pdf",

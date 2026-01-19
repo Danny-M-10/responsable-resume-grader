@@ -139,16 +139,27 @@ class AIScoringEngine:
         # Try to extract transferrable skills list from reasoning text
         # Look for patterns like "Transferrable skills identified: X, Y, Z" or similar
         import re
+        # More robust pattern to match various AI formatting styles
         transferrable_section = re.search(
-            r'(?:TRANSFERRABLE SKILLS|Transferrable skills).*?(?=\d+\.|OVERALL|COMPONENT|FINAL_SCORE|\Z)',
+            r'(?:TRANSFERRABLE\s+SKILLS?|Transferrable\s+skills?|TRANSFERABLE\s+SKILLS?|Transferable\s+skills?|4\.\s*\*\*TRANSFERRABLE).*?(?=\d+\.\s*\*\*|OVERALL|COMPONENT|FINAL_SCORE|5\.\s*\*\*LOCATION|\Z)',
             reasoning or evaluation_text,
             re.DOTALL | re.IGNORECASE
         )
         if transferrable_section:
-            # Try to extract skill names from the text
-            skill_patterns = re.findall(r'(?:skill|ability|competency)[:\s]+([A-Za-z\s]+?)(?:\.|,|$)', transferrable_section.group(0), re.IGNORECASE)
-            if skill_patterns:
-                transferrable_skills_match['transferrable_skills'] = [s.strip() for s in skill_patterns[:10]]  # Limit to 10
+            # Try to extract skill names from the text using multiple patterns
+            section_text = transferrable_section.group(0)
+            # Pattern 1: "skill: X" or "ability: X" format
+            skill_patterns = re.findall(r'(?:skill|ability|competency)[:\s]+([A-Za-z\s]+?)(?:\.|,|$)', section_text, re.IGNORECASE)
+            # Pattern 2: Bullet points like "- Project management" or "• Communication"
+            bullet_patterns = re.findall(r'[-•]\s*([A-Za-z][A-Za-z\s]{2,30})(?:\.|,|$|\n)', section_text)
+            # Pattern 3: Numbered lists like "1. Leadership"
+            numbered_patterns = re.findall(r'\d+\.\s*([A-Za-z][A-Za-z\s]{2,30})(?:\.|,|$|\n)', section_text)
+            # Combine all found skills
+            all_skills = skill_patterns + bullet_patterns + numbered_patterns
+            if all_skills:
+                # Clean and deduplicate
+                cleaned_skills = list(dict.fromkeys([s.strip() for s in all_skills if s.strip() and len(s.strip()) > 2]))
+                transferrable_skills_match['transferrable_skills'] = cleaned_skills[:10]  # Limit to 10
         
         result = CandidateScore(
             name=candidate.get('name', 'Unknown'),
@@ -283,17 +294,28 @@ class AIScoringEngine:
         
         # Try to extract transferrable skills list from reasoning text
         import re
+        # More robust pattern to match various AI formatting styles
         transferrable_section = re.search(
-            r'(?:TRANSFERRABLE SKILLS|Transferrable skills).*?(?=\d+\.|OVERALL|COMPONENT|FINAL_SCORE|\Z)',
+            r'(?:TRANSFERRABLE\s+SKILLS?|Transferrable\s+skills?|TRANSFERABLE\s+SKILLS?|Transferable\s+skills?|4\.\s*\*\*TRANSFERRABLE).*?(?=\d+\.\s*\*\*|OVERALL|COMPONENT|FINAL_SCORE|5\.\s*\*\*LOCATION|\Z)',
             reasoning or evaluation_text,
             re.DOTALL | re.IGNORECASE
         )
         if transferrable_section:
-            # Try to extract skill names from the text
-            skill_patterns = re.findall(r'(?:skill|ability|competency)[:\s]+([A-Za-z\s]+?)(?:\.|,|$)', transferrable_section.group(0), re.IGNORECASE)
-            if skill_patterns:
-                transferrable_skills_match['transferrable_skills'] = [s.strip() for s in skill_patterns[:10]]  # Limit to 10
-        
+            # Try to extract skill names from the text using multiple patterns
+            section_text = transferrable_section.group(0)
+            # Pattern 1: "skill: X" or "ability: X" format
+            skill_patterns = re.findall(r'(?:skill|ability|competency)[:\s]+([A-Za-z\s]+?)(?:\.|,|$)', section_text, re.IGNORECASE)
+            # Pattern 2: Bullet points like "- Project management" or "• Communication"
+            bullet_patterns = re.findall(r'[-•]\s*([A-Za-z][A-Za-z\s]{2,30})(?:\.|,|$|\n)', section_text)
+            # Pattern 3: Numbered lists like "1. Leadership"
+            numbered_patterns = re.findall(r'\d+\.\s*([A-Za-z][A-Za-z\s]{2,30})(?:\.|,|$|\n)', section_text)
+            # Combine all found skills
+            all_skills = skill_patterns + bullet_patterns + numbered_patterns
+            if all_skills:
+                # Clean and deduplicate
+                cleaned_skills = list(dict.fromkeys([s.strip() for s in all_skills if s.strip() and len(s.strip()) > 2]))
+                transferrable_skills_match['transferrable_skills'] = cleaned_skills[:10]  # Limit to 10
+
         result = CandidateScore(
             name=candidate.get('name', 'Unknown'),
             phone=candidate.get('phone', ''),
@@ -319,7 +341,9 @@ class AIScoringEngine:
             },
             location_match=self._check_location_match(candidate, job_details),
             transferrable_skills_match=transferrable_skills_match,  # NEW: Transferrable skills analysis
-            component_scores=component_scores or {}
+            component_scores=component_scores or {},
+            calibration_applied=False,  # Will be set during calibration phase
+            calibration_factor=1.0
         )
 
         return result
@@ -704,12 +728,14 @@ Format your response with clear headers. Be specific and cite evidence from the 
         
         # Calculate weighted score programmatically if we have component scores
         # Use component scores if we have at least 4 of the 7 components (majority)
-        # Missing components default to 0.0 (not 5.0) to avoid inflating scores
         if component_scores and len(component_scores) >= 4:
             # Calculate weighted sum using available components
-            # For missing components, use 0.0 (candidate doesn't meet that criterion)
+            # For missing components, use the average of available component scores (fair estimate)
+            available_scores = list(component_scores.values())
+            avg_available = sum(available_scores) / len(available_scores) if available_scores else 5.0
+
             calculated_score = sum(
-                component_scores.get(key, 0.0) * weight
+                component_scores.get(key, avg_available) * weight
                 for key, weight in weights.items()
             )
             # Ensure score is in valid range
@@ -817,13 +843,61 @@ Format your response with clear headers. Be specific and cite evidence from the 
         Produce a concise, 4-5 sentence rationale from the AI output.
         Falls back to a trimmed snippet if not enough structure is available.
         Ensures sentences are complete and don't cut off mid-sentence.
+        
+        Removes COMPONENT_SCORES, WEIGHTED CALCULATION, and FINAL_SCORE sections
+        to avoid displaying stale score information that doesn't match the actual fit_score.
         """
         if not text:
             return ""
 
         import re
+        
+        # Remove COMPONENT_SCORES, WEIGHTED CALCULATION, and FINAL_SCORE sections
+        # These sections may contain stale scores that don't match the validated fit_score
+        cleaned_text = text
+        
+        # Remove COMPONENT SCORES SUMMARY section (and variations)
+        # This catches "COMPONENT SCORES SUMMARY", "COMPONENT_SCORES:", etc.
+        cleaned_text = re.sub(
+            r'(?:COMPONENT\s+SCORES?\s+SUMMARY|COMPONENT_SCORES?):.*?(?=WEIGHTED CALCULATION|FINAL_SCORE|OVERALL|RECOMMENDATIONS|\Z)',
+            '',
+            cleaned_text,
+            flags=re.DOTALL | re.IGNORECASE
+        )
+        
+        # Also remove any standalone lines that start with component score items
+        # (e.g., "- Experience level: X.X/10")
+        cleaned_text = re.sub(
+            r'^[-•]\s*(?:Experience level|Job title match|Required skills|Transferrable skills|Location|Preferred skills|Certifications/Education):\s*\d+\.?\d*/10.*$',
+            '',
+            cleaned_text,
+            flags=re.MULTILINE | re.IGNORECASE
+        )
+        
+        # Remove WEIGHTED CALCULATION section
+        cleaned_text = re.sub(
+            r'WEIGHTED CALCULATION:.*?(?=FINAL_SCORE|OVERALL|RECOMMENDATIONS|\Z)',
+            '',
+            cleaned_text,
+            flags=re.DOTALL | re.IGNORECASE
+        )
+        
+        # Remove FINAL_SCORE line (all variations)
+        cleaned_text = re.sub(
+            r'\*\*?FINAL[_\s]?SCORE\*\*?\s*:?\s*\d+\.?\d*/10.*',
+            '',
+            cleaned_text,
+            flags=re.IGNORECASE
+        )
+        cleaned_text = re.sub(
+            r'FINAL[_\s]?SCORE\s*:?\s*\d+\.?\d*/10.*',
+            '',
+            cleaned_text,
+            flags=re.IGNORECASE
+        )
+        
         # Split on sentence boundaries (period, exclamation, question mark followed by space)
-        sentences = re.split(r'(?<=[.!?])\s+', text.strip())
+        sentences = re.split(r'(?<=[.!?])\s+', cleaned_text.strip())
         concise = []
         for s in sentences:
             if s and s.strip():

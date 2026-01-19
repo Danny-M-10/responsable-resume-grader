@@ -27,8 +27,23 @@ const AnalysisProgress: React.FC<AnalysisProgressProps> = ({
   const [progressData, setProgressData] = useState<ProgressData | null>(null)
   const [error, setError] = useState<string>('')
   const [completed, setCompleted] = useState(false)
+  const [isConnected, setIsConnected] = useState(false)
+  const [lastUpdateTime, setLastUpdateTime] = useState<number | null>(null)
+  const [startTime] = useState<number>(Date.now())
+  const [elapsedTime, setElapsedTime] = useState<number>(0)
   // Use ref to track completed state for onClose callback without causing re-renders
   const completedRef = useRef(false)
+  
+  // Update elapsed time every second
+  useEffect(() => {
+    if (completed) return
+    
+    const interval = setInterval(() => {
+      setElapsedTime(Math.floor((Date.now() - startTime) / 1000))
+    }, 1000)
+    
+    return () => clearInterval(interval)
+  }, [completed, startTime])
 
   useEffect(() => {
     if (!clientId) return
@@ -39,9 +54,12 @@ const AnalysisProgress: React.FC<AnalysisProgressProps> = ({
     websocket.onProgress((data: ProgressData) => {
       setProgressData(data)
       setError('')
+      setIsConnected(true)
+      setLastUpdateTime(Date.now())
 
       // Check if complete
-      if (data.progress >= 1.0 || data.step === 'complete') {
+      // Only 'complete' step indicates analysis completion - intermediate steps can reach 100% progress
+      if (data.step === 'complete') {
         setCompleted(true)
         completedRef.current = true  // Update ref to track latest state
         if (onComplete) {
@@ -50,8 +68,9 @@ const AnalysisProgress: React.FC<AnalysisProgressProps> = ({
       }
     })
 
-    websocket.onError(() => {
-      const errorMsg = 'Connection error. Progress updates may not be available.'
+    websocket.onError((error: Event) => {
+      setIsConnected(false)
+      const errorMsg = `Connection error: ${error.type}. Progress updates may not be available. The operation may still be running in the background.`
       setError(errorMsg)
       if (onError) {
         onError(errorMsg)
@@ -59,13 +78,17 @@ const AnalysisProgress: React.FC<AnalysisProgressProps> = ({
     })
 
     websocket.onClose(() => {
+      setIsConnected(false)
       // Only show error if not completed (use ref to get latest value)
       if (!completedRef.current) {
-        const errorMsg = 'Connection closed. Analysis may still be running.'
+        const stepInfo = progressData?.step ? ` (Last step: ${progressData.step})` : ''
+        const errorMsg = `Connection closed${stepInfo}. The operation may still be running in the background. Please check the results page or history after a few moments.`
         setError(errorMsg)
       }
     })
 
+    // Note: connect() may not return a promise, so we track connection via onProgress
+    // Connection state will be set when first progress update is received
     websocket.connect()
 
     return () => {
@@ -99,11 +122,22 @@ const AnalysisProgress: React.FC<AnalysisProgressProps> = ({
   }
 
   const stepMessages: Record<string, string> = {
+    // Resume parsing steps
+    reading_resume: 'Reading resume file...',
+    parsing_resume: 'Parsing candidate resumes...',
+    all_complete: 'All resumes parsed successfully',
+    // Job processing steps
     reading_file: 'Reading job description file...',
-    ai_extraction: 'Extracting job details with AI...',
-    parsing_resumes: 'Parsing candidate resumes...',
+    // AI extraction (used for both job and resume parsing)
+    ai_extraction: 'Extracting information with AI...',
+    // Analysis steps
+    initializing: 'Initializing analysis...',
+    loading_resumes: 'Loading candidate resumes...',
+    initializing_ai: 'Initializing AI components...',
+    parsing: 'Parsing resumes...',
     scoring: 'Scoring candidates...',
     ranking: 'Ranking candidates...',
+    generating: 'Generating PDF report...',
     generating_report: 'Generating PDF report...',
     complete: 'Complete!',
   }
@@ -118,7 +152,20 @@ const AnalysisProgress: React.FC<AnalysisProgressProps> = ({
     <div className="analysis-progress">
       <div className="progress-container">
         <div className="progress-header">
-          <h3>Analysis in Progress</h3>
+          <div className="progress-header-row">
+            <h3>Processing in Progress</h3>
+            <div className="connection-status">
+              {isConnected ? (
+                <span className="status-connected" title="Connected and receiving updates">
+                  ● Connected
+                </span>
+              ) : (
+                <span className="status-disconnected" title="Not connected">
+                  ○ Disconnected
+                </span>
+              )}
+            </div>
+          </div>
           {error && (
             <div className="progress-error">
               <AlertCircle size={16} />
@@ -149,6 +196,18 @@ const AnalysisProgress: React.FC<AnalysisProgressProps> = ({
             <Loader2 className="spinner" size={16} />
             <span>{message}</span>
           </div>
+
+          {/* Elapsed time display */}
+          {!completed && (
+            <div className="progress-time">
+              <span>Elapsed: {elapsedTime}s</span>
+              {lastUpdateTime && (
+                <span className="last-update">
+                  {' '}• Last update: {Math.floor((Date.now() - lastUpdateTime) / 1000)}s ago
+                </span>
+              )}
+            </div>
+          )}
 
           {/* Step indicators */}
           <div className="progress-steps">
