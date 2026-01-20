@@ -44,9 +44,6 @@ const Register: React.FC = () => {
       <div className="login-card">
         <div className="login-logo-section">
           <img src={responsableLogo} alt="ResponsAble" className="login-logo" />
-          <h1 className="login-title">
-            <span className="logo-blue">RESPONS</span><span className="logo-green">ABLE</span>
-          </h1>
         </div>
         <p className="login-subtitle">Create an account</p>
         <form onSubmit={handleSubmit} className="login-form">

@@ -52,6 +52,10 @@
 
 .logo-blue {
   color: var(--color-brand-blue);
+}
+
+.logo-green {
+  color: var(--color-brand-green);
   font-style: italic;
 }
 
@@ -121,7 +125,7 @@
 }
 
 .submit-btn:hover:not(:disabled) {
-  background: #0099b8;
+  background: var(--color-brand-green);
 }
 
 .submit-btn:disabled {

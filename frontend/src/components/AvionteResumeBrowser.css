@@ -1,0 +1,258 @@
+.avionte-resume-browser {
+  margin: 1rem 0;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+}
+
+.avionte-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--color-border);
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: var(--color-text);
+  transition: background-color 0.2s;
+}
+
+.avionte-toggle:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+}
+
+.avionte-toggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.avionte-browser-content {
+  padding: 1rem;
+}
+
+.avionte-search {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  padding: 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-background);
+}
+
+.avionte-search input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--color-text);
+  font-size: 0.9rem;
+}
+
+.avionte-search button {
+  padding: 0.5rem 1rem;
+  background: var(--color-brand-blue);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.avionte-search button:hover:not(:disabled) {
+  background: var(--color-brand-green);
+}
+
+.avionte-search button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.avionte-loading,
+.avionte-empty {
+  text-align: center;
+  padding: 2rem;
+  color: var(--color-text-secondary);
+}
+
+.avionte-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.avionte-talents-list {
+  max-height: 400px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.avionte-talent-item {
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-background);
+}
+
+.avionte-talent-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.avionte-talent-header:hover {
+  background: var(--color-surface-hover);
+}
+
+.avionte-talent-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.avionte-talent-name {
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.avionte-talent-email {
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+
+.avionte-documents {
+  border-top: 1px solid var(--color-border);
+  padding: 0.75rem;
+  background: var(--color-surface);
+}
+
+.avionte-documents-loading,
+.avionte-documents-empty {
+  text-align: center;
+  padding: 1rem;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+
+.avionte-documents-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.avionte-document-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  margin-bottom: 0.5rem;
+  background: var(--color-background);
+}
+
+.avionte-document-item:last-child {
+  margin-bottom: 0;
+}
+
+.avionte-document-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.avionte-document-name {
+  font-size: 0.9rem;
+  color: var(--color-text);
+}
+
+.avionte-document-size {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+}
+
+.avionte-download-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: var(--color-brand-green);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: background-color 0.2s;
+}
+
+.avionte-download-btn:hover:not(:disabled) {
+  background: var(--color-brand-green-dark);
+}
+
+.avionte-download-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.avionte-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.avionte-pagination button {
+  padding: 0.5rem 1rem;
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background-color 0.2s;
+}
+
+.avionte-pagination button:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+}
+
+.avionte-pagination button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.avionte-pagination span {
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}

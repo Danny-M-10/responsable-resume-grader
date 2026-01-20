@@ -219,7 +219,7 @@
 }
 
 .upload-button:hover:not(:disabled) {
-  background: #0099b8;
+  background: var(--color-brand-green);
 }
 
 .upload-button:disabled {
@@ -480,7 +480,7 @@
 }
 
 .save-tags-btn:hover {
-  background: #0099b8;
+  background: var(--color-brand-green);
 }
 
 .cancel-tags-btn {

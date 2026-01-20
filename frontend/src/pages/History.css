@@ -215,7 +215,7 @@
 }
 
 .view-results-btn:hover {
-  background-color: #0099b8;
+  background-color: var(--color-brand-green);
 }
 
 .analysis-summary {

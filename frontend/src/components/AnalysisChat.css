@@ -23,7 +23,7 @@
 }
 
 .chat-toggle-btn:hover {
-  background-color: #0099b8;
+  background-color: var(--color-brand-green);
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
   transform: scale(1.05);
 }
@@ -308,7 +308,7 @@
 }
 
 .chat-send-btn:hover:not(:disabled) {
-  background-color: #0099b8;
+  background-color: var(--color-brand-green);
   transform: scale(1.05);
 }
 

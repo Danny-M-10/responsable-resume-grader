@@ -54,7 +54,7 @@
 }
 
 .upload-label:hover:not(.disabled) {
-  background-color: #0099b8;
+  background-color: var(--color-brand-green);
 }
 
 .upload-label.disabled {
@@ -190,7 +190,7 @@
 
 .upload-progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--color-brand-blue) 0%, #0099b8 50%, var(--color-brand-blue) 100%);
+  background: linear-gradient(90deg, var(--color-brand-blue) 0%, var(--color-brand-green) 50%, var(--color-brand-blue) 100%);
   background-size: 200% 100%;
   border-radius: 5px;
   transition: width 0.3s ease;
@@ -269,7 +269,7 @@
 }
 
 .retry-btn:hover {
-  background-color: var(--color-brand-blue);
+  background-color: var(--color-brand-green);
   color: white;
 }
 

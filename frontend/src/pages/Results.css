@@ -55,6 +55,7 @@
 }
 
 .download-btn:hover:not(:disabled) {
+  background: var(--color-brand-green);
   transform: translateY(-2px);
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
 }

@@ -158,7 +158,7 @@
 }
 
 .upload-label:hover:not(:has(.spinner)) {
-  background-color: #0099b8;
+  background-color: var(--color-brand-green);
 }
 
 .loading-indicator {
