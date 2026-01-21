@@ -149,23 +149,32 @@ const AvionteResumeBrowser: React.FC<AvionteResumeBrowserProps> = ({
     }
   }
 
-  if (!avionteConfigured) {
-    return null // Don't show if Avionté is not configured
-  }
-
   return (
     <div className="avionte-resume-browser">
       <button
         className="avionte-toggle"
         onClick={() => setExpanded(!expanded)}
-        disabled={disabled}
+        disabled={disabled || !avionteConfigured}
       >
         <FileText size={16} />
         <span>Import from Avionté</span>
         {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
       </button>
 
-      {expanded && (
+      {expanded && !avionteConfigured && (
+        <div className="avionte-browser-content">
+          <div className="avionte-not-configured">
+            <p>Avionté integration is not configured.</p>
+            <p className="avionte-config-help">
+              To enable Avionté resume import, configure the following environment variables:
+              <br />
+              <code>AVIONTE_CLIENT_ID</code>, <code>AVIONTE_CLIENT_SECRET</code>, <code>AVIONTE_API_BASE_URL</code>, and <code>AVIONTE_TENANT_ID</code>
+            </p>
+          </div>
+        </div>
+      )}
+
+      {expanded && avionteConfigured && (
         <div className="avionte-browser-content">
           <div className="avionte-search">
             <Search size={16} />
