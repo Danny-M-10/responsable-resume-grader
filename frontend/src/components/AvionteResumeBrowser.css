@@ -82,6 +82,34 @@
   color: var(--color-text-secondary);
 }
 
+.avionte-not-configured {
+  padding: 1.5rem;
+  text-align: center;
+  color: var(--color-text-secondary);
+  background: var(--color-background-secondary);
+  border-radius: 6px;
+  border: 1px dashed var(--color-border);
+}
+
+.avionte-not-configured p {
+  margin: 0.5rem 0;
+}
+
+.avionte-config-help {
+  margin-top: 1rem;
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+}
+
+.avionte-config-help code {
+  background: var(--color-background);
+  padding: 0.2rem 0.4rem;
+  border-radius: 3px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.85em;
+  color: var(--color-text-primary);
+}
+
 .avionte-loading {
   display: flex;
   flex-direction: column;
