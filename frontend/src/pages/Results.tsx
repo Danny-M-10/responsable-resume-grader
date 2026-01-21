@@ -72,8 +72,8 @@ const Results: React.FC = () => {
             rationale: c.rationale || '',
             rank: index + 1, // Will be updated after sorting
           }))
-          .sort((a, b) => b.score - a.score) // Sort by score descending (highest first)
-          .map((candidate, index) => ({
+          .sort((a: Candidate, b: Candidate) => b.score - a.score) // Sort by score descending (highest first)
+          .map((candidate: Candidate, index: number) => ({
             ...candidate,
             rank: index + 1, // Update rank based on sorted position
           }))
