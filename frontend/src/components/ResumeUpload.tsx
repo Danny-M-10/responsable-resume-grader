@@ -3,6 +3,7 @@ import { Upload, X, FileText, Loader2, CheckCircle2, AlertCircle, ChevronDown } 
 import { vaultService, Asset } from '../services/vaultService'
 import { useToast } from '../contexts/ToastContext'
 import { apiClient } from '../api/client'
+import AvionteResumeBrowser from './AvionteResumeBrowser'
 import './ResumeUpload.css'
 
 export interface UploadedFile {
@@ -160,6 +161,11 @@ const ResumeUpload: React.FC<ResumeUploadProps> = ({
 
     // Reset file input to allow selecting the same file again
     event.target.value = ''
+  }
+
+  const handleAvionteResumeImport = async (file: File) => {
+    // Process the imported file from Avionté similar to uploaded files
+    await processFiles([file])
   }
 
   // Drag and drop handlers
@@ -453,6 +459,12 @@ const ResumeUpload: React.FC<ResumeUploadProps> = ({
             )}
           </p>
         </div>
+
+        {/* Avionté Resume Browser */}
+        <AvionteResumeBrowser
+          onResumeImport={handleAvionteResumeImport}
+          disabled={disabled || processingCount > 0}
+        />
 
         {/* Processed Resumes List */}
         {processedResumes.length > 0 && (
