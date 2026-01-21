@@ -61,8 +61,8 @@ const Results: React.FC = () => {
 
       // Parse results
       if (currentAnalysis.results && currentAnalysis.results.candidates) {
-        const parsedCandidates: Candidate[] = currentAnalysis.results.candidates.map(
-          (c: any, index: number) => ({
+        const parsedCandidates: Candidate[] = currentAnalysis.results.candidates
+          .map((c: any, index: number) => ({
             id: c.id || `candidate-${index}`,
             name: c.name || 'Unknown',
             email: c.email,
@@ -70,9 +70,13 @@ const Results: React.FC = () => {
             score: c.fit_score || c.score || 0,
             certifications: c.certifications || [],
             rationale: c.rationale || '',
-            rank: index + 1,
-          })
-        )
+            rank: index + 1, // Will be updated after sorting
+          }))
+          .sort((a, b) => b.score - a.score) // Sort by score descending (highest first)
+          .map((candidate, index) => ({
+            ...candidate,
+            rank: index + 1, // Update rank based on sorted position
+          }))
         if (isCancelled()) return
         setCandidates(parsedCandidates)
       }
