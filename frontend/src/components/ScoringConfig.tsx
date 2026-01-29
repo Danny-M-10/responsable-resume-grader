@@ -128,6 +128,22 @@ const ScoringConfig: React.FC<ScoringConfigProps> = ({ value, onChange, disabled
     })
   }
 
+  const handleSetEqualWeights = () => {
+    const weightKeys = Object.keys(DEFAULT_WEIGHTS) as Array<keyof ScoringWeights>
+    const equalWeight = 1 / weightKeys.length
+    
+    const equalWeights = weightKeys.reduce((acc, key) => {
+      acc[key] = equalWeight
+      return acc
+    }, {} as ScoringWeights)
+
+    setWeightsError('')
+    onChange({
+      ...value,
+      customWeights: equalWeights,
+    })
+  }
+
   const handleUseCustomWeightsToggle = (enabled: boolean) => {
     setUseCustomWeights(enabled)
     if (enabled && !value.customWeights) {
@@ -278,6 +294,19 @@ const ScoringConfig: React.FC<ScoringConfigProps> = ({ value, onChange, disabled
                     </div>
                   </div>
                 ))}
+
+                {useCustomWeights && (
+                  <div className="equal-weights-button-container">
+                    <button
+                      type="button"
+                      onClick={handleSetEqualWeights}
+                      className="equal-weights-btn"
+                      disabled={disabled}
+                    >
+                      Set Equal Weights
+                    </button>
+                  </div>
+                )}
 
                 <div className="weights-summary">
                   <strong>Total: {(weightsSum * 100).toFixed(1)}%</strong>
