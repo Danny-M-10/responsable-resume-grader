@@ -7,9 +7,9 @@
   --color-brand-dark-gray: #4A4A4A;
 
   /* Primary Colors */
-  --color-primary: #00A8CC;
-  --color-primary-dark: #0099b8;
-  --color-primary-light: #00b8e6;
+  --color-primary: var(--color-brand-blue);
+  --color-primary-dark: #1a4080;
+  --color-primary-light: #2d5fb0;
   
   /* Semantic Colors */
   --color-success: #28a745;

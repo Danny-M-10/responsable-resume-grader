@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 
 from backend.database.connection import init_db, close_db
 from backend.database.init_db_async import init_db_async
-from backend.api import auth, jobs, resumes, candidates, analysis, reports, templates, settings, vault, chat
+from backend.api import auth, jobs, resumes, candidates, analysis, reports, templates, settings, vault, chat, avionte
 from backend.websocket import progress
 
 # Configure logging
@@ -67,7 +67,10 @@ app.add_middleware(
         "http://localhost:5173",  # Vite dev server
         "http://localhost:3000",  # Alternative React dev server
         "http://localhost:5174",  # Alternative Vite port
-        "https://recruiting.crossroadcoach.com",  # Production
+        "https://recruiting.crossroadcoach.com",  # Production (legacy)
+        "https://responsable.crossroadcoach.com",  # ResponsAble production
+        "http://192.168.5.143",  # Local server (no port when same-origin)
+        "http://192.168.5.143:8000",  # Local server with port
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -96,6 +99,7 @@ app.include_router(templates.router, prefix="/api/templates", tags=["templates"]
 app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
 app.include_router(vault.router, prefix="/api/vault", tags=["vault"])
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
+app.include_router(avionte.router, prefix="/api", tags=["avionte"])
 
 # WebSocket routes
 from fastapi import WebSocket as WS, Query

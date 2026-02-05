@@ -7,6 +7,7 @@ from .talent import AvionteTalentAPI
 from .jobs import AvionteJobsAPI
 from .companies import AvionteCompaniesAPI
 from .placements import AviontePlacementsAPI
+from .web_applicants import AvionteWebApplicantsAPI
 from .sync import AvionteSyncService
 from .transformers import (
     transform_candidate_to_avionte_talent,
@@ -29,6 +30,7 @@ __all__ = [
     "AvionteJobsAPI",
     "AvionteCompaniesAPI",
     "AviontePlacementsAPI",
+    "AvionteWebApplicantsAPI",
     "AvionteSyncService",
     "transform_candidate_to_avionte_talent",
     "transform_avionte_talent_to_candidate",

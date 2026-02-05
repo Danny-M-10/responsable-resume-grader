@@ -137,6 +137,59 @@ def get_openai_api_key() -> str:
     return OpenAIConfig.get_api_key()
 
 
+class AvionteConfig:
+    """Configuration for Avionté API."""
+
+    @staticmethod
+    def get_client_id() -> str:
+        """Get Avionté OAuth client ID."""
+        return os.getenv('AVIONTE_CLIENT_ID', '')
+
+    @staticmethod
+    def get_client_secret() -> str:
+        """Get Avionté OAuth client secret."""
+        return os.getenv('AVIONTE_CLIENT_SECRET', '')
+
+    @staticmethod
+    def get_base_url() -> str:
+        """Get Avionté API base URL."""
+        return os.getenv('AVIONTE_API_BASE_URL', 'https://api.avionte.com')
+
+    @staticmethod
+    def get_tenant_id() -> str:
+        """Get Avionté tenant/account identifier."""
+        return os.getenv('AVIONTE_TENANT_ID', '')
+
+    @staticmethod
+    def is_sync_enabled() -> bool:
+        """Check if Avionté sync is enabled."""
+        return os.getenv('AVIONTE_SYNC_ENABLED', 'false').lower() == 'true'
+
+    @staticmethod
+    def get_sync_interval() -> int:
+        """Get background sync interval in minutes."""
+        return int(os.getenv('AVIONTE_SYNC_INTERVAL', '60'))
+
+    @staticmethod
+    def is_configured() -> bool:
+        """Check if Avionté API is properly configured."""
+        return bool(
+            AvionteConfig.get_client_id() and
+            AvionteConfig.get_client_secret()
+        )
+
+
+# Convenience function
+def get_avionte_client_id() -> str:
+    """Get Avionté OAuth client ID."""
+    return AvionteConfig.get_client_id()
+
+
+def get_avionte_client_secret() -> str:
+    """Get Avionté OAuth client secret."""
+    return AvionteConfig.get_client_secret()
+
+
 if __name__ == '__main__':
     # Test configuration
     print("Configuration Status:")
@@ -149,3 +202,7 @@ if __name__ == '__main__':
     
     if OpenAIConfig.is_configured():
         print(f"OpenAI Model: {OpenAIConfig.get_model()}")
+    print(f"Avionté configured: {AvionteConfig.is_configured()}")
+    if AvionteConfig.is_configured():
+        print(f"Avionté Base URL: {AvionteConfig.get_base_url()}")
+        print(f"Avionté Sync Enabled: {AvionteConfig.is_sync_enabled()}")

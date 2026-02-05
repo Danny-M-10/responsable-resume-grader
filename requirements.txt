@@ -11,6 +11,7 @@ openpyxl>=3.1.0
 pandas>=2.0.0
 requests>=2.31.0
 boto3>=1.34.0
+httpx>=0.25.0
 
 # Note: For AI features, also install requirements_ai.txt:
 # pip install -r requirements_ai.txt

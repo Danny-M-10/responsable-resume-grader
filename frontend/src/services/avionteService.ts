@@ -45,6 +45,41 @@ export interface TalentData {
   [key: string]: any;
 }
 
+export interface WebApplicant {
+  webApplicantId?: string;
+  applicantId?: string;
+  talentId?: string;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  phone?: string;
+  applicationDate?: string;
+  [key: string]: any;
+}
+
+export interface JobData {
+  jobId?: string;
+  title?: string;
+  company?: string;
+  status?: string;
+  postedDate?: string;
+  description?: string;
+  [key: string]: any;
+}
+
+export interface ImportApplicantsResult {
+  success: boolean;
+  imported: number;
+  failed: number;
+  candidate_ids: string[];
+  errors: Array<{
+    applicant_id?: string;
+    talent_id?: string;
+    error: string;
+  }>;
+  message?: string;
+}
+
 class AvionteService {
   /**
    * Check Avionté API health
@@ -237,6 +272,89 @@ class AvionteService {
     }
 
     return response.blob();
+  }
+
+  /**
+   * Query jobs from Avionté
+   */
+  async queryJobs(
+    filters?: Record<string, any>,
+    page: number = 1,
+    pageSize: number = 50
+  ): Promise<{
+    jobs?: JobData[];
+    total?: number;
+    page?: number;
+    pageSize?: number;
+    totalPages?: number;
+  }> {
+    const response = await fetch(`${API_BASE}/job/query`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        filters: filters || {},
+        page,
+        page_size: pageSize,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: response.statusText }));
+      throw new Error(error.detail || `Failed to query jobs: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Get web applicants for a job
+   */
+  async getJobApplicants(jobId: string): Promise<{
+    job_id: string;
+    applicants: WebApplicant[];
+    count: number;
+  }> {
+    const response = await fetch(`${API_BASE}/job/${jobId}/applicants`);
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: response.statusText }));
+      throw new Error(error.detail || `Failed to get job applicants: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Import applicants' resumes from an Avionté job
+   */
+  async importJobApplicants(
+    jobId: string,
+    applicantIds?: string[],
+    clientId?: string
+  ): Promise<ImportApplicantsResult> {
+    const url = new URL(`${API_BASE}/job/${jobId}/applicants/import`, window.location.origin);
+    if (clientId) {
+      url.searchParams.append('client_id', clientId);
+    }
+
+    const response = await fetch(url.toString(), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        applicant_ids: applicantIds,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: response.statusText }));
+      throw new Error(error.detail || `Failed to import job applicants: ${response.statusText}`);
+    }
+
+    return response.json();
   }
 }
 

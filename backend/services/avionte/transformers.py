@@ -74,6 +74,9 @@ def transform_candidate_to_avionte_talent(candidate: Dict[str, Any]) -> AvionteT
             gpa=edu.get("gpa")
         ))
     
+    # Transform tags
+    tags = candidate.get("tags", [])
+    
     # Build talent model
     talent = AvionteTalent(
         talentId=candidate.get("avionte_talent_id"),
@@ -87,7 +90,7 @@ def transform_candidate_to_avionte_talent(candidate: Dict[str, Any]) -> AvionteT
         workHistory=work_history if work_history else None,
         education=education if education else None,
         status=candidate.get("status"),
-        tags=candidate.get("tags", []),
+        tags=tags if tags else None,
     )
     
     return talent

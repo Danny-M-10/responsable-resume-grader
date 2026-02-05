@@ -1,0 +1,40 @@
+# Local server deployment: Postgres + ResponsAble app.
+# Run from the directory containing this file (e.g. /home/crossroadsadmin/responsable/app).
+# Ensure ../.env exists with DATABASE_URL=postgresql://postgres:<POSTGRES_PASSWORD>@responsable-db:5432/candidate_ranker
+
+services:
+  responsable-db:
+    image: postgres:15
+    container_name: responsable-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-responsable_local}
+      POSTGRES_DB: candidate_ranker
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  responsable-app:
+    build: .
+    image: responsable-app:latest
+    container_name: responsable-app
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - ../.env
+    environment:
+      # Override DATABASE_URL to use compose service name (set in .env to match POSTGRES_PASSWORD)
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-responsable_local}@responsable-db:5432/candidate_ranker
+    volumes:
+      - ../storage:/app/storage
+    depends_on:
+      responsable-db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

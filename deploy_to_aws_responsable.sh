@@ -128,6 +128,12 @@ with open('task-definition.json', 'r') as f:
 # ResponsAble-specific S3 bucket
 RESPONSABLE_BUCKET = "responsable-recruitment-ai-uploads-us-east-2-774305585062"
 
+# ResponsAble-specific SSM parameters
+AWS_ACCOUNT_ID = "$AWS_ACCOUNT_ID"
+AWS_REGION = "$AWS_REGION"
+RESPONSABLE_DB_PARAM = f"arn:aws:ssm:{AWS_REGION}:{AWS_ACCOUNT_ID}:parameter/responsable-recruitment-ai/DATABASE_URL"
+RESPONSABLE_SESSION_PARAM = f"arn:aws:ssm:{AWS_REGION}:{AWS_ACCOUNT_ID}:parameter/responsable-recruitment-ai/SESSION_SECRET"
+
 # Update the image and port for the 'app' container
 for container in task_def.get('containerDefinitions', []):
     if container['name'] == 'app':
@@ -151,6 +157,28 @@ for container in task_def.get('containerDefinitions', []):
         if not storage_bucket_found:
             env_vars.append({'name': 'STORAGE_BUCKET', 'value': RESPONSABLE_BUCKET})
         container['environment'] = env_vars
+        
+        # Update secrets to use ResponsAble-specific SSM parameters
+        secrets = container.get('secrets', [])
+        db_secret_found = False
+        session_secret_found = False
+        for secret in secrets:
+            if secret['name'] == 'DATABASE_URL':
+                secret['valueFrom'] = RESPONSABLE_DB_PARAM
+                db_secret_found = True
+            elif secret['name'] == 'SESSION_SECRET':
+                secret['valueFrom'] = RESPONSABLE_SESSION_PARAM
+                session_secret_found = True
+        if not db_secret_found:
+            secrets.append({'name': 'DATABASE_URL', 'valueFrom': RESPONSABLE_DB_PARAM})
+        if not session_secret_found:
+            secrets.append({'name': 'SESSION_SECRET', 'valueFrom': RESPONSABLE_SESSION_PARAM})
+        container['secrets'] = secrets
+        
+        # Update log group to ResponsAble-specific
+        if 'logConfiguration' in container:
+            container['logConfiguration']['options']['awslogs-group'] = '/ecs/responsable-recruitment-ai'
+        
         # Update health check for FastAPI
         container['healthCheck'] = {
             "command": ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"],
@@ -162,6 +190,9 @@ for container in task_def.get('containerDefinitions', []):
         print(f"Updated container 'app' image to: {container['image']}")
         print(f"Updated container port to: 8000")
         print(f"Updated STORAGE_BUCKET to: {RESPONSABLE_BUCKET}")
+        print(f"Updated DATABASE_URL secret to: {RESPONSABLE_DB_PARAM}")
+        print(f"Updated SESSION_SECRET secret to: {RESPONSABLE_SESSION_PARAM}")
+        print(f"Updated log group to: /ecs/responsable-recruitment-ai")
         print(f"Updated health check endpoint to: /health")
 
 # Ensure family name uses hyphens (not underscores) for ECS compatibility
@@ -399,8 +430,9 @@ echo "Image: $FULL_IMAGE_NAME"
 echo "Running tasks: $RUNNING / $DESIRED"
 echo "Port: 8000 (FastAPI)"
 echo ""
-echo "Database: Using existing DATABASE_URL from SSM Parameter Store"
-echo "The ResponsAble application is now live on AWS!"
+echo "Database: Using ResponsAble-specific DATABASE_URL from SSM Parameter Store"
+echo "  Parameter: /responsable-recruitment-ai/DATABASE_URL"
+echo "The ResponsAble application is now live on AWS with dedicated database!"
 echo ""
 
 # Cleanup

@@ -4,6 +4,7 @@ import { vaultService, Asset } from '../services/vaultService'
 import { useToast } from '../contexts/ToastContext'
 import { apiClient } from '../api/client'
 import AvionteResumeBrowser from './AvionteResumeBrowser'
+import AvionteJobApplicantBrowser from './AvionteJobApplicantBrowser'
 import './ResumeUpload.css'
 
 export interface UploadedFile {
@@ -166,6 +167,26 @@ const ResumeUpload: React.FC<ResumeUploadProps> = ({
   const handleAvionteResumeImport = async (file: File) => {
     // Process the imported file from Avionté similar to uploaded files
     await processFiles([file])
+  }
+
+  const handleAvionteApplicantsImported = async (candidateIds: string[]) => {
+    // When applicants are imported, we need to create ProcessedResume entries for them
+    // Since they're already in the database, we just need to mark them as complete
+    const newProcessedResumes: ProcessedResume[] = candidateIds.map((candidateId) => ({
+      id: candidateId, // Use candidate ID as the unique ID
+      file: new File([], 'imported-resume.pdf'), // Placeholder file
+      status: 'complete',
+      candidateId: candidateId,
+    }))
+    
+    // Add to existing processed resumes
+    const updatedResumes = [...processedResumesRef.current, ...newProcessedResumes]
+    onProcessedResumesChange(updatedResumes)
+    
+    showToast({
+      message: `Imported ${candidateIds.length} applicant${candidateIds.length !== 1 ? 's' : ''} from Avionté`,
+      type: 'success',
+    })
   }
 
   // Drag and drop handlers
@@ -463,6 +484,12 @@ const ResumeUpload: React.FC<ResumeUploadProps> = ({
         {/* Avionté Resume Browser */}
         <AvionteResumeBrowser
           onResumeImport={handleAvionteResumeImport}
+          disabled={disabled || processingCount > 0}
+        />
+
+        {/* Avionté Job Applicant Browser */}
+        <AvionteJobApplicantBrowser
+          onApplicantsImported={handleAvionteApplicantsImported}
           disabled={disabled || processingCount > 0}
         />
 
