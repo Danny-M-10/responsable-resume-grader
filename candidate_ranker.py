@@ -21,7 +21,7 @@ from ai_scoring_engine import HybridScoringEngine
 from pdf_generator import PDFGenerator
 from skills_researcher import SkillsResearcher
 from ai_certification_researcher import AICertificationResearcher
-from config import OpenAIConfig
+from config import is_ai_configured
 from db import get_db, utcnow_str
 from industry_templates import get_template_by_name, get_default_weights
 from scoring_profiles import validate_weights
@@ -41,10 +41,10 @@ class CandidateRankerApp:
             logo_path: Deprecated - logo is now fixed. This parameter is ignored.
             use_ai: Must be True (AI is now required for all operations)
         """
-        # Ensure OpenAI API key is configured
-        if not OpenAIConfig.is_configured():
+        # Ensure an AI provider (Gemini or OpenAI) is configured
+        if not is_ai_configured():
             raise ValueError(
-                "OpenAI API key is not configured. Please set OPENAI_API_KEY environment variable."
+                "No AI provider configured. Please set GEMINI_API_KEY or OPENAI_API_KEY environment variable."
             )
         
         if not use_ai:

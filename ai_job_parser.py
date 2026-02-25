@@ -1,6 +1,6 @@
 """
 AI-Enhanced Job Description Parser
-Uses OpenAI GPT-4 Turbo for intelligent extraction of job details
+Uses LLM (Gemini or OpenAI) for intelligent extraction of job details
 """
 
 import os
@@ -9,40 +9,35 @@ import re
 import logging
 from typing import Dict, List, Any
 from pathlib import Path
-from openai import OpenAI
 import PyPDF2
 import docx
+from config import is_ai_configured
+from llm_client import generate, LLMError
 
 logger = logging.getLogger(__name__)
 
 
 class AIJobParser:
     """
-    AI-powered job description parser using OpenAI GPT-4 Turbo
-    AI is required - no fallbacks
+    AI-powered job description parser using LLM (Gemini or OpenAI).
+    AI is required - no fallbacks.
     """
 
     def __init__(self, api_key: str = None):
         """
-        Initialize AI job parser
+        Initialize AI job parser.
 
         Args:
-            api_key: OpenAI API key (optional, uses env var if not provided)
+            api_key: Optional (uses GEMINI_API_KEY or OPENAI_API_KEY env var).
         """
-        self.api_key = api_key or os.environ.get('OPENAI_API_KEY')
-        
-        if not self.api_key:
+        if not is_ai_configured():
             raise ValueError(
-                "OpenAI API key required. Set OPENAI_API_KEY environment variable "
-                "or pass api_key parameter."
+                "No AI provider configured. Set GEMINI_API_KEY or OPENAI_API_KEY environment variable."
             )
-        
-        try:
-            self.client = OpenAI(api_key=self.api_key)
-            self.model = os.getenv('OPENAI_MODEL', 'gpt-4-turbo-preview')
-            print(f"AI job parsing enabled (using {self.model})")
-        except Exception as e:
-            raise ValueError(f"Failed to initialize OpenAI client: {e}")
+        from config import get_llm_provider, GeminiConfig, OpenAIConfig
+        provider = get_llm_provider()
+        model = GeminiConfig.get_model() if provider == "gemini" else OpenAIConfig.get_model()
+        print(f"AI job parsing enabled (using {provider} / {model})")
 
     def parse(self, file_path: str) -> Dict[str, Any]:
         """
@@ -124,7 +119,7 @@ class AIJobParser:
             raise Exception(f"Error reading TXT: {e}")
 
     def _ai_extract(self, content: str, filename: str = "") -> Dict[str, Any]:
-        """Use OpenAI GPT-4 Turbo to extract job information"""
+        """Use LLM (Gemini or OpenAI) to extract job information"""
         
         # Debug: Print first 500 chars to see what we're working with
         print(f"DEBUG: Content length: {len(content)}")
@@ -276,36 +271,14 @@ JSON:
 """
 
         try:
-            from openai import APIError, APIConnectionError, RateLimitError
-            
-            try:
-                response = self.client.chat.completions.create(
-                    model=self.model,
-                    max_tokens=3000,
-                    temperature=0.1,  # Low temperature for consistent extraction
-                    messages=[
-                        {"role": "user", "content": prompt}
-                    ]
-                )
-            except RateLimitError as e:
-                raise ValueError(f"OpenAI API rate limit exceeded. Please try again in a moment. Error: {e}")
-            except APIConnectionError as e:
-                raise ValueError(f"Failed to connect to OpenAI API. Please check your internet connection. Error: {e}")
-            except APIError as e:
-                error_msg = str(e)
-                if "400" in error_msg or "Bad Request" in error_msg:
-                    raise ValueError(f"OpenAI API returned a 400 Bad Request error. This may indicate:\n"
-                                    "- The prompt is too long or malformed\n"
-                                    "- Invalid API key or configuration\n"
-                                    "- File content issue\n"
-                                    f"Original error: {e}")
-                else:
-                    raise ValueError(f"OpenAI API error: {e}")
-
-            # Extract JSON from response
-            if not response.choices or len(response.choices) == 0:
-                raise ValueError("OpenAI response was empty")
-            response_text = response.choices[0].message.content.strip()
+            response_text = generate(
+                [{"role": "user", "content": prompt}],
+                max_tokens=3000,
+                temperature=0.1,
+            )
+            if not response_text:
+                raise ValueError("LLM response was empty")
+            response_text = response_text.strip()
 
             # Try to parse JSON
             # Note: json and re are already imported at module level, no need to import locally

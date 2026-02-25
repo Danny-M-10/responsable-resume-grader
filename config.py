@@ -116,6 +116,45 @@ class OpenAIConfig:
         return bool(OpenAIConfig.get_api_key())
 
 
+class GeminiConfig:
+    """Configuration for Google Gemini API."""
+
+    @staticmethod
+    def get_api_key() -> str:
+        """Get Gemini API key."""
+        return os.getenv('GEMINI_API_KEY', '')
+
+    @staticmethod
+    def get_model() -> str:
+        """Get Gemini model to use."""
+        return os.getenv('GEMINI_MODEL', 'gemini-1.5-pro')
+
+    @staticmethod
+    def is_configured() -> bool:
+        """Check if Gemini API is properly configured."""
+        return bool(GeminiConfig.get_api_key())
+
+
+def get_llm_provider() -> str:
+    """
+    Return which LLM provider to use: 'gemini' or 'openai'.
+    Uses LLM_PROVIDER if set; otherwise Gemini if GEMINI_API_KEY is set, else OpenAI if OPENAI_API_KEY is set.
+    """
+    explicit = os.getenv('LLM_PROVIDER', '').strip().lower()
+    if explicit in ('gemini', 'openai'):
+        return explicit
+    if GeminiConfig.is_configured():
+        return 'gemini'
+    if OpenAIConfig.is_configured():
+        return 'openai'
+    return ''
+
+
+def is_ai_configured() -> bool:
+    """Return True if at least one AI provider (Gemini or OpenAI) is configured."""
+    return bool(get_llm_provider())
+
+
 # Convenience functions
 def get_unsplash_access_key() -> str:
     """Get Unsplash Access Key."""
@@ -195,6 +234,8 @@ if __name__ == '__main__':
     print("Configuration Status:")
     print(f"Unsplash configured: {UnsplashConfig.is_configured()}")
     print(f"OpenAI configured: {OpenAIConfig.is_configured()}")
+    print(f"Gemini configured: {GeminiConfig.is_configured()}")
+    print(f"AI configured (any provider): {is_ai_configured()} (provider: {get_llm_provider() or 'none'})")
     print(f"Anthropic configured: {AnthropicConfig.is_configured()} (DEPRECATED)")
     if UnsplashConfig.is_configured():
         print(f"Unsplash Application ID: {UnsplashConfig.get_application_id()}")
@@ -202,6 +243,8 @@ if __name__ == '__main__':
     
     if OpenAIConfig.is_configured():
         print(f"OpenAI Model: {OpenAIConfig.get_model()}")
+    if GeminiConfig.is_configured():
+        print(f"Gemini Model: {GeminiConfig.get_model()}")
     print(f"Avionté configured: {AvionteConfig.is_configured()}")
     if AvionteConfig.is_configured():
         print(f"Avionté Base URL: {AvionteConfig.get_base_url()}")

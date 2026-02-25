@@ -1,6 +1,6 @@
 """
 AI-Powered Resume Parser
-Uses OpenAI GPT-4 Turbo to intelligently extract skills and certifications with context understanding
+Uses LLM (Gemini or OpenAI) to intelligently extract skills and certifications with context understanding
 """
 
 import os
@@ -8,41 +8,35 @@ import re
 import json
 import logging
 from typing import Dict, List, Any
-from openai import OpenAI
 from resume_parser import ResumeParser
-from config import OpenAIConfig
+from config import is_ai_configured
+from llm_client import generate, LLMError
 
 logger = logging.getLogger(__name__)
 
 
 class AIResumeParser:
     """
-    AI-powered resume parser that uses OpenAI GPT-4 Turbo to understand context
-    and extract only actual skills and certifications
+    AI-powered resume parser that uses LLM (Gemini or OpenAI) to understand context
+    and extract only actual skills and certifications.
     """
 
     def __init__(self, api_key: str = None):
         """
-        Initialize AI resume parser
+        Initialize AI resume parser.
 
         Args:
-            api_key: OpenAI API key (optional, uses env var if not provided)
+            api_key: Optional (uses GEMINI_API_KEY or OPENAI_API_KEY env var).
         """
-        self.api_key = api_key or OpenAIConfig.get_api_key()
-        
-        if not self.api_key:
+        if not is_ai_configured():
             raise ValueError(
-                "OpenAI API key required. Set OPENAI_API_KEY environment variable "
-                "or pass api_key parameter."
+                "No AI provider configured. Set GEMINI_API_KEY or OPENAI_API_KEY environment variable."
             )
-        
-        try:
-            self.client = OpenAI(api_key=self.api_key)
-            self.model = OpenAIConfig.get_model()
-            self.base_parser = ResumeParser()  # Use base parser for file reading
-            print(f"AI resume parsing enabled (using {self.model})")
-        except Exception as e:
-            raise ValueError(f"Failed to initialize OpenAI client: {e}")
+        self.base_parser = ResumeParser()
+        from config import get_llm_provider, GeminiConfig, OpenAIConfig
+        provider = get_llm_provider()
+        model = GeminiConfig.get_model() if provider == "gemini" else OpenAIConfig.get_model()
+        print(f"AI resume parsing enabled (using {provider} / {model})")
 
     def parse(self, file_path: str) -> Dict[str, Any]:
         """
@@ -61,7 +55,7 @@ class AIResumeParser:
         return self._ai_extract(content)
 
     def _ai_extract(self, content: str) -> Dict[str, Any]:
-        """Use OpenAI GPT-4 Turbo to intelligently extract all candidate information"""
+        """Use LLM (Gemini or OpenAI) to intelligently extract all candidate information"""
         
         if not content:
             return {}
@@ -122,19 +116,14 @@ JSON:
 """
 
         try:
-            response = self.client.chat.completions.create(
-                model=self.model,
+            response_text = generate(
+                [{"role": "user", "content": prompt}],
                 max_tokens=3000,
                 temperature=0.1,
-                messages=[
-                    {"role": "user", "content": prompt}
-                ]
             )
-
-            if not response.choices or len(response.choices) == 0:
-                raise ValueError("OpenAI response was empty")
-
-            response_text = response.choices[0].message.content.strip()
+            if not response_text:
+                raise ValueError("LLM response was empty")
+            response_text = response_text.strip()
 
             # Parse JSON
             json_match = re.search(r'\{.*\}', response_text, re.DOTALL)

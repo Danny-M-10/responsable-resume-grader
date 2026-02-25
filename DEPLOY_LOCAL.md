@@ -24,8 +24,9 @@ STORAGE_DIR=storage
 # Required: auth signing key (generate with: openssl rand -base64 32)
 JWT_SECRET_KEY=<your-random-secret>
 
-# Required for AI features
-OPENAI_API_KEY=your-openai-key
+# Required for AI features (use Gemini or OpenAI)
+GEMINI_API_KEY=your-gemini-key
+# Or: OPENAI_API_KEY=your-openai-key
 
 # Database (see below for Docker vs compose)
 # When using deploy_to_local_server.sh (standalone container): use host that resolves from inside the app container.

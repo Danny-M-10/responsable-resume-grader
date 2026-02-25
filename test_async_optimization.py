@@ -54,10 +54,13 @@ def test_async_scoring():
     engine = HybridScoringEngine()
     assert hasattr(engine, 'score_candidate_async'), "HybridScoringEngine async method not found"
     
-    # Test AIScoringEngine directly
+    # Test AIScoringEngine directly (uses llm_client.generate_async)
     ai_engine = AIScoringEngine()
     assert hasattr(ai_engine, 'score_candidate_async'), "AIScoringEngine async method not found"
-    assert hasattr(ai_engine, 'async_client'), "AsyncOpenAI client not found in AIScoringEngine"
+    
+    # LLM async is provided by llm_client.generate_async
+    from llm_client import generate_async
+    assert callable(generate_async), "llm_client.generate_async not callable"
     
     print("✓ PASS: Async scoring methods exist")
     print()
@@ -127,21 +130,27 @@ def test_nest_asyncio_import():
     print()
     return True
 
-def test_asyncopenai_client():
-    """Test that AsyncOpenAI client is initialized"""
+def test_llm_async_client():
+    """Test that LLM async generation is available (Gemini or OpenAI)"""
     print("=" * 80)
-    print("TEST 7: AsyncOpenAI Client")
+    print("TEST 7: LLM Async Client")
     print("=" * 80)
     
-    from ai_scoring_engine import AIScoringEngine
+    from config import is_ai_configured
+    from llm_client import generate_async
     
     try:
-        engine = AIScoringEngine()
-        assert hasattr(engine, 'async_client'), "AsyncOpenAI client not initialized"
-        assert engine.async_client is not None, "AsyncOpenAI client is None"
-        print("✓ PASS: AsyncOpenAI client is initialized")
+        assert callable(generate_async), "generate_async is not callable"
+        # AIScoringEngine uses generate_async; only init if AI is configured
+        if is_ai_configured():
+            from ai_scoring_engine import AIScoringEngine
+            engine = AIScoringEngine()
+            assert hasattr(engine, 'score_candidate_async'), "AIScoringEngine missing score_candidate_async"
+            print("✓ PASS: LLM async client available and AIScoringEngine initialized")
+        else:
+            print("✓ PASS: LLM generate_async is available (skip engine init: no API key)")
     except Exception as e:
-        print(f"✗ FAIL: Error initializing AsyncOpenAI client: {e}")
+        print(f"✗ FAIL: {e}")
         return False
     
     print()
@@ -160,7 +169,7 @@ def main():
         ("Async Cert Research", test_async_cert_research),
         ("Rate Limiting", test_rate_limiting),
         ("nest-asyncio Package", test_nest_asyncio_import),
-        ("AsyncOpenAI Client", test_asyncopenai_client),
+        ("LLM Async Client", test_llm_async_client),
     ]
     
     passed = 0

@@ -24,7 +24,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 from candidate_ranker import CandidateRankerApp
-from config import OpenAIConfig
+from config import is_ai_configured
 from ai_job_parser import AIJobParser
 from loading_components import get_cycling_message
 from db import init_db, get_db, utcnow_str
@@ -2174,18 +2174,18 @@ def main():
     # Initialize session state
     init_session_state()
 
-    # Check for OpenAI API key at startup
-    if not OpenAIConfig.is_configured():
+    # Check for AI provider (Gemini or OpenAI) at startup
+    if not is_ai_configured():
         st.error("""
-        **OpenAI API Key Not Configured**
+        **AI Not Configured**
 
-        Please set the OPENAI_API_KEY environment variable to use this application.
+        Please set GEMINI_API_KEY or OPENAI_API_KEY to use this application.
 
         You can set it by:
-        1. Adding it to your .env file: `OPENAI_API_KEY=your-key-here`
-        2. Or exporting it: `export OPENAI_API_KEY=your-key-here`
+        1. Adding to your .env file: `GEMINI_API_KEY=your-key` or `OPENAI_API_KEY=your-key`
+        2. Or exporting: `export GEMINI_API_KEY=your-key`
 
-        See OPENAI_API_SETUP.md for detailed instructions.
+        See GEMINI_SETUP.md or OPENAI_API_SETUP.md for instructions.
         """)
         st.stop()
 
@@ -3180,9 +3180,9 @@ def main():
                                             "- Converting the PDF to text format\n"
                                             "- Using a different file format (DOCX or TXT)\n"
                                             "- Ensuring the file is not corrupted")
-                                elif "API" in error_msg or "OpenAI" in error_msg or "key" in error_msg.lower():
+                                elif "API" in error_msg or "OpenAI" in error_msg or "Gemini" in error_msg or "key" in error_msg.lower():
                                     st.error(f"**Error - API:** {error_msg}\n\n"
-                                            "Please check your OpenAI API key configuration.")
+                                            "Please check your GEMINI_API_KEY or OPENAI_API_KEY configuration.")
                                 elif "read" in error_msg.lower() or "parse" in error_msg.lower() or "encrypted" in error_msg.lower():
                                     st.error(f"**Error - File Reading:** Could not read the file '{job_desc_file.name}'. "
                                             "The file may be corrupted, encrypted, or in an unsupported format. Please try a different file.")

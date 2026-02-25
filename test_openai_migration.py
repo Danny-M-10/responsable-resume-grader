@@ -8,27 +8,33 @@ import sys
 from pathlib import Path
 
 def test_config():
-    """Test OpenAI configuration"""
+    """Test AI configuration (Gemini or OpenAI)"""
     print("\n" + "="*80)
-    print("TEST 1: OpenAI Configuration")
+    print("TEST 1: AI Configuration (Gemini or OpenAI)")
     print("="*80)
     
     try:
-        from config import OpenAIConfig
+        from config import is_ai_configured, get_llm_provider, GeminiConfig, OpenAIConfig
         
-        is_configured = OpenAIConfig.is_configured()
-        print(f"✓ OpenAIConfig imported successfully")
-        print(f"  API Key configured: {is_configured}")
+        configured = is_ai_configured()
+        provider = get_llm_provider()
+        print(f"✓ Config imported successfully")
+        print(f"  AI configured: {configured}")
+        print(f"  Provider: {provider or 'none'}")
         
-        if is_configured:
-            api_key = OpenAIConfig.get_api_key()
-            model = OpenAIConfig.get_model()
-            print(f"  API Key length: {len(api_key)} characters")
+        if configured:
+            if provider == "gemini":
+                key = GeminiConfig.get_api_key()
+                model = GeminiConfig.get_model()
+            else:
+                key = OpenAIConfig.get_api_key()
+                model = OpenAIConfig.get_model()
+            print(f"  API Key length: {len(key)} characters")
             print(f"  Model: {model}")
             print("✓ Configuration test PASSED")
             return True
         else:
-            print("✗ Configuration test FAILED: API key not configured")
+            print("✗ Configuration test FAILED: No AI provider configured (set GEMINI_API_KEY or OPENAI_API_KEY)")
             return False
     except Exception as e:
         print(f"✗ Configuration test FAILED: {e}")
@@ -362,7 +368,7 @@ def main():
     print("\n" + "="*80)
     print("OPENAI MIGRATION TEST SUITE")
     print("="*80)
-    print("\nTesting all components to verify OpenAI migration...")
+    print("\nTesting all components to verify AI (Gemini or OpenAI) configuration...")
     
     results = []
     

@@ -1,39 +1,34 @@
 """
 AI-Powered Scoring Engine Module
-Uses OpenAI GPT-4 Turbo for intelligent candidate evaluation
+Uses LLM (Gemini or OpenAI) for intelligent candidate evaluation
 """
 
 import os
 import asyncio
 from typing import Dict, Any, List, Tuple
-from openai import OpenAI, AsyncOpenAI
 from models import JobDetails, CandidateScore
-from config import OpenAIConfig
+from config import is_ai_configured, get_llm_provider, GeminiConfig, OpenAIConfig
 from industry_templates import get_default_weights
+from llm_client import generate, generate_async, LLMError
+
 
 class AIScoringEngine:
     """
-    AI-powered candidate evaluation using OpenAI GPT-4 Turbo
-    Provides intelligent, context-aware scoring with genuine chain-of-thought reasoning
+    AI-powered candidate evaluation using LLM (Gemini or OpenAI).
+    Provides intelligent, context-aware scoring with genuine chain-of-thought reasoning.
     """
 
     def __init__(self, api_key: str = None):
         """
-        Initialize AI scoring engine
+        Initialize AI scoring engine.
 
         Args:
-            api_key: OpenAI API key (or set OPENAI_API_KEY env var)
+            api_key: Optional API key (prefer GEMINI_API_KEY or OPENAI_API_KEY env var).
         """
-        self.api_key = api_key or OpenAIConfig.get_api_key()
-        if not self.api_key:
+        if not is_ai_configured():
             raise ValueError(
-                "OpenAI API key required. Set OPENAI_API_KEY environment variable "
-                "or pass api_key parameter."
+                "No AI provider configured. Set GEMINI_API_KEY or OPENAI_API_KEY environment variable."
             )
-
-        self.client = OpenAI(api_key=self.api_key)
-        self.async_client = AsyncOpenAI(api_key=self.api_key)
-        self.model = OpenAIConfig.get_model()
 
     def score_candidate(self, candidate: Dict[str, Any],
                        job_details: JobDetails) -> CandidateScore:
@@ -51,24 +46,12 @@ class AIScoringEngine:
         # Build the evaluation prompt
         prompt = self._build_evaluation_prompt(candidate, job_details)
 
-        # Call OpenAI API for evaluation
-        # Use temperature=0.0 for maximum determinism and consistency
-        response = self.client.chat.completions.create(
-            model=self.model,
+        # Call LLM (Gemini or OpenAI) for evaluation
+        evaluation_text = generate(
+            [{"role": "user", "content": prompt}],
             max_tokens=4000,
-            temperature=0.0,  # Zero temperature for deterministic, consistent evaluations
-            messages=[
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ]
+            temperature=0.0,
         )
-
-        # Extract response
-        if not response.choices or len(response.choices) == 0:
-            raise ValueError("OpenAI response was empty")
-        evaluation_text = response.choices[0].message.content
 
         # Get weights from job_details
         weights = job_details.scoring_profile if job_details.scoring_profile else get_default_weights()
@@ -208,23 +191,12 @@ class AIScoringEngine:
         # Build the evaluation prompt (same as sync version)
         prompt = self._build_evaluation_prompt(candidate, job_details)
         
-        # Call OpenAI API asynchronously
-        response = await self.async_client.chat.completions.create(
-            model=self.model,
+        # Call LLM asynchronously (Gemini or OpenAI)
+        evaluation_text = await generate_async(
+            [{"role": "user", "content": prompt}],
             max_tokens=4000,
-            temperature=0.0,  # Zero temperature for deterministic, consistent evaluations
-            messages=[
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ]
+            temperature=0.0,
         )
-        
-        # Extract response
-        if not response.choices or len(response.choices) == 0:
-            raise ValueError("OpenAI response was empty")
-        evaluation_text = response.choices[0].message.content
         
         # Get weights from job_details
         weights = job_details.scoring_profile if job_details.scoring_profile else get_default_weights()
@@ -1065,9 +1037,11 @@ class HybridScoringEngine:
 
         try:
             self.ai_engine = AIScoringEngine(api_key=api_key)
-            print(f"AI-powered scoring enabled (using OpenAI {self.ai_engine.model})")
+            provider = get_llm_provider()
+            model = GeminiConfig.get_model() if provider == "gemini" else OpenAIConfig.get_model()
+            print(f"AI-powered scoring enabled (using {provider} / {model})")
         except Exception as e:
-            raise RuntimeError(f"AI scoring is required but unavailable: {e}. Please configure OpenAI API key.")
+            raise RuntimeError(f"AI scoring is required but unavailable: {e}. Please set GEMINI_API_KEY or OPENAI_API_KEY.")
 
     def score_candidate(self, candidate: Dict[str, Any],
                        job_details: JobDetails) -> CandidateScore:

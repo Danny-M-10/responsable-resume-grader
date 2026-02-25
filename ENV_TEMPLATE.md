@@ -2,8 +2,13 @@
 
 Create a `.env` file with:
 
-```
-OPENAI_API_KEY=your-openai-key
+# AI: use Gemini (recommended) or OpenAI. Set at least one.
+GEMINI_API_KEY=your-gemini-key
+# GEMINI_MODEL=gemini-1.5-pro
+# OPENAI_API_KEY=your-openai-key
+# OPENAI_MODEL=gpt-4-turbo-preview
+# LLM_PROVIDER=gemini   # or openai; default is gemini if GEMINI_API_KEY set, else openai
+
 # DATABASE_URL example for managed Postgres:
 # DATABASE_URL=postgresql://user:password@host:port/dbname
 # Leave empty to use local SQLite (candidate_ranker.db)

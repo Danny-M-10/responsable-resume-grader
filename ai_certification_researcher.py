@@ -1,6 +1,6 @@
 """
 AI-Powered Certification Researcher
-Uses OpenAI GPT-4 Turbo to research equivalent certifications when job description mentions "or equivalent"
+Uses LLM (Gemini or OpenAI) to research equivalent certifications when job description mentions "or equivalent"
 """
 
 import os
@@ -8,38 +8,32 @@ import json
 import re
 import logging
 from typing import List, Dict
-from openai import OpenAI
-from config import OpenAIConfig
+from config import is_ai_configured
+from llm_client import generate, LLMError
 
 logger = logging.getLogger(__name__)
 
 
 class AICertificationResearcher:
     """
-    AI-powered certification researcher that identifies equivalent certifications
+    AI-powered certification researcher that identifies equivalent certifications.
     """
 
     def __init__(self, api_key: str = None):
         """
-        Initialize AI certification researcher
+        Initialize AI certification researcher.
 
         Args:
-            api_key: OpenAI API key (optional, uses env var if not provided)
+            api_key: Optional (uses GEMINI_API_KEY or OPENAI_API_KEY env var).
         """
-        self.api_key = api_key or OpenAIConfig.get_api_key()
-        
-        if not self.api_key:
+        if not is_ai_configured():
             raise ValueError(
-                "OpenAI API key required. Set OPENAI_API_KEY environment variable "
-                "or pass api_key parameter."
+                "No AI provider configured. Set GEMINI_API_KEY or OPENAI_API_KEY environment variable."
             )
-        
-        try:
-            self.client = OpenAI(api_key=self.api_key)
-            self.model = OpenAIConfig.get_model()
-            print(f"AI certification research enabled (using {self.model})")
-        except Exception as e:
-            raise ValueError(f"Failed to initialize OpenAI client: {e}")
+        from config import get_llm_provider, GeminiConfig, OpenAIConfig
+        provider = get_llm_provider()
+        model = GeminiConfig.get_model() if provider == "gemini" else OpenAIConfig.get_model()
+        print(f"AI certification research enabled (using {provider} / {model})")
 
     def find_equivalents(self, certification: str, job_context: str = "") -> List[str]:
         """
@@ -91,19 +85,15 @@ JSON:
 """
 
         try:
-            response = self.client.chat.completions.create(
-                model=self.model,
+            response_text = generate(
+                [{"role": "user", "content": prompt}],
                 max_tokens=1000,
                 temperature=0.2,
-                messages=[
-                    {"role": "user", "content": prompt}
-                ]
             )
-
-            if not response.choices or len(response.choices) == 0:
+            if not response_text:
                 return []
 
-            response_text = response.choices[0].message.content.strip()
+            response_text = response_text.strip()
 
             # Parse JSON
             json_match = re.search(r'\[.*\]', response_text, re.DOTALL)

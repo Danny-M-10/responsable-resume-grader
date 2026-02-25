@@ -5,10 +5,10 @@ Allows users to ask questions about candidate selection decisions
 import json
 import logging
 from typing import Dict, Any, Optional
-from openai import OpenAI
 from sqlalchemy import text
 from backend.database.connection import AsyncSessionLocal
-from config import OpenAIConfig
+from config import is_ai_configured
+from llm_client import generate_async, LLMError
 
 logger = logging.getLogger(__name__)
 
@@ -17,15 +17,11 @@ class ChatService:
     """Service for generating AI chat responses about candidate selection"""
 
     def __init__(self, api_key: str = None):
-        """Initialize chat service with OpenAI client"""
-        self.api_key = api_key or OpenAIConfig.get_api_key()
-        if not self.api_key:
+        """Initialize chat service (uses LLM from config: Gemini or OpenAI)"""
+        if not is_ai_configured():
             raise ValueError(
-                "OpenAI API key required. Set OPENAI_API_KEY environment variable "
-                "or pass api_key parameter."
+                "No AI provider configured. Set GEMINI_API_KEY or OPENAI_API_KEY environment variable."
             )
-        self.client = OpenAI(api_key=self.api_key)
-        self.model = OpenAIConfig.get_model()
 
     async def generate_chat_response(
         self, analysis_id: str, user_message: str, user_id: str
@@ -57,22 +53,20 @@ class ChatService:
             system_prompt = self._build_system_prompt()
             user_prompt = f"{context}\n\nUser question: {user_message}"
 
-            # Call OpenAI API
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
+            # Call LLM (Gemini or OpenAI)
+            response_text = await generate_async(
+                [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
                 ],
-                temperature=0.7,  # Slightly higher for conversational responses
                 max_tokens=1000,
+                temperature=0.7,
             )
+            return response_text.strip() if response_text else "I'm sorry, I couldn't generate a response. Please try again."
 
-            if not response.choices or len(response.choices) == 0:
-                return "I'm sorry, I couldn't generate a response. Please try again."
-
-            return response.choices[0].message.content.strip()
-
+        except LLMError as e:
+            logger.error(f"LLM error in chat: {e}", exc_info=True)
+            return f"I encountered an error while processing your question: {str(e)}. Please try again."
         except Exception as e:
             logger.error(f"Error generating chat response: {e}", exc_info=True)
             return f"I encountered an error while processing your question: {str(e)}. Please try again."

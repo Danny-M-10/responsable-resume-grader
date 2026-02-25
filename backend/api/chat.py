@@ -52,10 +52,10 @@ async def send_chat_message(
         )
         return ChatMessageResponse(response=response)
     except ValueError as e:
-        # OpenAI API key missing
+        # AI provider not configured
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="AI chat service is not available. Please configure OpenAI API key."
+            detail="AI chat service is not available. Set GEMINI_API_KEY or OPENAI_API_KEY."
         )
     except Exception as e:
         import logging
