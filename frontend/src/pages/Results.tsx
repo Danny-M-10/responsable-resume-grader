@@ -8,6 +8,9 @@ import AnalysisChat from '../components/AnalysisChat'
 import { Download, Loader2, AlertCircle, ArrowLeft, FileText } from 'lucide-react'
 import './Results.css'
 
+const EXACT_TIE_THRESHOLD = 0.001
+const NEAR_TIE_THRESHOLD = 0.1
+
 const Results: React.FC = () => {
   const { analysisId } = useParams<{ analysisId: string }>()
   const navigate = useNavigate()
@@ -61,22 +64,45 @@ const Results: React.FC = () => {
 
       // Parse results
       if (currentAnalysis.results && currentAnalysis.results.candidates) {
-        const parsedCandidates: Candidate[] = currentAnalysis.results.candidates
+        const sortedCandidates = currentAnalysis.results.candidates
           .map((c: any, index: number) => ({
             id: c.id || `candidate-${index}`,
             name: c.name || 'Unknown',
             email: c.email,
             phone: c.phone,
-            score: c.fit_score || c.score || 0,
+            score: Number(c.fit_score ?? c.score ?? 0),
             certifications: c.certifications || [],
             rationale: c.rationale || '',
+            componentScores: c.component_scores || {},
+            calibrationApplied: Boolean(c.calibration_applied),
+            calibrationFactor: Number(c.calibration_factor ?? 1),
             rank: index + 1, // Will be updated after sorting
           }))
           .sort((a: Candidate, b: Candidate) => b.score - a.score) // Sort by score descending (highest first)
-          .map((candidate: Candidate, index: number) => ({
+
+        const parsedCandidates: Candidate[] = sortedCandidates.map((candidate: Candidate, index: number) => {
+          const prevCandidate = sortedCandidates[index - 1]
+          const nextCandidate = sortedCandidates[index + 1]
+
+          const isExactTie =
+            (prevCandidate && Math.abs(candidate.score - prevCandidate.score) < EXACT_TIE_THRESHOLD) ||
+            (nextCandidate && Math.abs(candidate.score - nextCandidate.score) < EXACT_TIE_THRESHOLD)
+
+          const isNearTie =
+            !isExactTie &&
+            ((prevCandidate &&
+              Math.abs(candidate.score - prevCandidate.score) >= EXACT_TIE_THRESHOLD &&
+              Math.abs(candidate.score - prevCandidate.score) <= NEAR_TIE_THRESHOLD) ||
+              (nextCandidate &&
+                Math.abs(candidate.score - nextCandidate.score) >= EXACT_TIE_THRESHOLD &&
+                Math.abs(candidate.score - nextCandidate.score) <= NEAR_TIE_THRESHOLD))
+
+          return {
             ...candidate,
             rank: index + 1, // Update rank based on sorted position
-          }))
+            tieStatus: isExactTie ? 'tie' : isNearTie ? 'near-tie' : null,
+          }
+        })
         if (isCancelled()) return
         setCandidates(parsedCandidates)
       }

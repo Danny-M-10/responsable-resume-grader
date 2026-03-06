@@ -15,6 +15,72 @@ from llm_client import generate, LLMError
 logger = logging.getLogger(__name__)
 
 
+def _extract_json_object(response_text: str) -> Dict[str, Any]:
+    """
+    Extract the first valid JSON object from a model response.
+
+    Gemini may wrap JSON in markdown fences or add extra text, so this helper
+    first tries the full response and then scans for balanced JSON objects.
+    """
+    cleaned = response_text.strip()
+
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\s*```$", "", cleaned)
+        cleaned = cleaned.strip()
+
+    try:
+        parsed = json.loads(cleaned)
+        if isinstance(parsed, dict):
+            return parsed
+    except (json.JSONDecodeError, TypeError):
+        pass
+
+    start = None
+    depth = 0
+    for idx, char in enumerate(cleaned):
+        if char == "{":
+            if depth == 0:
+                start = idx
+            depth += 1
+        elif char == "}":
+            if depth > 0:
+                depth -= 1
+                if depth == 0 and start is not None:
+                    candidate = cleaned[start:idx + 1]
+                    try:
+                        parsed = json.loads(candidate)
+                        if isinstance(parsed, dict):
+                            return parsed
+                    except (json.JSONDecodeError, TypeError):
+                        continue
+
+    raise ValueError("AI response didn't contain valid JSON")
+
+
+def _repair_json_object(response_text: str) -> Dict[str, Any]:
+    """
+    Ask the LLM to rewrite malformed output as strict JSON.
+    """
+    repair_prompt = f"""Convert the following malformed model output into ONE valid JSON object.
+
+Return ONLY valid JSON.
+Do not wrap it in markdown fences.
+Do not add commentary.
+Preserve the original field values as closely as possible.
+
+MODEL OUTPUT:
+{response_text}
+"""
+
+    repaired_text = generate(
+        [{"role": "user", "content": repair_prompt}],
+        max_tokens=3000,
+        temperature=0.0,
+    )
+    return _extract_json_object(repaired_text)
+
+
 class AIResumeParser:
     """
     AI-powered resume parser that uses LLM (Gemini or OpenAI) to understand context
@@ -83,8 +149,7 @@ Extract and return ONLY a JSON object with these fields:
     "certifications": ["cert1", "cert2", ...],
     "education": ["degree1", "degree2", ...],
     "years_of_experience": number,
-    "job_titles": ["title1", "title2", ...],
-    "raw_text": "{prioritized_content[:500]}"
+    "job_titles": ["title1", "title2", ...]
 }}
 
 CRITICAL RULES - STRICT ADHERENCE REQUIRED:
@@ -126,32 +191,31 @@ JSON:
             response_text = response_text.strip()
 
             # Parse JSON
-            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
-            if json_match:
-                json_str = json_match.group(0)
+            try:
+                candidate_data = _extract_json_object(response_text)
+            except ValueError as e:
+                logger.warning(f"Initial resume JSON parse failed, attempting repair: {e}")
                 try:
-                    candidate_data = json.loads(json_str)
-                except (json.JSONDecodeError, TypeError) as e:
+                    candidate_data = _repair_json_object(response_text)
+                except Exception:
                     logger.error(f"Failed to parse AI response as JSON: {e}")
-                    raise ValueError(f"Failed to parse AI response as JSON: {e}")
+                    raise ValueError(str(e))
 
-                # Validate extracted items against raw text to prevent fabrication
-                extracted_skills = self._validate_against_resume(
-                    candidate_data.get('skills', []), content, 'skill'
-                )
-                extracted_certs = self._validate_against_resume(
-                    candidate_data.get('certifications', []), content, 'certification'
-                )
+            # Validate extracted items against raw text to prevent fabrication
+            extracted_skills = self._validate_against_resume(
+                candidate_data.get('skills', []), content, 'skill'
+            )
+            extracted_certs = self._validate_against_resume(
+                candidate_data.get('certifications', []), content, 'certification'
+            )
 
-                # Update with validated data
-                candidate_data['skills'] = extracted_skills
-                candidate_data['certifications'] = extracted_certs
-                candidate_data['raw_text'] = content  # Store full content
-                
-                print(f"  AI extracted {len(extracted_skills)} skills and {len(extracted_certs)} certifications (validated)")
-                return candidate_data
-            else:
-                raise ValueError("AI response didn't contain valid JSON")
+            # Update with validated data
+            candidate_data['skills'] = extracted_skills
+            candidate_data['certifications'] = extracted_certs
+            candidate_data['raw_text'] = content  # Store full content in Python, not model JSON
+            
+            print(f"  AI extracted {len(extracted_skills)} skills and {len(extracted_certs)} certifications (validated)")
+            return candidate_data
 
         except json.JSONDecodeError as e:
             raise ValueError(f"Failed to parse AI response as JSON: {e}")

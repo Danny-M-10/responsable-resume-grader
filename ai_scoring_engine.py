@@ -845,6 +845,30 @@ Format your response with clear headers. Be specific and cite evidence from the 
             cleaned_text,
             flags=re.MULTILINE | re.IGNORECASE
         )
+
+        # Remove section headers that are often followed by component-only reasoning
+        cleaned_text = re.sub(
+            r'^\s*\**(?:EXPERIENCE LEVEL EVALUATION|JOB TITLE MATCH|REQUIRED SKILLS|TRANSFERABLE SKILLS|TRANSFERRABLE SKILLS|LOCATION MATCH|PREFERRED SKILLS|CERTIFICATIONS/?EDUCATION)\**\s*$',
+            '',
+            cleaned_text,
+            flags=re.MULTILINE | re.IGNORECASE
+        )
+
+        # Remove generic score lines such as "Score: 10.0/10" that refer to component sections
+        cleaned_text = re.sub(
+            r'^\s*\**Score:\s*\d+\.?\d*/10\**\s*$',
+            '',
+            cleaned_text,
+            flags=re.MULTILINE | re.IGNORECASE
+        )
+
+        # Remove markdown-bold variations that can survive the simpler pattern
+        cleaned_text = re.sub(
+            r'\*\*Score:\s*\d+\.?\d*/10\*\*',
+            '',
+            cleaned_text,
+            flags=re.IGNORECASE
+        )
         
         # Remove WEIGHTED CALCULATION section
         cleaned_text = re.sub(
@@ -867,6 +891,9 @@ Format your response with clear headers. Be specific and cite evidence from the 
             cleaned_text,
             flags=re.IGNORECASE
         )
+
+        # Collapse excessive blank lines introduced by cleanup so the rationale reads naturally
+        cleaned_text = re.sub(r'\n{3,}', '\n\n', cleaned_text).strip()
         
         # Split on sentence boundaries (period, exclamation, question mark followed by space)
         sentences = re.split(r'(?<=[.!?])\s+', cleaned_text.strip())

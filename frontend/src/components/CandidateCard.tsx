@@ -11,6 +11,10 @@ export interface Candidate {
   certifications?: Array<{ name: string; category: string }>
   rationale: string
   rank: number
+  tieStatus?: 'tie' | 'near-tie' | null
+  componentScores?: Record<string, number>
+  calibrationApplied?: boolean
+  calibrationFactor?: number
 }
 
 interface CandidateCardProps {
@@ -19,6 +23,16 @@ interface CandidateCardProps {
 
 const CandidateCard: React.FC<CandidateCardProps> = ({ candidate }) => {
   const [expanded, setExpanded] = useState(false)
+
+  const componentScoreLabels: Record<string, string> = {
+    experience_level: 'Experience level',
+    job_title_match: 'Job title match',
+    required_skills: 'Required skills',
+    transferrable_skills: 'Transferable skills',
+    location: 'Location',
+    preferred_skills: 'Preferred skills',
+    certifications_education: 'Certifications / education',
+  }
 
   const getScoreColor = (score: number): string => {
     if (score >= 8.0) return 'excellent' // Green
@@ -36,6 +50,14 @@ const CandidateCard: React.FC<CandidateCardProps> = ({ candidate }) => {
 
   const scoreClass = getScoreColor(candidate.score)
   const scoreLabel = getScoreLabel(candidate.score)
+  const tieLabel = candidate.tieStatus === 'tie' ? 'Tied' : candidate.tieStatus === 'near-tie' ? 'Near tie' : null
+  const scoreBreakdownEntries = Object.entries(candidate.componentScores || {})
+    .filter(([, value]) => typeof value === 'number' && !Number.isNaN(value))
+    .map(([key, value]) => ({
+      key,
+      label: componentScoreLabels[key] || key.replace(/_/g, ' '),
+      value,
+    }))
 
   return (
     <div className={`candidate-card ${expanded ? 'expanded' : ''}`}>
@@ -74,8 +96,9 @@ const CandidateCard: React.FC<CandidateCardProps> = ({ candidate }) => {
           </div>
         </div>
         <div className={`score-badge ${scoreClass}`}>
-          <div className="score-value">{candidate.score.toFixed(1)}</div>
+          <div className="score-value">{candidate.score.toFixed(2)}</div>
           <div className="score-label">{scoreLabel}</div>
+          {tieLabel && <div className="tie-indicator">{tieLabel}</div>}
         </div>
         <div className="expand-icon">
           {expanded ? <ChevronUp size={20} aria-hidden="true" /> : <ChevronDown size={20} aria-hidden="true" />}
@@ -106,6 +129,31 @@ const CandidateCard: React.FC<CandidateCardProps> = ({ candidate }) => {
               </div>
             </div>
           )}
+
+          {/* Score breakdown */}
+          <div className="score-breakdown-section">
+            <h4>
+              <Star size={16} />
+              Score Breakdown
+            </h4>
+            <div className="score-breakdown-card">
+              <div className="score-breakdown-row score-breakdown-total">
+                <span>Final weighted score</span>
+                <strong>{candidate.score.toFixed(2)}</strong>
+              </div>
+              {scoreBreakdownEntries.map((entry) => (
+                <div key={entry.key} className="score-breakdown-row">
+                  <span>{entry.label}</span>
+                  <strong>{entry.value.toFixed(1)}/10</strong>
+                </div>
+              ))}
+              {candidate.calibrationApplied && (
+                <div className="score-breakdown-note">
+                  Final score adjusted for score distribution.
+                </div>
+              )}
+            </div>
+          </div>
 
           {/* Rationale */}
           <div className="rationale-section">

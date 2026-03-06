@@ -61,6 +61,32 @@ def _extract_json_object(response_text: str) -> Dict[str, Any]:
     raise ValueError("AI response didn't contain valid JSON")
 
 
+def _repair_json_object(response_text: str) -> Dict[str, Any]:
+    """
+    Ask the LLM to rewrite malformed output as strict JSON.
+
+    This is a recovery path for providers that return almost-correct JSON
+    wrapped in fences or with minor syntax issues.
+    """
+    repair_prompt = f"""Convert the following malformed model output into ONE valid JSON object.
+
+Return ONLY valid JSON.
+Do not wrap it in markdown fences.
+Do not add commentary.
+Preserve the original field values as closely as possible.
+
+MODEL OUTPUT:
+{response_text}
+"""
+
+    repaired_text = generate(
+        [{"role": "user", "content": repair_prompt}],
+        max_tokens=3000,
+        temperature=0.0,
+    )
+    return _extract_json_object(repaired_text)
+
+
 class AIJobParser:
     """
     AI-powered job description parser using LLM (Gemini or OpenAI).
@@ -330,8 +356,12 @@ JSON:
             try:
                 job_data = _extract_json_object(response_text)
             except ValueError as e:
-                logger.error(f"Failed to parse AI response as JSON: {e}")
-                raise ValueError(str(e))
+                logger.warning(f"Initial JSON parse failed, attempting repair: {e}")
+                try:
+                    job_data = _repair_json_object(response_text)
+                except Exception:
+                    logger.error(f"Failed to parse AI response as JSON: {e}")
+                    raise ValueError(str(e))
 
             # Validate and fix job title - ensure it's a proper job title
             extracted_title = job_data.get('job_title', '').strip() if job_data.get('job_title') else ''

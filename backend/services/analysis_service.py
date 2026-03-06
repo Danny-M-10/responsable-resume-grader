@@ -299,6 +299,7 @@ async def run_analysis_async(
                 preferred_skills=preferred_skills if preferred_skills else None,
                 progress_callback=progress_callback,
                 user_id=user_id,
+                analysis_id=analysis_id,
                 industry_template=config.get("industry_template", "general"),
                 custom_scoring_weights=config.get("custom_scoring_weights"),
                 dealbreakers=config.get("dealbreakers"),
@@ -363,7 +364,9 @@ async def run_analysis_async(
                         "skills_match": candidate_dict.get("skills_match", {}),
                         "location_match": candidate_dict.get("location_match", False),
                         "transferrable_skills_match": candidate_dict.get("transferrable_skills_match", {}),
-                        "component_scores": candidate_dict.get("component_scores", {})
+                        "component_scores": candidate_dict.get("component_scores", {}),
+                        "calibration_applied": bool(candidate_dict.get("calibration_applied", False)),
+                        "calibration_factor": float(candidate_dict.get("calibration_factor", 1.0)),
                     })
                 except Exception as e:
                     # #region agent log

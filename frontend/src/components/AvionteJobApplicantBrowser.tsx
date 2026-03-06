@@ -18,7 +18,6 @@ const AvionteJobApplicantBrowser: React.FC<AvionteJobApplicantBrowserProps> = ({
   const [jobs, setJobs] = useState<JobData[]>([])
   const [selectedJob, setSelectedJob] = useState<JobData | null>(null)
   const [applicants, setApplicants] = useState<WebApplicant[]>([])
-  const [loading, setLoading] = useState(false)
   const [loadingJobs, setLoadingJobs] = useState(false)
   const [loadingApplicants, setLoadingApplicants] = useState(false)
   const [importing, setImporting] = useState(false)

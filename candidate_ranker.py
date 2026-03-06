@@ -73,6 +73,7 @@ class CandidateRankerApp:
             progress_callback=None, resume_cache: Dict[str, Dict[str, Any]] = None,
             user_id: str = None, resume_assets: List[Dict[str, Any]] = None,
             job_source_asset_id: str = None,
+            analysis_id: str = None,
             industry_template: str = None,
             custom_scoring_weights: Dict[str, float] = None,
             dealbreakers: List[str] = None,
@@ -96,6 +97,7 @@ class CandidateRankerApp:
             user_id: Optional user ID for persistence
             resume_assets: Optional resume asset metadata
             job_source_asset_id: Optional job source asset ID
+            analysis_id: Optional analysis ID for report persistence
             industry_template: Optional industry template name (e.g., "healthcare", "technology"). Defaults to "general" (universal standard)
             custom_scoring_weights: Optional custom scoring weights dictionary. Overrides template if provided
             dealbreakers: Optional list of criteria that automatically disqualify candidates
@@ -193,7 +195,8 @@ class CandidateRankerApp:
                     pdf_path=pdf_path,
                     job_source_asset_id=job_source_asset_id,
                     resume_assets=resume_assets,
-                    top_candidates=top_candidates
+                    top_candidates=top_candidates,
+                    analysis_id=analysis_id,
                 )
             except Exception as e:
                 logger.warning(f"Failed to persist run metadata: {e}", exc_info=True)
@@ -1173,7 +1176,8 @@ class CandidateRankerApp:
                 _os.remove(tmp_path)
 
     def _persist_run(self, user_id: str, pdf_path: str, job_source_asset_id: str,
-                     resume_assets: List[Dict[str, Any]], top_candidates: List[CandidateScore]) -> None:
+                     resume_assets: List[Dict[str, Any]], top_candidates: List[CandidateScore],
+                     analysis_id: str = None) -> None:
         """
         Persist run metadata: job description, resumes, report, and top candidates.
         """
@@ -1221,21 +1225,42 @@ class CandidateRankerApp:
                 )
 
                 # Report
-                _exec(
-                    conn,
-                    """
-                    INSERT INTO reports (id, user_id, job_description_id, pdf_path, summary_json, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        report_id,
-                        user_id,
-                        job_id,
-                        pdf_path,
-                        json.dumps({"all_candidates": len(self.candidate_scores), "top_candidates": len(top_candidates)}),
-                        now,
-                    ),
+                report_summary = json.dumps(
+                    {"all_candidates": len(self.candidate_scores), "top_candidates": len(top_candidates)}
                 )
+                if analysis_id:
+                    _exec(
+                        conn,
+                        """
+                        INSERT INTO reports (id, analysis_id, user_id, job_description_id, pdf_path, summary_json, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            report_id,
+                            analysis_id,
+                            user_id,
+                            job_id,
+                            pdf_path,
+                            report_summary,
+                            now,
+                        ),
+                    )
+                else:
+                    _exec(
+                        conn,
+                        """
+                        INSERT INTO reports (id, user_id, job_description_id, pdf_path, summary_json, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            report_id,
+                            user_id,
+                            job_id,
+                            pdf_path,
+                            report_summary,
+                            now,
+                        ),
+                    )
 
                 # Resumes (optional, if provided)
                 # Only persist resumes that have a valid file_asset_id (saved to file_assets table)
