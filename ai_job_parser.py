@@ -17,6 +17,50 @@ from llm_client import generate, LLMError
 logger = logging.getLogger(__name__)
 
 
+def _extract_json_object(response_text: str) -> Dict[str, Any]:
+    """
+    Extract the first valid JSON object from a model response.
+
+    Gemini sometimes wraps JSON in markdown fences or adds surrounding text, so
+    this helper first tries the full response, then scans for balanced JSON
+    objects and returns the first one that parses successfully.
+    """
+    cleaned = response_text.strip()
+
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\s*```$", "", cleaned)
+        cleaned = cleaned.strip()
+
+    try:
+        parsed = json.loads(cleaned)
+        if isinstance(parsed, dict):
+            return parsed
+    except (json.JSONDecodeError, TypeError):
+        pass
+
+    start = None
+    depth = 0
+    for idx, char in enumerate(cleaned):
+        if char == "{":
+            if depth == 0:
+                start = idx
+            depth += 1
+        elif char == "}":
+            if depth > 0:
+                depth -= 1
+                if depth == 0 and start is not None:
+                    candidate = cleaned[start:idx + 1]
+                    try:
+                        parsed = json.loads(candidate)
+                        if isinstance(parsed, dict):
+                            return parsed
+                    except (json.JSONDecodeError, TypeError):
+                        continue
+
+    raise ValueError("AI response didn't contain valid JSON")
+
+
 class AIJobParser:
     """
     AI-powered job description parser using LLM (Gemini or OpenAI).
@@ -157,8 +201,7 @@ Extract and return ONLY a JSON object with these fields:
     "experience_level": "Junior/Mid/Senior",
     "industry_context": "brief description of the industry or field (optional)",
     "soft_skills": ["communication", "teamwork", "leadership"],
-    "technical_stack": ["specific technologies", "tools", "software"],
-    "full_description": "the complete original job description text"
+    "technical_stack": ["specific technologies", "tools", "software"]
 }}
 
 CRITICAL RULES FOR JOB TITLE EXTRACTION - READ CAREFULLY:
@@ -256,8 +299,6 @@ CRITICAL RULES FOR JOB TITLE EXTRACTION - READ CAREFULLY:
 
 14. **Technical Stack** (optional): Extract specific technologies, tools, software, or systems explicitly mentioned (e.g., "Python", "AWS", "SQL", "Salesforce"). Only extract technologies explicitly required. If not mentioned, return empty array [].
 
-15. **Full Description**: Always include the complete original job description text in this field.
-
 MOST IMPORTANT RULE:
 - The job_title field MUST be a proper job title (2+ words, contains job function)
 - If you're unsure between multiple options, choose the one that:
@@ -286,118 +327,110 @@ JSON:
             # Debug: Print AI response
             print(f"DEBUG: AI response (first 500 chars): {response_text[:500]}")
 
-            # Find JSON in response (sometimes Claude adds markdown)
-            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
-            if json_match:
-                json_str = json_match.group(0)
-                try:
-                    job_data = json.loads(json_str)
-                except (json.JSONDecodeError, TypeError) as e:
-                    logger.error(f"Failed to parse AI response as JSON: {e}")
-                    raise ValueError(f"Failed to parse AI response as JSON: {e}")
+            try:
+                job_data = _extract_json_object(response_text)
+            except ValueError as e:
+                logger.error(f"Failed to parse AI response as JSON: {e}")
+                raise ValueError(str(e))
 
-                # Validate and fix job title - ensure it's a proper job title
-                extracted_title = job_data.get('job_title', '').strip() if job_data.get('job_title') else ''
-                
-                # Check if title is invalid (single word, generic, etc.)
-                title_words = extracted_title.split() if extracted_title else []
-                title_lower = extracted_title.lower().strip()
-                is_invalid = (
-                    not extracted_title or 
-                    title_lower in ['not found', 'none', 'n/a', ''] or
-                    len(title_words) < 2 or  # Single word is not a valid job title
-                    title_lower in ['medical', 'solar', 'safety', 'manager', 'engineer', 'specialist']  # Common single-word mistakes
-                )
-                
-                if is_invalid:
-                    print(f"WARNING: AI extracted invalid job title: '{extracted_title}' - setting to 'Not Specified'")
-                    job_data['job_title'] = 'Job Title Not Specified'
-                else:
-                    print(f"DEBUG: Using AI-extracted title: '{extracted_title}'")
+            # Validate and fix job title - ensure it's a proper job title
+            extracted_title = job_data.get('job_title', '').strip() if job_data.get('job_title') else ''
 
-                # Ensure location is not empty
-                extracted_location = job_data.get('location', '').strip() if job_data.get('location') else ''
-                if not extracted_location or extracted_location.lower() in ['not found', 'none', 'n/a', '']:
-                    job_data['location'] = 'Location Not Specified'
+            # Check if title is invalid (single word, generic, etc.)
+            title_words = extracted_title.split() if extracted_title else []
+            title_lower = extracted_title.lower().strip()
+            is_invalid = (
+                not extracted_title or
+                title_lower in ['not found', 'none', 'n/a', ''] or
+                len(title_words) < 2 or  # Single word is not a valid job title
+                title_lower in ['medical', 'solar', 'safety', 'manager', 'engineer', 'specialist']  # Common single-word mistakes
+            )
 
-                # Ensure all optional fields are present with defaults
-                if 'industry_context' not in job_data:
-                    job_data['industry_context'] = None
-                if 'soft_skills' not in job_data:
-                    job_data['soft_skills'] = []
-                if 'technical_stack' not in job_data:
-                    job_data['technical_stack'] = []
-                if 'full_description' not in job_data:
-                    job_data['full_description'] = content
-
-                # Ensure skills are not empty or invalid - filter out single-word garbage
-                # Strict filtering: reject abbreviations, single letters, and invalid short words
-                invalid_abbreviations = ['ai', 'go', 'aws', 'it', 'hr', 'pr', 'ml', 'nlp', 'api', 'ui', 'ux', 'qa', 'pm']
-                
-                def is_valid_skill(skill: str) -> bool:
-                    """Validate that a skill is meaningful and not an invalid abbreviation"""
-                    if not skill or not isinstance(skill, str):
-                        return False
-                    
-                    skill = skill.strip()
-                    if not skill:
-                        return False
-                    
-                    skill_lower = skill.lower()
-                    
-                    # Reject if it's in the blacklist of invalid abbreviations
-                    if skill_lower in invalid_abbreviations:
-                        return False
-                    
-                    # Reject single words <= 3 characters (too short to be meaningful)
-                    if len(skill) <= 3 and ' ' not in skill:
-                        return False
-                    
-                    # Reject single letters
-                    if len(skill) == 1:
-                        return False
-                    
-                    # Accept multi-word skills (they're usually meaningful)
-                    if ' ' in skill:
-                        return True
-                    
-                    # Accept single words > 3 characters that aren't blacklisted
-                    if len(skill) > 3:
-                        return True
-                    
-                    # Reject everything else
-                    return False
-                
-                if 'required_skills' in job_data:
-                    job_data['required_skills'] = [
-                        skill.strip() for skill in job_data['required_skills']
-                        if is_valid_skill(skill)
-                    ]
-                if 'preferred_skills' in job_data:
-                    job_data['preferred_skills'] = [
-                        skill.strip() for skill in job_data['preferred_skills']
-                        if is_valid_skill(skill)
-                    ]
-
-                # Filter soft_skills and technical_stack similarly
-                if 'soft_skills' in job_data:
-                    job_data['soft_skills'] = [
-                        skill.strip() for skill in job_data['soft_skills']
-                        if is_valid_skill(skill)
-                    ]
-                if 'technical_stack' in job_data:
-                    job_data['technical_stack'] = [
-                        skill.strip() for skill in job_data['technical_stack']
-                        if is_valid_skill(skill)
-                    ]
-
-                # Ensure full_description is set
-                if 'full_description' not in job_data or not job_data['full_description']:
-                    job_data['full_description'] = content
-
-                return job_data
+            if is_invalid:
+                print(f"WARNING: AI extracted invalid job title: '{extracted_title}' - setting to 'Not Specified'")
+                job_data['job_title'] = 'Job Title Not Specified'
             else:
-                raise ValueError("AI response didn't contain valid JSON")
+                print(f"DEBUG: Using AI-extracted title: '{extracted_title}'")
+
+            # Ensure location is not empty
+            extracted_location = job_data.get('location', '').strip() if job_data.get('location') else ''
+            if not extracted_location or extracted_location.lower() in ['not found', 'none', 'n/a', '']:
+                job_data['location'] = 'Location Not Specified'
+
+            # Ensure all optional fields are present with defaults
+            if 'industry_context' not in job_data:
+                job_data['industry_context'] = None
+            if 'soft_skills' not in job_data:
+                job_data['soft_skills'] = []
+            if 'technical_stack' not in job_data:
+                job_data['technical_stack'] = []
+
+            # Always attach the original description in Python rather than asking the model
+            # to emit the full raw text inside JSON.
+            job_data['full_description'] = content
+
+            # Ensure skills are not empty or invalid - filter out single-word garbage
+            # Strict filtering: reject abbreviations, single letters, and invalid short words
+            invalid_abbreviations = ['ai', 'go', 'aws', 'it', 'hr', 'pr', 'ml', 'nlp', 'api', 'ui', 'ux', 'qa', 'pm']
+
+            def is_valid_skill(skill: str) -> bool:
+                """Validate that a skill is meaningful and not an invalid abbreviation"""
+                if not skill or not isinstance(skill, str):
+                    return False
+
+                skill = skill.strip()
+                if not skill:
+                    return False
+
+                skill_lower = skill.lower()
+
+                # Reject if it's in the blacklist of invalid abbreviations
+                if skill_lower in invalid_abbreviations:
+                    return False
+
+                # Reject single words <= 3 characters (too short to be meaningful)
+                if len(skill) <= 3 and ' ' not in skill:
+                    return False
+
+                # Reject single letters
+                if len(skill) == 1:
+                    return False
+
+                # Accept multi-word skills (they're usually meaningful)
+                if ' ' in skill:
+                    return True
+
+                # Accept single words > 3 characters that aren't blacklisted
+                if len(skill) > 3:
+                    return True
+
+                # Reject everything else
+                return False
+
+            if 'required_skills' in job_data:
+                job_data['required_skills'] = [
+                    skill.strip() for skill in job_data['required_skills']
+                    if is_valid_skill(skill)
+                ]
+            if 'preferred_skills' in job_data:
+                job_data['preferred_skills'] = [
+                    skill.strip() for skill in job_data['preferred_skills']
+                    if is_valid_skill(skill)
+                ]
+
+            # Filter soft_skills and technical_stack similarly
+            if 'soft_skills' in job_data:
+                job_data['soft_skills'] = [
+                    skill.strip() for skill in job_data['soft_skills']
+                    if is_valid_skill(skill)
+                ]
+            if 'technical_stack' in job_data:
+                job_data['technical_stack'] = [
+                    skill.strip() for skill in job_data['technical_stack']
+                    if is_valid_skill(skill)
+                ]
+
+            return job_data
 
         except json.JSONDecodeError as e:
             raise ValueError(f"Failed to parse AI response as JSON: {e}. Response: {response_text[:500]}")
