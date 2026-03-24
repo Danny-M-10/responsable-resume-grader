@@ -1,0 +1,71 @@
+=== Target Groups (first 100) ===
+{
+    "TargetGroups": [
+        {
+            "TargetGroupArn": "arn:aws:elasticloadbalancing:us-east-2:774305585062:targetgroup/recruiting-candidate-ranker-tg/a3cd27f4c2d8b292",
+            "TargetGroupName": "recruiting-candidate-ranker-tg",
+            "Protocol": "HTTP",
+            "Port": 8501,
+            "VpcId": "vpc-0520ba7971d490ddf",
+            "HealthCheckProtocol": "HTTP",
+            "HealthCheckPort": "traffic-port",
+            "HealthCheckEnabled": true,
+            "HealthCheckIntervalSeconds": 30,
+            "HealthCheckTimeoutSeconds": 5,
+            "HealthyThresholdCount": 2,
+            "UnhealthyThresholdCount": 3,
+            "HealthCheckPath": "/health",
+            "Matcher": {
+                "HttpCode": "200"
+            },
+            "LoadBalancerArns": [],
+            "TargetType": "ip",
+            "ProtocolVersion": "HTTP1",
+            "IpAddressType": "ipv4"
+        },
+        {
+            "TargetGroupArn": "arn:aws:elasticloadbalancing:us-east-2:774305585062:targetgroup/responsable-recruitment-tg/10fab2d097f4922d",
+            "TargetGroupName": "responsable-recruitment-tg",
+            "Protocol": "HTTP",
+            "Port": 8501,
+            "VpcId": "vpc-0520ba7971d490ddf",
+            "HealthCheckProtocol": "HTTP",
+            "HealthCheckPort": "traffic-port",
+            "HealthCheckEnabled": true,
+            "HealthCheckIntervalSeconds": 30,
+            "HealthCheckTimeoutSeconds": 5,
+            "HealthyThresholdCount": 2,
+            "UnhealthyThresholdCount": 3,
+            "HealthCheckPath": "/health",
+            "Matcher": {
+                "HttpCode": "200"
+            },
+            "LoadBalancerArns": [],
+            "TargetType": "ip",
+            "ProtocolVersion": "HTTP1",
+            "IpAddressType": "ipv4"
+        },
+        {
+            "TargetGroupArn": "arn:aws:elasticloadbalancing:us-east-2:774305585062:targetgroup/responsable-recruitment-tg-8000/0060093c210c5975",
+            "TargetGroupName": "responsable-recruitment-tg-8000",
+            "Protocol": "HTTP",
+            "Port": 8000,
+            "VpcId": "vpc-0520ba7971d490ddf",
+            "HealthCheckProtocol": "HTTP",
+            "HealthCheckPort": "traffic-port",
+            "HealthCheckEnabled": true,
+            "HealthCheckIntervalSeconds": 30,
+            "HealthCheckTimeoutSeconds": 5,
+            "HealthyThresholdCount": 5,
+            "UnhealthyThresholdCount": 2,
+            "HealthCheckPath": "/health",
+            "Matcher": {
+                "HttpCode": "200"
+            },
+            "LoadBalancerArns": [],
+            "TargetType": "ip",
+            "ProtocolVersion": "HTTP1",
+            "IpAddressType": "ipv4"
+        }
+    ]
+}

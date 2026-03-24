@@ -1,0 +1,42 @@
+AWS teardown inventory — account 774305585062, region us-east-2 (generated during automated teardown run)
+
+ECS
+  Cluster: responsAble_recruitment_ai_app
+  Service: responsAble_recruitment_ai_app (task def responsable-recruitment-ai-app:15, TG responsable-recruitment-tg-8000)
+
+ECR
+  No repositories in us-east-2
+
+ELB
+  No ALBs/NLBs in us-east-2 (target groups existed without load balancers)
+
+RDS
+  No DB instances or clusters in us-east-2
+  Manual snapshots present: recruiting-candidate-ranker-snapshot, responsable-recruitment-ai-db-snapshot
+
+S3 (project-related)
+  responsable-recruitment-ai-uploads-us-east-2-774305585062 — uploads present (~22 objects)
+  crossroads-recruiting-storage — empty at inventory time
+
+CloudWatch Logs (/ecs/)
+  /ecs/responsAble_recruitment_ai_app
+  /ecs/responsable-recruitment-ai
+
+SSM Parameter Store
+  /responsable-recruitment-ai/DATABASE_URL (SecureString)
+  /responsable-recruitment-ai/DB_MASTER_PASSWORD (SecureString)
+  /responsable-recruitment-ai/SESSION_SECRET (SecureString)
+
+Route 53
+  ListHostedZones returned empty for this IAM user (DNS may live in another account)
+
+Elastic Beanstalk
+  TRCPaypal-env present — NOT part of ResponsAble teardown; elasticbeanstalk-us-east-2-* bucket left intact
+
+Task definition families found (many revisions; deregister in teardown script)
+  internal-recruiting-candidate-ranker, recruiting-candidate-ranker, responsAble_recruitment_ai_app, responsable-recruitment-ai-app
+
+--- Post-teardown (see TEARDOWN_LOG.txt) ---
+ECS cluster/services: removed. S3 project buckets: removed (after local mirror). CloudWatch log groups and recruiting alarms: removed.
+SSM /responsable-recruitment-ai/*: removed. ACM cert responsable.crossroadcoach.com: removed. Target groups: removed.
+Recruiting security groups (ALB/ECS/RDS): removed. RDS snapshots: retained.

@@ -1,0 +1,6 @@
+=== ECS Services in cluster ===
+{
+    "serviceArns": [
+        "arn:aws:ecs:us-east-2:774305585062:service/responsAble_recruitment_ai_app/responsAble_recruitment_ai_app"
+    ]
+}

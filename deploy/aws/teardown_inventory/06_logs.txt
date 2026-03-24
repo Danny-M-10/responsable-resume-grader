@@ -1,0 +1,25 @@
+=== CloudWatch Log groups /ecs ===
+{
+    "logGroups": [
+        {
+            "logGroupName": "/ecs/responsAble_recruitment_ai_app",
+            "creationTime": 1767652110766,
+            "metricFilterCount": 0,
+            "arn": "arn:aws:logs:us-east-2:774305585062:log-group:/ecs/responsAble_recruitment_ai_app:*",
+            "storedBytes": 927767,
+            "logGroupClass": "STANDARD",
+            "logGroupArn": "arn:aws:logs:us-east-2:774305585062:log-group:/ecs/responsAble_recruitment_ai_app",
+            "deletionProtectionEnabled": false
+        },
+        {
+            "logGroupName": "/ecs/responsable-recruitment-ai",
+            "creationTime": 1768863499134,
+            "metricFilterCount": 0,
+            "arn": "arn:aws:logs:us-east-2:774305585062:log-group:/ecs/responsable-recruitment-ai:*",
+            "storedBytes": 37847320,
+            "logGroupClass": "STANDARD",
+            "logGroupArn": "arn:aws:logs:us-east-2:774305585062:log-group:/ecs/responsable-recruitment-ai",
+            "deletionProtectionEnabled": false
+        }
+    ]
+}

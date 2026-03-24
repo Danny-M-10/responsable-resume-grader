@@ -60,3 +60,6 @@ frontend/node_modules/
 *.db
 storage/
 .cursor/
+
+# Local AWS teardown mirror (may contain uploads; do not commit)
+deploy/aws/teardown_archive/

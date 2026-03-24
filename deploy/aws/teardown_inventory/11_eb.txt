@@ -1,0 +1,28 @@
+=== Elastic Beanstalk ===
+{
+    "Environments": [
+        {
+            "EnvironmentName": "TRCPaypal-env",
+            "EnvironmentId": "e-p92tgfadyp",
+            "ApplicationName": "TRC_Paypal",
+            "VersionLabel": "Launch Config",
+            "SolutionStackName": "64bit Amazon Linux 2023 v6.6.5 running Node.js 22",
+            "PlatformArn": "arn:aws:elasticbeanstalk:us-east-2::platform/Node.js 22 running on 64bit Amazon Linux 2023/6.6.5",
+            "EndpointURL": "3.14.184.173",
+            "CNAME": "trc-paypal.us-east-2.elasticbeanstalk.com",
+            "DateCreated": "2025-10-06T19:51:25.780000+00:00",
+            "DateUpdated": "2026-02-02T06:28:50.672000+00:00",
+            "Status": "Ready",
+            "AbortableOperationInProgress": false,
+            "Health": "Grey",
+            "HealthStatus": "Suspended",
+            "Tier": {
+                "Name": "WebServer",
+                "Type": "Standard",
+                "Version": "1.0"
+            },
+            "EnvironmentLinks": [],
+            "EnvironmentArn": "arn:aws:elasticbeanstalk:us-east-2:774305585062:environment/TRC_Paypal/TRCPaypal-env"
+        }
+    ]
+}

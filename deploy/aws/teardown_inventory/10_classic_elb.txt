@@ -1,0 +1,4 @@
+=== Classic ELBs ===
+{
+    "LoadBalancerDescriptions": []
+}

@@ -1,0 +1,3 @@
+crossroads-recruiting-storage
+elasticbeanstalk-us-east-2-774305585062
+responsable-recruitment-ai-uploads-us-east-2-774305585062

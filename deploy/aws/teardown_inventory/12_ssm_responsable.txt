@@ -1,0 +1,43 @@
+{
+    "Parameters": [
+        {
+            "Name": "/responsable-recruitment-ai/DATABASE_URL",
+            "ARN": "arn:aws:ssm:us-east-2:774305585062:parameter/responsable-recruitment-ai/DATABASE_URL",
+            "Type": "SecureString",
+            "KeyId": "alias/aws/ssm",
+            "LastModifiedDate": "2026-01-19T16:41:53.832000-06:00",
+            "LastModifiedUser": "arn:aws:iam::774305585062:user/Candidate_Ranker_Admin",
+            "Description": "Database connection URL for ResponsAble application",
+            "Version": 1,
+            "Tier": "Standard",
+            "Policies": [],
+            "DataType": "text"
+        },
+        {
+            "Name": "/responsable-recruitment-ai/DB_MASTER_PASSWORD",
+            "ARN": "arn:aws:ssm:us-east-2:774305585062:parameter/responsable-recruitment-ai/DB_MASTER_PASSWORD",
+            "Type": "SecureString",
+            "KeyId": "alias/aws/ssm",
+            "LastModifiedDate": "2026-01-19T12:59:49.674000-06:00",
+            "LastModifiedUser": "arn:aws:iam::774305585062:user/Candidate_Ranker_Admin",
+            "Description": "Master password for ResponsAble RDS database",
+            "Version": 1,
+            "Tier": "Standard",
+            "Policies": [],
+            "DataType": "text"
+        },
+        {
+            "Name": "/responsable-recruitment-ai/SESSION_SECRET",
+            "ARN": "arn:aws:ssm:us-east-2:774305585062:parameter/responsable-recruitment-ai/SESSION_SECRET",
+            "Type": "SecureString",
+            "KeyId": "alias/aws/ssm",
+            "LastModifiedDate": "2026-01-19T16:41:54.902000-06:00",
+            "LastModifiedUser": "arn:aws:iam::774305585062:user/Candidate_Ranker_Admin",
+            "Description": "Session secret for ResponsAble application",
+            "Version": 1,
+            "Tier": "Standard",
+            "Policies": [],
+            "DataType": "text"
+        }
+    ]
+}

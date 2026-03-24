@@ -1,0 +1,6 @@
+=== ECS Clusters ===
+{
+    "clusterArns": [
+        "arn:aws:ecs:us-east-2:774305585062:cluster/responsAble_recruitment_ai_app"
+    ]
+}

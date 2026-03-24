@@ -1,0 +1,47 @@
+ResponsAble / recruiting AWS teardown — completed run
+Account: 774305585062 | Region: us-east-2 | Date: 2026-03-24
+
+Data safety (per plan)
+- RDS: No running DB instances or clusters in us-east-2 at teardown time. Existing manual snapshots retained:
+  recruiting-candidate-ranker-snapshot
+  responsable-recruitment-ai-db-snapshot
+  (plus any other account manual snapshots — verify in RDS console.)
+- S3: Mirrored s3://responsable-recruitment-ai-uploads-us-east-2-774305585062 to local deploy/aws/teardown_archive/responsable-s3-mirror/ (gitignored), then removed bucket.
+
+Compute and networking
+- ECS: Deleted service responsAble_recruitment_ai_app and cluster responsAble_recruitment_ai_app.
+- ELB: No ALBs present; deleted target groups recruiting-candidate-ranker-tg, responsable-recruitment-tg, responsable-recruitment-tg-8000.
+- EC2 IAM role full_admin_candidate_ranker: NOT deleted (EC2 assume role; last used 2026-02-04 — may still be attached to an instance).
+- Security groups removed after dependency cleanup: recruiting-candidate-ranker-ecs-sg, recruiting-candidate-ranker-rds-sg, recruiting-candidate-ranker-alb-sg.
+
+Observability
+- CloudWatch Logs: deleted /ecs/responsAble_recruitment_ai_app and /ecs/responsable-recruitment-ai.
+- CloudWatch Alarms deleted: recruiting-candidate-ranker-db-*, recruiting-candidate-ranker-ecs-*.
+
+Certificates
+- ACM: deleted unused certificate for responsable.crossroadcoach.com (arn …ac34523e-1af2-4aa9-8c46-b095b2d3a0bf).
+
+Config
+- SSM Parameter Store: deleted /responsable-recruitment-ai/DATABASE_URL, DB_MASTER_PASSWORD, SESSION_SECRET.
+- Path /recruiting-candidate-ranker/* had no parameters at teardown time.
+
+Containers
+- ECR: no repositories in us-east-2 (already empty).
+- ECS task definition families deregistered (INACTIVE revisions): internal-recruiting-candidate-ranker, recruiting-candidate-ranker, responsAble_recruitment_ai_app, responsable-recruitment-ai-app.
+
+S3 (additional)
+- Deleted empty bucket crossroads-recruiting-storage.
+- Bucket recruiting-candidate-ranker-uploads-us-east-2-774305585062: not found (404).
+
+Intentionally left in place
+- Elastic Beanstalk environment TRCPaypal-env and bucket elasticbeanstalk-us-east-2-774305585062 (unrelated app).
+- IAM: ecsTaskExecutionRole, AWSServiceRoleForECS, user Candidate_Ranker_Admin, role full_admin_candidate_ranker.
+- RDS manual snapshots (ongoing snapshot storage cost).
+- Route 53: ListHostedZones returned empty for this IAM user — DNS for crossroadcoach.com may live in another account; remove A/ALIAS records there if still pointing at deleted infrastructure.
+- GitHub: remove repository secret AWS_ROLE_ARN manually if still set (ECS workflow already removed from repo).
+
+Post-checks (run locally)
+- aws ecs list-clusters --region us-east-2
+- aws elbv2 describe-load-balancers --region us-east-2
+- aws s3 ls | grep -iE 'responsable|recruit'
+- AWS Billing / Cost Explorer after 24–48h for snapshot and any residual charges
